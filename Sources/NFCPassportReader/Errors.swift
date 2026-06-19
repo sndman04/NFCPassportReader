@@ -33,6 +33,7 @@ public enum NFCPassportReaderError: Error {
     case ConnectionError
     case TimeOutError
     case UserCanceled
+    case ScanAlreadyInProgress
     case InvalidMRZKey
     case MoreThanOneTagFound
     case InvalidHashAlgorithmSpecified
@@ -69,6 +70,7 @@ public enum NFCPassportReaderError: Error {
             case .ConnectionError: return "ConnectionError"
             case .TimeOutError: return "TimeOutError"
             case .UserCanceled: return "UserCanceled"
+            case .ScanAlreadyInProgress: return "ScanAlreadyInProgress"
             case .InvalidMRZKey: return "InvalidMRZKey"
             case .MoreThanOneTagFound: return "MoreThanOneTagFound"
             case .InvalidHashAlgorithmSpecified: return "InvalidHashAlgorithmSpecified"
@@ -108,6 +110,7 @@ public enum NFCPassportReaderError: Error {
             case .ConnectionError: return "NFC connection lost"
             case .TimeOutError: return "NFC session timed out"
             case .UserCanceled: return "NFC session canceled"
+            case .ScanAlreadyInProgress: return "A passport scan is already in progress"
             case .InvalidMRZKey: return "Access key rejected"
             case .MoreThanOneTagFound: return "More than one NFC tag found"
             case .InvalidHashAlgorithmSpecified: return "Unsupported verification hash algorithm"

@@ -4,8 +4,6 @@ This package handles reading an NFC Enabled passport using iOS 15 CoreNFC APIS
 
 **Version 2 (and the main branch) now uses Swift Async/Await for communication.  If you need an earlier version, please use 1.1.9 or below!**
 
-**NOTE: I shall continue to release updates through Cocoapods until it changes to read-only (end of 2026) however consider this deprecated and unsupported - please use Swift Package Manager**
-
 Supported features:
 * Basic Access Control (BAC)
 * Secure Messaging
@@ -26,27 +24,11 @@ It reads and verifies my passport (and others I've been able to test) fine, howe
 
 NFCPassportReader may be installed via Swift Package Manager, by pointing to this repo's URL.
 
+## Privacy-safe fork usage
 
-### CocoaPods **(deprecated and unsupported)**
+This fork is intended for apps that need passport chip reading without leaking identity-document data through logs, diagnostics, or broad raw-data APIs. Logging is off by default, and opt-in logging is typed and redacted.
 
-Install using [CocoaPods](http://cocoapods.org) by adding this line to your Podfile:
-
-```ruby
-use_frameworks!
-pod 'NFCPassportReader', git:'https://github.com/AndyQ/NFCPassportReader.git'  
-```
-
-Then, run the following command:
-
-```bash
-$ pod install
-```
-
-Note - ** Don't use Bitcode ** - its not supported by this and has been deprecated by Apple
-
-## Usage 
-To use, you first need to create the Passport MRZ Key which consists of the passport number, date of birth and expiry date (including the checksums).
-Dates are in YYMMDD format
+Create the Passport MRZ key in app memory from the passport number, date of birth, and expiry date, including their checksums. Dates are in YYMMDD format. Treat the resulting access key as sensitive: do not log, persist, upload, or include it in bug reports.
 
 For example:
 
@@ -65,26 +47,13 @@ Expiry date checksum - 5
 mrzKey = "12345678898012772508315"
 ```
 
-Then on an instance of PassportReader, call the readPassport method passing in the mrzKey, the datagroups to read and a completion block.  
-e.g.
+Then create a `PassportReader` and call the async `readPassport` API. Prefer scan profiles over ad hoc data-group lists where possible.
 
-```
-passportReader.readPassport(mrzKey: mrzKey, tags: [.COM, .DG1, .DG2], completed: { (error) in
-   ...
-}
-```
-
-Currently the datagroups supported are: COM, DG1, DG2, DG7, DG11, DG12, DG14 (partial), DG15, and SOD
-
-This will then handle the reading of the passport, and image and will call the completion block either with an TagError error if there was an error of some kind, or nil if successful.
-
-If successful, the passportReader object will then contain valid data for the passportMRZ and passportImage fields.
-Note - JPEG2000 images are currently unsupported - access to the raw data is available if you need to implement support for those.
-
-In addition, you can receive privacy-safe progress events and customise the messages displayed in the NFC Session Reader.
 Progress events are structured and redacted; they do not include MRZ values, APDUs, keys, decrypted data groups, or image bytes.
 
 ```swift
+let passportReader = PassportReader(masterListURL: masterListURL)
+
 let passport = try await passportReader.readPassport(
     mrzKey: mrzKey,
     scanProfile: .identityWithPhoto,
@@ -136,10 +105,14 @@ For UI tests or simulator flows, depend on `PassportChipReading` and inject `Pas
 let fixture = PassportReaderFixture(result: .success(NFCPassportModel()))
 ```
 
+Currently supported data groups are COM, DG1, DG2, DG7, DG11, DG12, DG14 (partial), DG15, and SOD.
+
 Extended mode reads (not supported by all passports) can be enabled by passing in the useExtendedMode flag to the readPassport function.
 This will increase the number of bytes that can be read in a call and may be required for some passports that use long AA keys (some Australian passports for example).
 
 A custom Active Authentiion challenge can be provided to the PassportReader to ensure that the challenge/response was specifically executed in the session and not replayed. The app could then send the activeAuthenticationSignature to a backend, along with the rest of the chip data to perform validation.
+
+`NFCPassportModel.dumpPassportData(...)` is deprecated in this fork because it returns raw Base64-encoded passport chip data. Prefer normalized model fields, `verificationResult`, and privacy-safe failure/progress diagnostics.
 
 
 ## Logging
@@ -165,18 +138,27 @@ let reader = PassportReader(logLevel: .info, logger: PassportEventSink())
 
 Supported levels are `.off`, `.error`, `.info`, and `.debugRedacted`. `.debugRedacted` is intentionally still redacted; this package does not provide a raw byte or key logging mode.
 
+## CI and local verification
+
+Before tagging this fork for app consumption, run:
+
+```bash
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build-for-testing
+scripts/privacy_scan.sh
+git diff --check
+```
+
+`swift test` may fail in this environment because SwiftPM evaluates the package against macOS while the OpenSSL dependency requires a newer macOS target. Use the iOS/Xcode path above unless the package manifest is deliberately changed to support macOS tests.
+
+Run at least one manual on-device passport scan before releasing a fork tag, because PACE/BAC/Chip Authentication behavior depends on real chip interoperability.
+
 ## Other info
 
 ### PassiveAuthentication
 Passive Authentication is now part of the main library and can be used to ensure that an E-Passport is valid and hasn't been tampered with.
 
-It requires a set of CSCA certificates in PEM format from a master list (either from a country that publishes their master list, or the ICAO PKD repository). See the scripts folder for details on how to get and create this file.
-
-**The masterList.pem file included in the Sample app is purely there to ensure no compiler warnings and contains only a single PEM file that was self-generated and won't be able to verify anything!**
-
-## Sample app
-There is a sample app included in the repo which demonstrates the functionality.
-
+It requires a set of CSCA certificates in PEM format from a master list, either from a country that publishes its master list or from the ICAO PKD repository. See `scripts/README.md` for helper-script notes.
 
 ## Troubleshooting
 * If when doing the initial Mutual Authenticate challenge, you get an error with and SW1 code 0x63, SW2 code 0x00, reason: No information given, then this is usualy because your MRZ key is incorrect, and possibly because your passport number is not quite right.  If your passport number in the MRZ contains a '<' then you need to include this in the MRZKey - the checksum should work out correct too.  For more details, check out App-D2 in the ICAO 9303 Part 11 document (https://www.icao.int/publications/Documents/9303_p11_cons_en.pdf)

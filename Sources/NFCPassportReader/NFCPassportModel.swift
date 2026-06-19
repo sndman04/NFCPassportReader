@@ -247,6 +247,7 @@ public class NFCPassportModel {
     ///    selectedDataGroups - the Data Groups to be exported (if they are present in the passport)
     ///    includeActiveAutheticationData - Whether to include the Active Authentication challenge and response (if supported and retrieved)
     /// - Returns: dictionary of DataGroup ids and Base64 encoded data
+    @available(*, deprecated, message: "This returns sensitive raw passport data. Prefer normalized NFCPassportModel fields, verificationResult, and privacy-safe diagnostics.")
     public func dumpPassportData( selectedDataGroups : [DataGroupId], includeActiveAuthenticationData : Bool = false) -> [String:String] {
         var ret = [String:String]()
         for dg in selectedDataGroups {

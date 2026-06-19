@@ -596,6 +596,91 @@ Remaining follow-up:
 - Run an on-device passport scan before tagging. The added hardening is designed to fail closed, but real-chip PACE/BAC/CA interoperability still needs device validation.
 - Consider a future API split between internal diagnostic details and public app-safe errors if downstream code needs privacy-reviewed low-level troubleshooting without relying on `localizedDescription`.
 
+### 2026-06-19 Productization, CI, And Final Hardening Pass
+
+Completed:
+
+- Prepared a GitHub Actions workflow for iOS package build, iOS test build, whitespace checks, and privacy diagnostics scanning. The workflow file is not included in the pushed commit because the current GitHub token lacks `workflow` scope.
+- Added reusable local privacy scanning at `scripts/privacy_scan.sh`.
+- Refreshed README integration guidance so privacy-safe async APIs, scan profiles, progress events, failure mapping, fixture injection, logging defaults, and local verification commands are the primary path.
+- Added `MIGRATION_NOTARY.md` with the recommended Notary Journal `.fullVerification` call shape, timeout/progress/failure handling, fixture injection, and raw-data export warning.
+- Deprecated `NFCPassportModel.dumpPassportData(...)` so raw Base64 chip export is harder to use accidentally.
+- Added `NFCPassportReaderError.ScanAlreadyInProgress` and made concurrent scans fail closed instead of risking continuation replacement.
+- Hardened scan cancellation/completion state with a small lock-protected scan-state guard so timeout, cancellation, NFC invalidation, and completion race paths cannot double-resume the async continuation.
+- Clamped finite `operationTimeout` conversion to avoid trapping on huge timeout values.
+- Converted data-group retry handling away from broad `error.value` string control flow and into typed retry predicates based on error cases/status words.
+- Added focused tests for scan-in-progress error redaction and typed data-group retry classification.
+- Reviewed CocoaPods metadata. Swift Package Manager remains the supported integration path for this fork.
+
+Verification:
+
+- iOS package build succeeded:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build
+  ```
+
+- iOS package test build succeeded:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build-for-testing
+  ```
+
+- `scripts/privacy_scan.sh` passed.
+- `git diff --check` passed.
+- Repeated bug-check loops covered public errors/logging, async cancellation/concurrency, parser/crypto slicing hotspots, release metadata, docs/API ergonomics, risky sinks, and runtime-trap patterns.
+- Runtime-trap scan found no `try!`, forced casts, `fatalError`, precondition/assertion failures, forced `first`/`last`, or forced `baseAddress` hits in `Sources` or `Tests`.
+- Production privacy scan found no raw `print`, direct `Logger`, `os_log`, clipboard, network, file-write, or sensitive diagnostic phrase hits in `Sources`.
+- The only warning in the final iOS test-build output is the known non-source XCTest App Intents metadata warning: `Metadata extraction skipped. No AppIntents.framework dependency found.`
+
+Remaining release blockers:
+
+- Run a manual on-device passport scan.
+- Build Notary Journal against the fork/tag and confirm the chosen profile, timeout, progress, failure, and verification-result mappings.
+
+### 2026-06-19 Repository Compaction Pass
+
+Completed:
+
+- Removed the bundled example app trees under `Examples/`. They were not part of the Swift package build, duplicated app-side concerns, and still contained raw `print(...)` diagnostics and raw `dumpPassportData(...)` export flows that do not match this privacy fork's default posture.
+- Removed `NFCPassportReader.podspec`. Swift Package Manager is now the only supported integration path for this fork, which avoids carrying stale CocoaPods metadata and a second packaging surface around the C shim.
+- Updated README copy to remove CocoaPods/sample-app references and point passive-authentication certificate setup at `scripts/README.md`.
+- Audited source files for obvious dead private/internal code. No source files were removed because the remaining low-reference files are package APIs, parser subclasses, crypto helpers, or compatibility surfaces used by type/function references rather than filename.
+- Removed unused private OpenSSL helpers (`pubKeyToPEM`, `privKeyToPEM`, `pkcs7DataToPEM`) and a stale `loaded` flag from `OpenSSLUtils`; current certificate/key paths use the remaining direct ASN.1 and key APIs.
+- Removed the generated local `.build` directory after successful verification; SwiftPM/Xcode will recreate it when needed.
+
+Verification:
+
+- `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build` passed.
+- `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build-for-testing` passed.
+- `scripts/privacy_scan.sh` passed.
+- `git diff --check` passed.
+- Targeted search found no remaining active references to the removed example app, podspec, or deleted OpenSSL helper symbols.
+- The only warning in the final iOS test-build output is the known non-source XCTest App Intents metadata warning: `Metadata extraction skipped. No AppIntents.framework dependency found.`
+
+Remaining follow-up:
+
+- Consider a future major-version API break to remove raw dump import/export APIs entirely. This pass kept those deprecated compatibility surfaces because downstream users may still compile against them.
+
+### 2026-06-19 License Compliance Check
+
+Findings:
+
+- Upstream `AndyQ/NFCPassportReader` is MIT licensed with `Copyright (c) 2019 Andy Qua`.
+- The root `LICENSE` file is still present and preserves the upstream MIT copyright and permission notice.
+- MIT redistribution requires keeping the copyright notice and permission notice in all copies or substantial portions of the software. Source releases of this fork should include the root `LICENSE`; binary/app distributions that include this package should include the same MIT notice in the app's third-party notices or acknowledgements.
+- Existing source-file copyright headers for Andy Qua remain intact.
+- README acknowledgements for pypassport, YobiWiki, and Marcin Krzyzanowski/OpenSSL-Universal remain present.
+- The removed bundled examples included their own app/sample artifacts, but no retained production source depends on files from those example trees. No replacement notice is needed for deleted sample-only content.
+- The fork depends on `OpenSSL-Package`, which distributes OpenSSL 3.x binaries under Apache-2.0. App/release notices should include the OpenSSL-Package/OpenSSL Apache-2.0 license text as part of dependency attribution.
+
+Release checklist:
+
+- Do not remove or rewrite the root `LICENSE` file.
+- Include this package's MIT notice in any source archive, fork tag, binary SDK distribution, or app third-party notices.
+- Include OpenSSL-Package/OpenSSL Apache-2.0 notices when distributing an app or binary built with this package.
+- If adding new copied third-party code, add its license file or attribution before release.
+
 ## App-Side Migration Options
 
 ### Option A: Remote Fork

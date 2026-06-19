@@ -107,6 +107,7 @@ final class PassportReaderLoggingTests: XCTestCase {
         XCTAssertEqual(NFCPassportReaderError.InvalidMRZKey.privacySafeFailureReason.description, "access key rejected")
         XCTAssertEqual(NFCPassportReaderError.UnsupportedDataGroup.privacySafeFailureReason.description, "unsupported passport")
         XCTAssertEqual(NFCPassportReaderError.InvalidResponseChecksum.privacySafeFailureReason.description, "verification failed")
+        XCTAssertEqual(NFCPassportReaderError.ScanAlreadyInProgress.privacySafeFailureReason.description, "unexpected read failure")
     }
 
     func testProgressDescriptionsDoNotExposeSensitivePatterns() {
@@ -156,6 +157,7 @@ final class PassportReaderLoggingTests: XCTestCase {
             .ResponseError("Wrong length Le: SW2 indicates exact length", 0x6C, 0x20),
             .InvalidResponse(dataGroupId: .DG1, expectedTag: 0x61, actualTag: 0x75),
             .PACEError("Step3", "Expected [01, 02], received [03, 04]"),
+            .ScanAlreadyInProgress,
             .InvalidDataPassed("Kseed 00112233445566778899AABBCCDDEEFF"),
             .NotYetSupported("APDU A0000002471001"),
             .Unknown(NFCPassportReaderError.ResponseError("RAPDU 9000", 0x90, 0x00))
@@ -205,6 +207,26 @@ final class PassportReaderLoggingTests: XCTestCase {
         XCTAssertEqual(accessKeyFailure.reason, .accessKeyRejected)
         XCTAssertFalse(accessKeyFailure.isRetryLikelyToHelp)
         XCTAssertFalse(accessKeyFailure.recoverySuggestion.localizedCaseInsensitiveContains("MRZ"))
+    }
+
+    func testChipAuthenticationRetryClassificationDoesNotRequirePublicErrorValue() {
+        XCTAssertTrue(NFCPassportReaderError.ConnectionError.shouldRetryDataGroupReadAfterChipAuthentication)
+        XCTAssertTrue(
+            NFCPassportReaderError.ResponseError("Class not supported", 0x6E, 0x00)
+                .shouldRetryDataGroupReadAfterChipAuthentication
+        )
+        XCTAssertFalse(NFCPassportReaderError.InvalidMRZKey.shouldRetryDataGroupReadAfterChipAuthentication)
+    }
+
+    func testDataGroupRetryPolicyUsesTypedStatusWords() {
+        XCTAssertTrue(NFCPassportReaderError.ResponseError("redacted", 0x69, 0x82).shouldSkipDataGroupAndRedoBAC)
+        XCTAssertTrue(NFCPassportReaderError.ResponseError("redacted", 0x6A, 0x82).shouldSkipDataGroupAndRedoBAC)
+        XCTAssertTrue(NFCPassportReaderError.ResponseError("redacted", 0x69, 0x88).shouldRedoBACForDataGroupRead)
+        XCTAssertTrue(NFCPassportReaderError.ResponseError("redacted", 0x62, 0x82).shouldReduceReadAmountAndRedoBAC)
+        XCTAssertTrue(NFCPassportReaderError.ResponseError("redacted", 0x67, 0x00).shouldReduceReadAmountAndRedoBAC)
+        XCTAssertTrue(NFCPassportReaderError.ResponseError("redacted", 0x6C, 0x20).shouldReduceReadAmountAndRedoBAC)
+        XCTAssertTrue(NFCPassportReaderError.UnsupportedDataGroup.isUnsupportedDataGroupRead)
+        XCTAssertFalse(NFCPassportReaderError.InvalidMRZKey.shouldRedoBACForDataGroupRead)
     }
 
     func testVerificationResultDefaultsToNotChecked() {

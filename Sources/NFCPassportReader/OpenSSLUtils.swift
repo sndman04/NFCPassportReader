@@ -11,8 +11,6 @@ import CryptoTokenKit
 
 @available(iOS 13, macOS 10.15, *)
 public class OpenSSLUtils {
-    private static var loaded = false
-    
     /// Returns any OpenSSL Error as a String
     public static func getOpenSSLError() -> String {
         
@@ -62,47 +60,6 @@ public class OpenSSLUtils {
         
         return str
     }
-    
-    static func pubKeyToPEM( pubKey: OpaquePointer ) -> String {
-        
-        guard let out = BIO_new(BIO_s_mem()) else { return "" }
-        defer { BIO_free( out) }
-        
-        PEM_write_bio_PUBKEY(out, pubKey);
-        let str = OpenSSLUtils.bioToString( bio:out )
-        
-        return str
-    }
-    
-    static func privKeyToPEM( privKey: OpaquePointer ) -> String {
-        
-        guard let out = BIO_new(BIO_s_mem()) else { return "" }
-        defer { BIO_free( out) }
-
-        PEM_write_bio_PrivateKey(out, privKey, nil, nil, 0, nil, nil)
-        let str = OpenSSLUtils.bioToString( bio:out )
-        
-        return str
-    }
-    
-    static func pkcs7DataToPEM( pkcs7: Data ) -> String {
-        
-        guard let inf = BIO_new(BIO_s_mem()) else { return "" }
-        defer { BIO_free( inf) }
-        guard let out = BIO_new(BIO_s_mem()) else { return "" }
-        defer { BIO_free( out) }
-        
-        let _ = pkcs7.withUnsafeBytes { (ptr) in
-            BIO_write(inf, ptr.baseAddress?.assumingMemoryBound(to: Int8.self), Int32(pkcs7.count))
-        }
-        guard let p7 = d2i_PKCS7_bio(inf, nil) else { return "" }
-        defer { PKCS7_free(p7) }
-        
-        PEM_write_bio_PKCS7(out, p7)
-        let str = OpenSSLUtils.bioToString( bio:out )
-        return str
-    }
-    
     
     /// Extracts a X509 certificate in PEM format from a PKCS7 container
     /// - Parameter pkcs7Der: The PKCS7 container in DER format

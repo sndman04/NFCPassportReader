@@ -198,6 +198,8 @@ extension NFCPassportReaderError {
             return .timeout
         case .ConnectionError:
             return .connectionLost
+        case .ScanAlreadyInProgress:
+            return .unexpectedReadFailure
         case .InvalidMRZKey:
             return .accessKeyRejected
         case .UnsupportedDataGroup, .NotImplemented, .NotYetSupported, .UnsupportedCipherAlgorithm, .UnsupportedMappingType:
@@ -206,6 +208,57 @@ extension NFCPassportReaderError {
             return .verificationFailed
         default:
             return .unexpectedReadFailure
+        }
+    }
+
+    var shouldRetryDataGroupReadAfterChipAuthentication: Bool {
+        switch self {
+        case .ConnectionError:
+            return true
+        case .ResponseError(let message, let sw1, let sw2):
+            return (sw1, sw2) == (0x6E, 0x00)
+                || message == "Session invalidated"
+                || message == "Class not supported"
+                || message == "Tag connection lost"
+                || message == "Tag response error / no response"
+        default:
+            return false
+        }
+    }
+
+    var shouldSkipDataGroupAndRedoBAC: Bool {
+        switch self {
+        case .ResponseError(_, 0x69, 0x82), .ResponseError(_, 0x6A, 0x82):
+            return true
+        default:
+            return false
+        }
+    }
+
+    var shouldRedoBACForDataGroupRead: Bool {
+        switch self {
+        case .ResponseError(_, 0x69, 0x88), .ResponseError(_, 0x6E, 0x00):
+            return true
+        default:
+            return false
+        }
+    }
+
+    var shouldReduceReadAmountAndRedoBAC: Bool {
+        switch self {
+        case .ResponseError(_, 0x62, 0x82), .ResponseError(_, 0x67, 0x00), .ResponseError(_, 0x6C, _):
+            return true
+        default:
+            return false
+        }
+    }
+
+    var isUnsupportedDataGroupRead: Bool {
+        switch self {
+        case .UnsupportedDataGroup:
+            return true
+        default:
+            return false
         }
     }
 }
