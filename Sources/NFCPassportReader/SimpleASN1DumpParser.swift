@@ -141,33 +141,4 @@ public class SimpleASN1DumpParser {
         
         return topItem
     }
-    
-    public func test() {
-        let lines = [
-            "    0:d=0  hl=4 l= 758 cons: SET               ",
-            "  662:d=1  hl=2 l=  18 cons: SEQUENCE          ",
-            "  664:d=2  hl=2 l=  10 prim: OBJECT            :0.4.0.127.0.7.2.2.3.2.4",
-            "  676:d=2  hl=2 l=   1 prim: INTEGER           :01",
-            "  679:d=2  hl=2 l=   1 prim: INTEGER           :01",
-            "  682:d=1  hl=2 l=  18 cons: SEQUENCE          ",
-            "  684:d=2  hl=2 l=  10 prim: OBJECT            :0.4.0.127.0.7.2.2.3.2.1",
-            "  696:d=2  hl=2 l=   1 prim: INTEGER           :01",
-            "  699:d=2  hl=2 l=   1 prim: INTEGER           :02",
-            "  702:d=1  hl=2 l=  13 cons: SEQUENCE          ",
-            "  704:d=2  hl=2 l=   8 prim: OBJECT            :0.4.0.127.0.7.2.2.2",
-            "  714:d=2  hl=2 l=   1 prim: INTEGER           :01",
-            "  717:d=1  hl=2 l=  18 cons: SEQUENCE          ",
-            "  719:d=2  hl=2 l=  10 prim: OBJECT            :0.4.0.127.0.7.2.2.4.2.4",
-            "  731:d=2  hl=2 l=   1 prim: INTEGER           :02",
-            "  734:d=2  hl=2 l=   1 prim: INTEGER           :0D",
-            "  737:d=1  hl=2 l=  23 cons: SEQUENCE          ",
-            "  739:d=2  hl=2 l=   6 prim: OBJECT            :2.23.136.1.1.5",
-            "  747:d=2  hl=2 l=   1 prim: INTEGER           :01",
-            "  750:d=2  hl=2 l=  10 prim: OBJECT            :0.4.0.127.0.7.1.1.4.1.3",
-            ""
-        ]
-        
-        let topItem = parseLines( lines:lines )
-        print( topItem?.debugDescription ?? "" )
-    }
 }

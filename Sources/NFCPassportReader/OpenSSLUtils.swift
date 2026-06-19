@@ -6,7 +6,6 @@
 //
 
 import Foundation
-import OSLog
 import OpenSSL
 import CryptoTokenKit
 
@@ -166,11 +165,6 @@ public class OpenSSLUtils {
             
             var ret : Int32 = ok
             if ok == 0 {
-                let errVal = X509_verify_cert_error_string(Int(cert_error))
-                let val = errVal!.withMemoryRebound(to: CChar.self, capacity: 1000) { (ptr) in
-                    return String(cString: ptr)
-                }
-                
                 // OpenSSL V3 made a change to fail verification for certificates using explicit parameters
                 // However the ICAO spec requires no implicit parameters
                 // So if we have the explict params error - we ignore it and return 1 (no error) for this error
@@ -178,7 +172,6 @@ public class OpenSSLUtils {
                     // Ignoring this
                     ret = 1
                 } else {
-                    Logger.openSSL.error("error \(cert_error) at \(X509_STORE_CTX_get_error_depth(ctx)) depth lookup:\(val)" )
                 }
             }
             
@@ -258,8 +251,6 @@ public class OpenSSLUtils {
         if CMS_verify(cms, nil, nil, nil, out, flags) == 0 {
             throw OpenSSLError.VerifyAndReturnSODEncapsulatedData("CMS - Verification of P7 failed - unable to verify signature")
         }
-        
-        Logger.openSSL.debug("Verification successful\n");
         let len = BIO_ctrl(out, BIO_CTRL_PENDING, 0, nil)
         var buffer = [UInt8](repeating: 0, count: len)
         BIO_read(out, &buffer, Int32(len))
@@ -310,7 +301,6 @@ public class OpenSSLUtils {
             let rc = ASN1_parse_dump(out, ptr.baseAddress?.assumingMemoryBound(to: UInt8.self), data.count, 0, 0)
             if rc == 0 {
                 let str = OpenSSLUtils.getOpenSSLError()
-                Logger.openSSL.debug( "Failed to parse ASN1 Data - \(str)" )
                 throw OpenSSLError.UnableToParseASN1("Failed to parse ASN1 Data - \(str)")
             }
             
@@ -322,8 +312,8 @@ public class OpenSSLUtils {
     
     
     
-    /// Reads an RSA Public Key  in DER  format and converts it to an OpenSSL EVP_PKEY value for use whilst decrypting or verifying an RSA signature
-    /// - Parameter data: The RSA key in DER format
+    /// Reads a public key in DER SubjectPublicKeyInfo format and converts it to an OpenSSL EVP_PKEY value.
+    /// - Parameter data: The public key in DER format
     /// - Returns: The EVP_PKEY value
     /// NOTE THE CALLER IS RESPONSIBLE FOR FREEING THE RETURNED KEY USING
     /// EVP_PKEY_free(pemKey);
@@ -336,14 +326,7 @@ public class OpenSSLUtils {
             BIO_write(inf, ptr.baseAddress?.assumingMemoryBound(to: UInt8.self), Int32(data.count))
         }
         
-        guard let rsakey = d2i_RSA_PUBKEY_bio(inf, nil) else { throw OpenSSLError.UnableToReadECPublicKey("Failed to load") }
-        defer{ RSA_free(rsakey) }
-        
-        let key = EVP_PKEY_new()
-        if EVP_PKEY_set1_RSA(key, rsakey) != 1 {
-            EVP_PKEY_free(key)
-            throw OpenSSLError.UnableToReadECPublicKey("Failed to load")
-        }
+        guard let key = d2i_PUBKEY_bio(inf, nil) else { throw OpenSSLError.UnableToReadECPublicKey("Failed to load") }
         return key
     }
     
@@ -354,26 +337,52 @@ public class OpenSSLUtils {
     /// - Returns: The decrypted signature data
     static func decryptRSASignature( signature : Data, pubKey : OpaquePointer ) throws -> [UInt8] {
         
-        let pad = RSA_NO_PADDING
-        let rsa = EVP_PKEY_get1_RSA( pubKey )
-        
-        let keysize = RSA_size(rsa);
-        var outputBuf = [UInt8](repeating: 0, count: Int(keysize))
-        
-        // Decrypt signature
-        var outlen : Int32 = 0
-        let _ = signature.withUnsafeBytes { (sigPtr) in
-            let _ = outputBuf.withUnsafeMutableBytes { (outPtr) in
-                outlen = RSA_public_decrypt(Int32(signature.count), sigPtr.baseAddress?.assumingMemoryBound(to: UInt8.self), outPtr.baseAddress?.assumingMemoryBound(to: UInt8.self), rsa, pad)
+        guard let ctx = EVP_PKEY_CTX_new(pubKey, nil) else {
+            throw OpenSSLError.UnableToDecryptRSASignature("Unable to create verification context")
+        }
+        defer { EVP_PKEY_CTX_free(ctx) }
+
+        guard EVP_PKEY_verify_recover_init(ctx) == 1,
+              EVP_PKEY_CTX_set_rsa_padding(ctx, RSA_NO_PADDING) == 1 else {
+            let error = OpenSSLUtils.getOpenSSLError()
+            throw OpenSSLError.UnableToDecryptRSASignature("Unable to initialise RSA signature recovery - \(error)")
+        }
+
+        var outputLength = 0
+        let sizeResult = signature.withUnsafeBytes { sigPtr in
+            EVP_PKEY_verify_recover(
+                ctx,
+                nil,
+                &outputLength,
+                sigPtr.baseAddress?.assumingMemoryBound(to: UInt8.self),
+                signature.count
+            )
+        }
+
+        guard sizeResult == 1 else {
+            let error = OpenSSLUtils.getOpenSSLError()
+            throw OpenSSLError.UnableToDecryptRSASignature( "RSA signature recovery failed - \(error)" )
+        }
+
+        var outputBuf = [UInt8](repeating: 0, count: outputLength)
+        let recoverResult = signature.withUnsafeBytes { sigPtr in
+            outputBuf.withUnsafeMutableBytes { outPtr in
+                EVP_PKEY_verify_recover(
+                    ctx,
+                    outPtr.baseAddress?.assumingMemoryBound(to: UInt8.self),
+                    &outputLength,
+                    sigPtr.baseAddress?.assumingMemoryBound(to: UInt8.self),
+                    signature.count
+                )
             }
         }
-        
-        if outlen == 0 {
+
+        if recoverResult != 1 {
             let error = OpenSSLUtils.getOpenSSLError()
-            throw OpenSSLError.UnableToDecryptRSASignature( "RSA_public_decrypt failed - \(error)" )
+            throw OpenSSLError.UnableToDecryptRSASignature( "RSA signature recovery failed - \(error)" )
         }
         
-        return outputBuf
+        return [UInt8](outputBuf.prefix(outputLength))
     }
     
     /// Reads an ECDSA Public Key  in DER  format and converts it to an OpenSSL EVP_PKEY value for use whilst verifying a ECDSA signature
@@ -390,15 +399,8 @@ public class OpenSSLUtils {
             BIO_write(inf, ptr.baseAddress?.assumingMemoryBound(to: UInt8.self), Int32(data.count))
         }
         
-        guard let eckey = d2i_EC_PUBKEY_bio(inf, nil) else { throw OpenSSLError.UnableToReadECPublicKey("Failed to load") }
-        defer{ EC_KEY_free(eckey) }
-        
-        guard let outf = BIO_new(BIO_s_mem()) else { throw OpenSSLError.UnableToReadECPublicKey("Unable to allocate output buffer") }
-        defer { BIO_free(outf) }
-        let _ = PEM_write_bio_EC_PUBKEY(outf, eckey);
-        let pemKey = PEM_read_bio_PUBKEY(outf, nil, nil, nil)
-        
-        return pemKey
+        guard let key = d2i_PUBKEY_bio(inf, nil) else { throw OpenSSLError.UnableToReadECPublicKey("Failed to load") }
+        return key
     }
     
     
@@ -551,26 +553,48 @@ public class OpenSSLUtils {
 
     @available(iOS 13, macOS 10.15, *)
     static func generateAESCMAC( key: [UInt8], message : [UInt8] ) -> [UInt8] {
-        let ctx = CMAC_CTX_new();
-        defer { CMAC_CTX_free(ctx) }
-        var key = key
-        
-        var mac = [UInt8](repeating: 0, count: 32)
-        var maclen : Int = 0
-        
-        if key.count == 16 {
-            CMAC_Init(ctx, &key, key.count, EVP_aes_128_cbc(), nil)
-        } else if key.count == 24 {
-            CMAC_Init(ctx, &key, key.count, EVP_aes_192_cbc(), nil)
-        } else if key.count == 32 {
-            CMAC_Init(ctx, &key, key.count, EVP_aes_256_cbc(), nil)
+        guard let mac = EVP_MAC_fetch(nil, "CMAC", nil) else {
+            return []
         }
-        CMAC_Update(ctx, message, message.count);
-        CMAC_Final(ctx, &mac, &maclen);
-        
-        Logger.openSSL.debug( "aesMac - mac - \(binToHexRep(mac))" )
-        
-        return [UInt8](mac[0..<maclen])
+        defer { EVP_MAC_free(mac) }
+
+        guard let ctx = EVP_MAC_CTX_new(mac) else {
+            return []
+        }
+        defer { EVP_MAC_CTX_free(ctx) }
+
+        let cipherName: String
+        switch key.count {
+        case 16:
+            cipherName = "AES-128-CBC"
+        case 24:
+            cipherName = "AES-192-CBC"
+        case 32:
+            cipherName = "AES-256-CBC"
+        default:
+            return []
+        }
+
+        var params = [
+            OSSL_PARAM_construct_utf8_string(OSSL_MAC_PARAM_CIPHER, strdup(cipherName), 0),
+            OSSL_PARAM_construct_end()
+        ]
+        defer {
+            free(params[0].data)
+        }
+
+        var mutableKey = key
+        var mutableMessage = message
+        var output = [UInt8](repeating: 0, count: 32)
+        var outputLength = 0
+
+        guard EVP_MAC_init(ctx, &mutableKey, mutableKey.count, &params) == 1,
+              EVP_MAC_update(ctx, &mutableMessage, mutableMessage.count) == 1,
+              EVP_MAC_final(ctx, &output, &outputLength, output.count) == 1 else {
+            return []
+        }
+
+        return [UInt8](output.prefix(outputLength))
     }
     
     @available(iOS 13, macOS 10.15, *)
@@ -595,135 +619,191 @@ public class OpenSSLUtils {
         // Get Key type
         let v = EVP_PKEY_get_base_id( key )
         if v == EVP_PKEY_DH || v == EVP_PKEY_DHX {
-            guard let dh = EVP_PKEY_get0_DH(key) else {
+            var dhPubKey: OpaquePointer?
+            guard EVP_PKEY_get_bn_param(key, OSSL_PKEY_PARAM_PUB_KEY, &dhPubKey) == 1,
+                  let dhPubKey else {
                 return nil
             }
-            var dhPubKey : OpaquePointer?
-            DH_get0_key(dh, &dhPubKey, nil)
-            
+            defer { BN_free(dhPubKey) }
+
             let nrBytes = (BN_num_bits(dhPubKey)+7)/8
             data = [UInt8](repeating: 0, count: Int(nrBytes))
             _ = BN_bn2bin(dhPubKey, &data)
         } else if v == EVP_PKEY_EC {
-            
-            guard let ec = EVP_PKEY_get0_EC_KEY(key),
-                let ec_pub = EC_KEY_get0_public_key(ec),
-                let ec_group = EC_KEY_get0_group(ec) else {
+
+            var length = 0
+            guard EVP_PKEY_get_octet_string_param(key, OSSL_PKEY_PARAM_PUB_KEY, nil, 0, &length) == 1,
+                  length > 0 else {
                 return nil
             }
-            
-            let form = EC_KEY_get_conv_form(ec)
-            let len = EC_POINT_point2oct(ec_group, ec_pub, form, nil, 0, nil)
-            data = [UInt8](repeating: 0, count: Int(len))
-            if len == 0 {
+
+            data = [UInt8](repeating: 0, count: length)
+            guard EVP_PKEY_get_octet_string_param(key, OSSL_PKEY_PARAM_PUB_KEY, &data, data.count, &length) == 1 else {
                 return nil
             }
-            _ = EC_POINT_point2oct(ec_group, ec_pub, form, &data, len, nil)
+            data = [UInt8](data.prefix(length))
         }
         
         return data
+    }
+
+    static func generateDHXKeyPair(rfc5114Group: Int32) throws -> OpaquePointer {
+        guard let paramContext = EVP_PKEY_CTX_new_id(EVP_PKEY_DHX, nil) else {
+            throw NFCPassportReaderError.InvalidDataPassed("Unable to create DH parameter context")
+        }
+        defer { EVP_PKEY_CTX_free(paramContext) }
+
+        var parameters: OpaquePointer?
+        guard EVP_PKEY_paramgen_init(paramContext) == 1,
+              EVP_PKEY_CTX_set_dhx_rfc5114(paramContext, rfc5114Group) == 1,
+              EVP_PKEY_paramgen(paramContext, &parameters) == 1,
+              let parameters else {
+            throw NFCPassportReaderError.InvalidDataPassed("Unable to create DH parameters")
+        }
+        defer { EVP_PKEY_free(parameters) }
+
+        return try generateKeyPair(fromParameters: parameters)
+    }
+
+    static func generateECKeyPair(curveNID: Int32) throws -> OpaquePointer {
+        guard let paramContext = EVP_PKEY_CTX_new_id(EVP_PKEY_EC, nil) else {
+            throw NFCPassportReaderError.InvalidDataPassed("Unable to create EC parameter context")
+        }
+        defer { EVP_PKEY_CTX_free(paramContext) }
+
+        var parameters: OpaquePointer?
+        guard EVP_PKEY_paramgen_init(paramContext) == 1,
+              EVP_PKEY_CTX_set_ec_paramgen_curve_nid(paramContext, curveNID) == 1,
+              EVP_PKEY_paramgen(paramContext, &parameters) == 1,
+              let parameters else {
+            throw NFCPassportReaderError.InvalidDataPassed("Unable to create EC parameters")
+        }
+        defer { EVP_PKEY_free(parameters) }
+
+        return try generateKeyPair(fromParameters: parameters)
+    }
+
+    static func generateKeyPair(fromParameters parameters: OpaquePointer) throws -> OpaquePointer {
+        guard let keyContext = EVP_PKEY_CTX_new(parameters, nil) else {
+            throw NFCPassportReaderError.InvalidDataPassed("Unable to create key context")
+        }
+        defer { EVP_PKEY_CTX_free(keyContext) }
+
+        var keyPair: OpaquePointer?
+        guard EVP_PKEY_keygen_init(keyContext) == 1,
+              EVP_PKEY_keygen(keyContext, &keyPair) == 1,
+              let keyPair else {
+            throw NFCPassportReaderError.InvalidDataPassed("Unable to create key pair")
+        }
+
+        return keyPair
     }
     
     // Caller is responsible for freeing the key
     @available(iOS 13, macOS 10.15, *)
     public static func decodePublicKeyFromBytes(pubKeyData: [UInt8], params: OpaquePointer) -> OpaquePointer? {
-        var pubKey : OpaquePointer?
-        
         let keyType = EVP_PKEY_get_base_id( params )
         if keyType == EVP_PKEY_DH || keyType == EVP_PKEY_DHX {
-            
-            let dhKey = DH_new()
-            defer{ DH_free(dhKey) }
-            
-            // We don't free this as its part of the key!
-            let bn = BN_bin2bn(pubKeyData, Int32(pubKeyData.count), nil)
-            DH_set0_key(dhKey, bn, nil)
-
-            pubKey = EVP_PKEY_new()
-            guard EVP_PKEY_set1_DH(pubKey, dhKey) == 1 else {
+            var p: OpaquePointer?
+            var q: OpaquePointer?
+            var g: OpaquePointer?
+            guard EVP_PKEY_get_bn_param(params, OSSL_PKEY_PARAM_FFC_P, &p) == 1,
+                  EVP_PKEY_get_bn_param(params, OSSL_PKEY_PARAM_FFC_Q, &q) == 1,
+                  EVP_PKEY_get_bn_param(params, OSSL_PKEY_PARAM_FFC_G, &g) == 1,
+                  let p,
+                  let q,
+                  let g else {
                 return nil
             }
-        } else {
-            let ec = EVP_PKEY_get1_EC_KEY(params)
-            let group = EC_KEY_get0_group(ec);
-            let ecp = EC_POINT_new(group);
-            let key = EC_KEY_new();
             defer {
-                EC_KEY_free(ec)
-                EC_POINT_free(ecp)
-                EC_KEY_free(key)
+                BN_free(p)
+                BN_free(q)
+                BN_free(g)
             }
-            
-            // Read EC_Point from public key data
-            guard EC_POINT_oct2point(group, ecp, pubKeyData, pubKeyData.count, nil) == 1,
-                EC_KEY_set_group(key, group) == 1,
-                EC_KEY_set_public_key(key, ecp) == 1 else {
-                
+
+            var pBytes = bnBytes(p)
+            var qBytes = bnBytes(q)
+            var gBytes = bnBytes(g)
+            var publicBytes = pubKeyData
+            var fromDataParams = [
+                OSSL_PARAM_construct_BN(OSSL_PKEY_PARAM_FFC_P, &pBytes, pBytes.count),
+                OSSL_PARAM_construct_BN(OSSL_PKEY_PARAM_FFC_Q, &qBytes, qBytes.count),
+                OSSL_PARAM_construct_BN(OSSL_PKEY_PARAM_FFC_G, &gBytes, gBytes.count),
+                OSSL_PARAM_construct_BN(OSSL_PKEY_PARAM_PUB_KEY, &publicBytes, publicBytes.count),
+                OSSL_PARAM_construct_end()
+            ]
+
+            return createPublicKey(algorithm: "DHX", params: &fromDataParams)
+        } else {
+            var groupNameLength = 0
+            guard EVP_PKEY_get_utf8_string_param(params, OSSL_PKEY_PARAM_GROUP_NAME, nil, 0, &groupNameLength) == 1,
+                  groupNameLength > 0 else {
                 return nil
             }
-            
-            pubKey = EVP_PKEY_new()
-            guard EVP_PKEY_set1_EC_KEY(pubKey, key) == 1 else {
+
+            var groupName = [CChar](repeating: 0, count: groupNameLength + 1)
+            guard EVP_PKEY_get_utf8_string_param(params, OSSL_PKEY_PARAM_GROUP_NAME, &groupName, groupName.count, &groupNameLength) == 1 else {
                 return nil
             }
+
+            var publicBytes = pubKeyData
+            var fromDataParams = [
+                OSSL_PARAM_construct_utf8_string(OSSL_PKEY_PARAM_GROUP_NAME, &groupName, groupName.count),
+                OSSL_PARAM_construct_octet_string(OSSL_PKEY_PARAM_PUB_KEY, &publicBytes, publicBytes.count),
+                OSSL_PARAM_construct_end()
+            ]
+
+            return createPublicKey(algorithm: "EC", params: &fromDataParams)
         }
-        
-        return pubKey
     }
     
 
     public static func computeSharedSecret( privateKeyPair: OpaquePointer, publicKey: OpaquePointer ) -> [UInt8] {
-        
-        // Oddly it seems that we cant use EVP_PKEY stuff for DH as it uses DTX keys which OpenSSL doesn't quite handle right
-        // OR I'm misunderstanding something (which is more possible)
-        // Works fine though for ECDH keys
-        var secret : [UInt8]
-        let keyType = EVP_PKEY_get_base_id( privateKeyPair )
-        if keyType == EVP_PKEY_DH || keyType == EVP_PKEY_DHX {
-            // Get bn for public key
-            let dh = EVP_PKEY_get1_DH(privateKeyPair);
-            
-            let dh_pub = EVP_PKEY_get1_DH(publicKey)
-            var bn = BN_new()
-            DH_get0_key( dh_pub, &bn, nil )
-            
-            secret = [UInt8](repeating: 0, count: Int(DH_size(dh)))
-            let len = DH_compute_key(&secret, bn, dh);
-            
-            Logger.openSSL.debug( "OpenSSLUtils.computeSharedSecret - DH secret len - \(len) - \(secret)" )
-        } else {
-            let ctx = EVP_PKEY_CTX_new(privateKeyPair, nil)
-            defer{ EVP_PKEY_CTX_free(ctx) }
-            
-            if EVP_PKEY_derive_init(ctx) != 1 {
-                // error
-                Logger.openSSL.error( "ERROR - \(OpenSSLUtils.getOpenSSLError())" )
-            }
-            
-            // Set the public key
-            if EVP_PKEY_derive_set_peer( ctx, publicKey ) != 1 {
-                // error
-                Logger.openSSL.error( "ERROR - \(OpenSSLUtils.getOpenSSLError())" )
-            }
-            
-            // get buffer length needed for shared secret
-            var keyLen = 0
-            if EVP_PKEY_derive(ctx, nil, &keyLen) != 1 {
-                // Error
-                Logger.openSSL.error( "ERROR - \(OpenSSLUtils.getOpenSSLError())" )
-            }
-            
-            // Derive the shared secret
-            secret = [UInt8](repeating: 0, count: keyLen)
-            if EVP_PKEY_derive(ctx, &secret, &keyLen) != 1 {
-                // Error
-                Logger.openSSL.error( "ERROR - \(OpenSSLUtils.getOpenSSLError())" )
-            }
-            
-            Logger.openSSL.debug( "OpenSSLUtils.computeSharedSecret - secret len - \(keyLen), secret - \(secret)" )
-
+        guard let ctx = EVP_PKEY_CTX_new(privateKeyPair, nil) else {
+            return []
         }
+        defer{ EVP_PKEY_CTX_free(ctx) }
+
+        guard EVP_PKEY_derive_init(ctx) == 1,
+              EVP_PKEY_derive_set_peer(ctx, publicKey) == 1 else {
+            return []
+        }
+
+        var keyLen = 0
+        guard EVP_PKEY_derive(ctx, nil, &keyLen) == 1 else {
+            return []
+        }
+
+        var secret = [UInt8](repeating: 0, count: keyLen)
+        guard EVP_PKEY_derive(ctx, &secret, &keyLen) == 1 else {
+            return []
+        }
+        secret = [UInt8](secret.prefix(keyLen))
         return secret
+    }
+
+    private static func bnBytes(_ bn: OpaquePointer) -> [UInt8] {
+        let count = Int((BN_num_bits(bn) + 7) / 8)
+        var bytes = [UInt8](repeating: 0, count: count)
+        BN_bn2bin(bn, &bytes)
+        return bytes
+    }
+
+    private static func createPublicKey(algorithm: String, params: inout [OSSL_PARAM]) -> OpaquePointer? {
+        guard let context = EVP_PKEY_CTX_new_from_name(nil, algorithm, nil) else {
+            return nil
+        }
+        defer { EVP_PKEY_CTX_free(context) }
+
+        var publicKey: OpaquePointer?
+        // EVP_PKEY_PUBLIC_KEY is a compound C macro that Swift cannot import.
+        let publicKeySelection = 0x04 | 0x02
+        guard EVP_PKEY_fromdata_init(context) == 1,
+              EVP_PKEY_fromdata(context, &publicKey, Int32(publicKeySelection), &params) == 1 else {
+            return nil
+        }
+
+        return publicKey
     }
     
 }

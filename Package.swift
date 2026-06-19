@@ -23,13 +23,19 @@ let package = Package(
         .target(
             name: "NFCPassportReader",
             dependencies: [
+              "OpenSSLCompat",
+              .product(name: "OpenSSL", package: "OpenSSL-Package")
+            ]),
+        .target(
+            name: "OpenSSLCompat",
+            dependencies: [
               .product(name: "OpenSSL", package: "OpenSSL-Package")
             ]),
         .testTarget(
             name: "NFCPassportReaderTests",
             dependencies: [
+              "NFCPassportReader",
               .product(name: "OpenSSL", package: "OpenSSL-Package")
             ]),
     ]
 )
-

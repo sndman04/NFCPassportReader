@@ -81,20 +81,59 @@ This will then handle the reading of the passport, and image and will call the c
 If successful, the passportReader object will then contain valid data for the passportMRZ and passportImage fields.
 Note - JPEG2000 images are currently unsupported - access to the raw data is available if you need to implement support for those.
 
-In addition, you can customise the messages displayed in the NFC Session Reader by providing a customDisplayMessage callback
-e.g. to override just the initial request to present passport message:
+In addition, you can receive privacy-safe progress events and customise the messages displayed in the NFC Session Reader.
+Progress events are structured and redacted; they do not include MRZ values, APDUs, keys, decrypted data groups, or image bytes.
 
-```
-passportReader.readPassport(mrzKey: mrzKey, tags: [.COM, .DG1, .DG2],
-    customDisplayMessage: { (displayMessage) in
+```swift
+let passport = try await passportReader.readPassport(
+    mrzKey: mrzKey,
+    scanProfile: .identityWithPhoto,
+    operationTimeout: 60,
+    photoPolicy: .read,
+    progressHandler: { event in
+        switch event {
+        case .waitingForPassport:
+            break
+        case .readingDataGroup(let dataGroup, let progress):
+            // `dataGroup` is the group name only; `progress` is a 0...1 fraction when available.
+            break
+        case .complete:
+            break
+        default:
+            break
+        }
+    },
+    customDisplayMessage: { displayMessage in
         switch displayMessage {
-            case .requestPresentPassport:
-                return "Hold your iPhone near an NFC enabled passport."
-            default: 
-                return nil
-    }, completed: { (error) in
-        ...
+        case .requestPresentPassport:
+            return "Hold your iPhone near an NFC enabled passport."
+        default:
+            return nil
+        }
+    }
+)
+```
+
+Supported scan profiles are `.identityOnly`, `.identityWithPhoto`, `.fullVerification`, and `.custom([DataGroupId])`.
+Prefer the smallest profile that supports the app workflow.
+Use `photoPolicy: .skip` to remove DG2 from the requested data groups when the app does not need passport face image data.
+
+Errors can be mapped to privacy-safe app copy and retry decisions:
+
+```swift
+do {
+    let passport = try await passportReader.readPassport(mrzKey: mrzKey, scanProfile: .fullVerification)
+    let verification = passport.verificationResult
+} catch let error as NFCPassportReaderError {
+    let failure = error.privacySafeFailure
+    // Use failure.reason, failure.isRetryLikelyToHelp, and failure.recoverySuggestion.
 }
+```
+
+For UI tests or simulator flows, depend on `PassportChipReading` and inject `PassportReaderFixture` instead of creating a real NFC session:
+
+```swift
+let fixture = PassportReaderFixture(result: .success(NFCPassportModel()))
 ```
 
 Extended mode reads (not supported by all passports) can be enabled by passing in the useExtendedMode flag to the readPassport function.
@@ -104,14 +143,27 @@ A custom Active Authentiion challenge can be provided to the PassportReader to e
 
 
 ## Logging
-Additional logging (very verbose)  can be enabled on the PassportReader by passing in a log level on creation:
-e.g.
+Logging is off by default. This fork only exposes privacy-safe, typed reader events; it does not log MRZ values, access keys, APDUs, secure messaging keys, random challenges, decrypted data groups, certificate contents, or passport image bytes.
 
-```
-let reader = PassportReader(logLevel: .debug)
+You can opt in to redacted high-level events:
+
+```swift
+let reader = PassportReader(logLevel: .info)
 ```
 
-NOTE - currently this is just printing out to the console - I'd like to implement better logging later - probably using SwiftyBeaver 
+Host apps that need to enforce their own logging policy can provide a sink:
+
+```swift
+final class PassportEventSink: PassportReaderLogging {
+    func log(_ event: PassportReaderLogEvent) {
+        // Store or forward event.description only if it fits your privacy policy.
+    }
+}
+
+let reader = PassportReader(logLevel: .info, logger: PassportEventSink())
+```
+
+Supported levels are `.off`, `.error`, `.info`, and `.debugRedacted`. `.debugRedacted` is intentionally still redacted; this package does not provide a raw byte or key logging mode.
 
 ## Other info
 
@@ -147,4 +199,3 @@ I'd like to thank the writers of pypassport (Jean-Francois Houzard and Olivier R
 The EPassport section on YobiWiki (http://wiki.yobi.be/wiki/EPassport)  This has been an invaluable resource especially around Passive Authentication.
 
 Marcin Krzyżanowski for his OpenSSL-Universal repo.
-

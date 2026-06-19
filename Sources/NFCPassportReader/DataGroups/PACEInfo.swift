@@ -6,7 +6,6 @@
 //
 
 import Foundation
-import OSLog
 import OpenSSL
 
 public enum PACEMappingType {
@@ -122,51 +121,24 @@ public class PACEInfo : SecurityInfo {
 
     /// Caller is required to free the returned EVP_PKEY value
     public func createMappingKey( ) throws -> OpaquePointer {
-        // This will get freed later
-        let mappingKey : OpaquePointer = EVP_PKEY_new()
-        
         switch try getKeyAgreementAlgorithm() {
             case "DH":
-                Logger.pace.debug( "Generating DH mapping keys")
-                //The EVP_PKEY_CTX_set_dh_rfc5114() and EVP_PKEY_CTX_set_dhx_rfc5114() macros are synonymous. They set the DH parameters to the values defined in RFC5114. The rfc5114 parameter must be 1, 2 or 3 corresponding to RFC5114 sections 2.1, 2.2 and 2.3. or 0 to clear the stored value. This macro can be called during parameter generation. The ctx must have a key type of EVP_PKEY_DHX. The rfc5114 parameter and the nid parameter are mutually exclusive.
-                var dhKey : OpaquePointer? = nil
                 switch try getParameterSpec() {
                     case 0:
-                        Logger.pace.debug( "Using DH_get_1024_160" )
-                        dhKey = DH_get_1024_160()
+                        return try OpenSSLUtils.generateDHXKeyPair(rfc5114Group: 1)
                     case 1:
-                        Logger.pace.debug( "Using DH_get_2048_224" )
-                        dhKey = DH_get_2048_224()
+                        return try OpenSSLUtils.generateDHXKeyPair(rfc5114Group: 2)
                     case 2:
-                        Logger.pace.debug( "Using DH_get_2048_256" )
-                        dhKey = DH_get_2048_256()
+                        return try OpenSSLUtils.generateDHXKeyPair(rfc5114Group: 3)
                     default:
-                        // Error
-                        break
+                        throw NFCPassportReaderError.InvalidDataPassed("Unable to create DH mapping key")
                 }
-                guard dhKey != nil else {
-                    throw NFCPassportReaderError.InvalidDataPassed("Unable to create DH mapping key")
-                }
-                defer{ DH_free( dhKey ) }
-                
-                DH_generate_key(dhKey)
-                EVP_PKEY_set1_DH(mappingKey, dhKey)
             
             case "ECDH":
-                let parameterSpec = try getParameterSpec()
-                Logger.pace.debug( "Generating ECDH mapping keys from parameterSpec - \(parameterSpec)")
-                guard let ecKey = EC_KEY_new_by_curve_name(parameterSpec) else {
-                    throw NFCPassportReaderError.InvalidDataPassed("Unable to create EC mapping key")
-                 }
-                defer{ EC_KEY_free( ecKey ) }
-                
-                EC_KEY_generate_key(ecKey)
-                EVP_PKEY_set1_EC_KEY(mappingKey, ecKey)
+                return try OpenSSLUtils.generateECKeyPair(curveNID: try getParameterSpec())
             default:
                 throw NFCPassportReaderError.InvalidDataPassed("Unsupported agreement algorithm")
         }
-
-        return mappingKey
     }
 
     public static func getParameterSpec(stdDomainParam : Int) throws -> Int32 {
