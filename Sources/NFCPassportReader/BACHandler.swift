@@ -44,7 +44,7 @@ public class BACHandler {
         
         // get Challenge
         let response = try await tagReader.getChallenge()
-        let cmd_data = self.authentication(rnd_icc: [UInt8](response.data))
+        let cmd_data = try self.authentication(rnd_icc: [UInt8](response.data))
         let maResponse = try await tagReader.doMutualAuthentication(cmdData: Data(cmd_data))
         guard maResponse.data.count > 0 else {
             throw NFCPassportReaderError.InvalidMRZKey
@@ -76,7 +76,7 @@ public class BACHandler {
     /// - Returns: first 16 bytes of the mrz SHA1 hash
     ///
     func generateInitialKseed(kmrz : String ) -> [UInt8] {
-        let hash = calcSHA1Hash( [UInt8](kmrz.data(using:.utf8)!) )
+        let hash = calcSHA1Hash(Array(kmrz.utf8))
         
         let subHash = Array(hash[0..<16])
         
@@ -95,7 +95,7 @@ public class BACHandler {
     /// @param rnd_icc: The challenge received from the ICC.
     /// @type rnd_icc: A 8 bytes binary string
     /// @return: The APDU binary data for the mutual authenticate command
-    func authentication( rnd_icc : [UInt8]) -> [UInt8] {
+    func authentication( rnd_icc : [UInt8]) throws -> [UInt8] {
         self.rnd_icc = rnd_icc
         
         self.rnd_icc = rnd_icc
@@ -107,8 +107,14 @@ public class BACHandler {
         
         let iv : [UInt8] = [0, 0, 0, 0, 0, 0, 0, 0]
         let eifd = tripleDESEncrypt(key: ksenc,message: s, iv: iv)
+        guard !eifd.isEmpty else {
+            throw NFCPassportReaderError.InvalidMRZKey
+        }
         
         let mifd = mac(algoName: .DES, key: ksmac, msg: pad(eifd, blockSize:8))
+        guard !mifd.isEmpty else {
+            throw NFCPassportReaderError.InvalidMRZKey
+        }
         // Construct APDU
         
         let cmd_data = eifd + mifd
@@ -126,8 +132,14 @@ public class BACHandler {
     /// @type data: a binary string
     /// @return: A set of two 16 bytes keys (KSenc, KSmac) and the SSC
     public func sessionKeys(data : [UInt8] ) throws -> ([UInt8], [UInt8], [UInt8]) {
-        
+        guard data.count >= 32 else {
+            throw NFCPassportReaderError.InvalidMRZKey
+        }
+
         let response = tripleDESDecrypt(key: self.ksenc, message: [UInt8](data[0..<32]), iv: [0,0,0,0,0,0,0,0] )
+        guard response.count >= 32 else {
+            throw NFCPassportReaderError.InvalidMRZKey
+        }
 
         let response_kicc = [UInt8](response[16..<32])
         let Kseed = xor(self.kifd, response_kicc)

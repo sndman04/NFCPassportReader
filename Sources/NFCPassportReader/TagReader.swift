@@ -176,9 +176,17 @@ public class TagReader {
         // Header looks like:  <tag><length of data><nextTag> e.g.60145F01 -
         // the total length is the 2nd value plus the two header 2 bytes
         // We've read 4 bytes so we now need to read the remaining bytes from offset 4
-        let (len, o) = try! asn1Length([UInt8](resp.data[1..<4]))
+        guard resp.data.count >= 4 else {
+            throw NFCPassportReaderError.InvalidASN1Structure
+        }
+
+        let (len, o) = try asn1Length([UInt8](resp.data[1..<4]))
         var remaining = Int(len)
         var amountRead = o + 1
+
+        guard amountRead <= resp.data.count else {
+            throw NFCPassportReaderError.InvalidASN1Structure
+        }
         
         var data = [UInt8](resp.data[..<amountRead])
         
@@ -240,7 +248,9 @@ public class TagReader {
     func selectFile( tag: [UInt8] ) async throws -> ResponseAPDU {
         
         let data : [UInt8] = [0x00, 0xA4, 0x02, 0x0C, 0x02] + tag
-        let cmd = NFCISO7816APDU(data:Data(data))!
+        guard let cmd = NFCISO7816APDU(data: Data(data)) else {
+            throw NFCPassportReaderError.UnableToProtectAPDU
+        }
         
         return try await send( cmd: cmd )
     }

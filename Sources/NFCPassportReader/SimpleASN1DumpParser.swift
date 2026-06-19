@@ -48,7 +48,7 @@ public class ASN1Item : CustomDebugStringConvertible {
 
         } else {
             let items = rest.components(separatedBy: ":" ).filter{ !$0.isEmpty }
-            self.type = items[0].trimmingCharacters(in: .whitespacesAndNewlines)
+            self.type = items.first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             if ( items.count > 1 ) {
                 self.value = items[1].trimmingCharacters(in: .whitespacesAndNewlines)
             }
@@ -61,7 +61,7 @@ public class ASN1Item : CustomDebugStringConvertible {
     }
     
     public func getChild( _ child : Int ) -> ASN1Item? {
-        if ( child < children.count ) {
+        if child >= 0 && child < children.count {
             return children[child]
         } else {
             return nil
@@ -124,16 +124,19 @@ public class SimpleASN1DumpParser {
             let item = ASN1Item(line: line)
             if item.depth == 0 {
                 topItem = item
-            } else if item.depth == currentParent!.depth {
-                currentParent!.parent!.addChild( item )
-            } else if item.depth > currentParent!.depth {
-                currentParent!.addChild( item )
+            } else if let parent = currentParent, item.depth == parent.depth {
+                guard let grandparent = parent.parent else { return nil }
+                grandparent.addChild( item )
+            } else if let parent = currentParent, item.depth > parent.depth {
+                parent.addChild( item )
             } else {
+                guard var parent = currentParent else { return nil }
                 repeat {
-                    currentParent = currentParent!.parent
-                } while currentParent!.depth > item.depth-1 && currentParent!.depth != 0
-                if currentParent!.depth == item.depth-1 {
-                    currentParent!.addChild( item )
+                    guard let nextParent = parent.parent else { return nil }
+                    parent = nextParent
+                } while parent.depth > item.depth-1 && parent.depth != 0
+                if parent.depth == item.depth-1 {
+                    parent.addChild( item )
                 }
             }
             currentParent = item

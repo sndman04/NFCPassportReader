@@ -20,10 +20,11 @@ class DataGroupParser {
     
     
     func parseDG( data : [UInt8] ) throws -> DataGroup {
+        guard let tag = data.first else {
+            throw NFCPassportReaderError.UnknownTag
+        }
         
-        let header = data[0..<4]
-        
-        let dg = try tagToDG(header[0])
+        let dg = try tagToDG(tag)
 
         return try dg.init(data)
     }

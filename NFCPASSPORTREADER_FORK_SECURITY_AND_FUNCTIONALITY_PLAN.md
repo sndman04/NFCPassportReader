@@ -404,6 +404,153 @@ Remaining follow-up:
 - Run a manual on-device passport scan before tagging the fork, because PACE/BAC behavior depends on real chip interoperability.
 - Build the Notary Journal app against this fork and migrate app call sites to the chosen scan profile, timeout, progress, failure, and verification-result APIs.
 
+### 2026-06-19 Swift Modernization And Crash-Safety Pass
+
+Completed:
+
+- Re-audited the Swift/C boundary. The only project-owned C left is the tiny `OpenSSLCompat` shim needed for OpenSSL EC/DH parameter mapping that Swift/OpenSSL package APIs do not safely expose. No additional OpenSSL logic was moved into C.
+- Removed avoidable Swift runtime traps from NFC, PACE, BAC, Secure Messaging, and security-info parsing paths:
+  - Replaced PACE session-key `try!` calls with throwing propagation.
+  - Replaced PACE authentication-token TLV force unwraps with guarded parsing and privacy-safe PACE errors.
+  - Replaced Chip Authentication ephemeral-key force unwraps with a guarded failure path.
+  - Replaced BAC MRZ-key UTF-8 optional unwrapping with `String.UTF8View`.
+  - Replaced CryptoKit `fatalError` fallback branches with CommonCrypto hash implementations.
+  - Replaced SecurityInfo missing-child and body-slice traps with malformed-input rejection.
+  - Replaced Secure Messaging APDU construction and data force unwraps with typed errors.
+  - Replaced NFC tag detection `first!` handling with explicit empty-tag rejection.
+  - Replaced file-selection APDU construction force unwraps with typed APDU protection errors.
+  - Replaced PACE passport public-key decode force unwraps with guarded parsing.
+  - Replaced OpenSSL PEM BIO allocation force unwraps with empty-result fallbacks that match existing parse-failure behavior.
+  - Replaced SOD signing-certificate `first!` extraction with a typed OpenSSL certificate error.
+- Hardened Secure Messaging response parsing:
+  - Rejects empty or truncated response data before indexing.
+  - Validates DO'87 ASN.1 length boundaries before slicing/decrypting.
+  - Validates DO'8E checksum object boundaries before slicing.
+  - Fixed MAC comparison truncation to slice the computed MAC, not the received checksum.
+- Added `InvalidASN1Structure` for malformed ASN.1 structures that previously could trap while reading selected files.
+- Added focused Secure Messaging negative tests for malformed checksum and encrypted-data response objects.
+- Updated the progress fixture test to be Swift 6 concurrency-clean by recording progress events through a small locked test helper.
+
+Verification:
+
+- iOS package build succeeded:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build
+  ```
+
+- iOS package test build succeeded:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build-for-testing
+  ```
+
+- The source/compiler warning introduced by the progress fixture test was fixed. Xcode still emits its non-source XCTest App Intents metadata warning: `Metadata extraction skipped. No AppIntents.framework dependency found.`
+- `swift test` still fails at baseline in this environment because SwiftPM evaluates the package against macOS while the OpenSSL dependency requires macOS 10.15; this matches the project instructions and is not treated as iOS package failure.
+
+Remaining follow-up:
+
+- Keep the `OpenSSLCompat` C shim unless OpenSSL-Package exposes safe Swift APIs for the required PACE generic-mapping operations or the crypto backend is deliberately replaced.
+- Run a manual on-device passport scan before tagging, because the hardened PACE/BAC/CA error paths need chip interoperability validation.
+
+### 2026-06-19 Full Bug-Check And Security Review Pass
+
+Completed:
+
+- Ran repeated source scans from several angles: runtime traps, unchecked pointer/OpenSSL paths, array slicing, ASN.1/TLV parsing, secure messaging, logging/privacy, sensitive-string patterns, formatting, and build warnings.
+- Hardened malformed ASN.1 and data-group parsing:
+  - `asn1Length` now rejects empty or truncated length fields instead of indexing past the buffer.
+  - `DataGroup` body/tag/value parsing now validates body and value boundaries before slicing.
+  - DG1 MRZ parsing rejects short TD1/TD2/TD3 payloads before fixed-position extraction.
+  - DG2 face-image parsing validates FAC headers, feature-point skips, image-info headers, and short JPEG/JPEG2000 signatures.
+  - SOD parsing now bounds-checks ASN.1 item bodies and validates OCTET STRING hex before conversion.
+  - COM parsing was reviewed and remains guarded by exact version-field lengths.
+- Hardened cryptographic and secure-messaging failure paths:
+  - OpenSSL shared-secret derivation now throws on context, peer, length, or derive failures instead of returning an empty secret.
+  - PACE and Chip Authentication now fail immediately if shared-secret derivation, nonce decryption, or authentication-token MAC generation fails.
+  - Chip Authentication now checks key-generation return codes and frees the ephemeral keypair.
+  - BAC mutual-authentication construction now rejects empty encryption or MAC output.
+  - Secure Messaging now rejects empty MAC output during protect/unprotect.
+  - DES MAC now rejects short keys without trapping.
+- Removed remaining easy runtime traps in shared utilities and tests:
+  - `FileManager.documentDir` now has a temporary-directory fallback.
+  - `hexRepToBin`, `binToHex`, `binToInt`, `unpad`, and `xor` no longer force unwrap or index mismatched input.
+  - `SecurityInfo` base methods no longer trap if accidentally called.
+  - Test force unwraps and forced casts were replaced with guarded assertions.
+- Added focused regression tests for malformed ASN.1 lengths, malformed Secure Messaging DO'87/DO'8E/DO'99 objects, short BAC mutual-authentication responses, malformed ECDSA signatures, invalid hex parsing, empty/all-zero unpadding, and short-key DES MAC behavior.
+- Documented that `NFCPassportModel.dumpPassportData(...)` returns raw sensitive data and must not be logged, persisted, uploaded, or displayed without an explicit host-app privacy policy.
+
+Verification:
+
+- iOS package build succeeded:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build
+  ```
+
+- iOS package test build succeeded:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build-for-testing
+  ```
+
+- `git diff --check` passed.
+- Runtime-trap scan found no remaining `try!`, `as!`, `fatalError`, `preconditionFailure`, `assertionFailure`, forced `first`/`last`, or forced `baseAddress` hits in `Sources` or `Tests`.
+- Logging/privacy scan found no raw `Logger`, `OSLog`, `print`, clipboard, persistence, upload, or network diagnostics in production sources. Remaining `eventLogger.log(...)` calls are typed redacted events.
+- Sensitive-pattern scan found only documentation, code identifiers, or negative-test fixtures for terms such as `Kseed`, `KSenc`, `KSmac`, APDU/RAPDU, random challenges, and JPEG markers.
+- `swift test` still fails at baseline in this environment because SwiftPM evaluates the package against macOS 10.13 while the OpenSSL dependency requires macOS 10.15; this matches the project instructions and is not treated as an iOS package failure.
+- The only warning in the refreshed iOS verification logs is the known non-source XCTest App Intents metadata warning: `Metadata extraction skipped. No AppIntents.framework dependency found.`
+
+Remaining follow-up:
+
+- Run an on-device passport scan before tagging, especially for PACE/BAC/CA interoperability after hardened error handling.
+- Consider a future deliberate API break that replaces `[UInt8]` return values from low-level crypto helpers with throwing results throughout the package. This pass guarded the current public/internal callers without broad API churn.
+
+### 2026-06-19 External iOS Test Harness
+
+Completed:
+
+- Created a separate local iOS app outside this repository at `/Users/dougalvey/Documents/Passport Chip Fork Test App`.
+- The app project is `PassportChipHarness.xcodeproj` and references this fork as a local Swift package via `../Passport Chip Fork`.
+- The harness folder is not a git repository and is not inside the fork worktree, so it will not be included in fork commits unless copied deliberately.
+- The harness exercises the current public API surface:
+  - `PassportReader(masterListURL:logLevel:logger:)`
+  - typed `PassportReaderLogging`
+  - `PassportReaderTrackingDelegate`
+  - `PassportReaderProgressHandler`
+  - `readPassport(mrzKey:scanProfile:...)`
+  - `readPassport(mrzKey:tags:...)`
+  - `PassportScanProfile`
+  - `PassportPhotoPolicy`
+  - `operationTimeout`
+  - `cancelRead()`
+  - `PassportReaderFailure` / privacy-safe retry guidance
+  - `PassportVerificationResult`
+  - `PassportChipReading` and `PassportReaderFixture`
+  - `overrideNFCDataAmountToRead(amount:)`
+  - `passiveAuthenticationUsesOpenSSL`
+  - custom NFC sheet messages
+  - PACE/BAC/CA/extended-mode flags
+  - optional synthetic active-authentication challenge
+- The app accepts passport access-key ingredients in memory, performs NFC reads, and displays decoded scanned data to the user after success, including public `NFCPassportModel` identity fields, MRZ, optional photo/signature images, authentication statuses, verification-result statuses, data-group names, hash-match status, certificate presence, and verification errors.
+- The app intentionally does not persist, export, upload, copy, or log scanned identity data. Resetting app process memory or tapping Clear drops the in-memory result references.
+- Privacy check found no `print`, `Logger`/`OSLog`, `UserDefaults`, file-writing, `dumpPassportData`, clipboard, or network usage in the harness.
+
+Verification:
+
+- External harness iOS build succeeded:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -project "/Users/dougalvey/Documents/Passport Chip Fork Test App/PassportChipHarness.xcodeproj" -scheme PassportChipHarness -destination generic/platform=iOS CODE_SIGNING_ALLOWED=NO build
+  ```
+
+- The harness build log had no source/compiler warnings. Xcode emitted one non-source App Intents metadata warning: `Metadata extraction skipped. No AppIntents.framework dependency found.`
+
+Remaining follow-up:
+
+- Configure a development team/signing identity in Xcode for device installation.
+- Run an on-device passport scan and verify that the app screen shows expected data while Xcode console output remains free of MRZ/access-key/APDU/key/data-group/image byte dumps.
+
 ## App-Side Migration Options
 
 ### Option A: Remote Fork

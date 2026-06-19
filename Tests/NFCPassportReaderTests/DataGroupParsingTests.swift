@@ -13,13 +13,13 @@ import OpenSSL
 
 
 final class DataGroupParsingTests: XCTestCase {
-    func testDatagroup1Parsing() {
+    func testDatagroup1Parsing() throws {
         
         // Random generated test MRZ
         let mrz = "P<GBRTHATCHER<<BOB<<<<<<<<<<<<<<<<<<<<<<<<<<7125143269GBR3906022M1601013<<<<<<<<<<<<<<08"
-        let mrzBin = [UInt8](mrz.data(using: .utf8)!)
-        let tag = try! [0x5F,0x1F] +  toAsn1Length(mrzBin.count) + mrzBin
-        let dg1 = try! [0x61] + toAsn1Length(tag.count) + tag
+        let mrzBin = [UInt8](mrz.utf8)
+        let tag = try [0x5F,0x1F] +  toAsn1Length(mrzBin.count) + mrzBin
+        let dg1 = try [0x61] + toAsn1Length(tag.count) + tag
         
         let dgp = DataGroupParser()
         XCTAssertNoThrow(try dgp.parseDG(data: dg1)) { dg in
@@ -81,7 +81,10 @@ final class DataGroupParsingTests: XCTestCase {
             XCTAssertNotNil(dg)
             XCTAssertTrue( dg is DataGroup11 )
 
-            let dg11 = dg as! DataGroup11
+            guard let dg11 = dg as? DataGroup11 else {
+                XCTFail("Expected DataGroup11")
+                return
+            }
             XCTAssertEqual(dg11.fullName, "Test<<Tester")
             XCTAssertEqual(dg11.dateOfBirth, "19701201")
             XCTAssertEqual(dg11.placeOfBirth, "Northampton")
@@ -100,7 +103,10 @@ final class DataGroupParsingTests: XCTestCase {
             XCTAssertNotNil(dg)
             XCTAssertTrue( dg is DataGroup12 )
 
-            let dg12 = dg as! DataGroup12
+            guard let dg12 = dg as? DataGroup12 else {
+                XCTFail("Expected DataGroup12")
+                return
+            }
             XCTAssertEqual(dg12.issuingAuthority, "TESTER")
             XCTAssertEqual(dg12.dateOfIssue, "20180326")
         }

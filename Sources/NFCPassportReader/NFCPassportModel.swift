@@ -238,7 +238,11 @@ public class NFCPassportModel {
         return dataGroupsRead[id]
     }
 
-    /// Dumps the passport data
+    /// Returns raw, Base64-encoded passport data groups for explicit export or debugging workflows.
+    ///
+    /// The returned values can contain sensitive identity-document data and optional active-authentication
+    /// material. Do not log, persist, upload, or display this output unless the host app has a deliberate,
+    /// user-approved privacy policy for that use.
     /// - Parameters:
     ///    selectedDataGroups - the Data Groups to be exported (if they are present in the passport)
     ///    includeActiveAutheticationData - Whether to include the Active Authentication challenge and response (if supported and retrieved)
@@ -355,6 +359,10 @@ public class NFCPassportModel {
                         return
                 }
                 
+                guard decryptedSig.count > hashLength + 1 else {
+                    return
+                }
+
                 let message = [UInt8](decryptedSig[1 ..< (decryptedSig.count-hashLength)])
                 let digest = [UInt8](decryptedSig[(decryptedSig.count-hashLength)...])
 
@@ -411,7 +419,9 @@ public class NFCPassportModel {
         }
 
         let data = Data(sod.body)
-        let cert = try OpenSSLUtils.getX509CertificatesFromPKCS7( pkcs7Der: data ).first!
+        guard let cert = try OpenSSLUtils.getX509CertificatesFromPKCS7( pkcs7Der: data ).first else {
+            throw OpenSSLError.UnableToGetX509CertificateFromPKCS7("No signing certificate found")
+        }
         self.certificateSigningGroups[.documentSigningCertificate] = cert
 
         let rc = OpenSSLUtils.verifyTrustAndGetIssuerCertificate( x509:cert, CAFile: masterListURL )

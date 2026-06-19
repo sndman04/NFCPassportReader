@@ -236,9 +236,16 @@ extension PassportReader : NFCTagReaderSessionDelegate {
             return
         }
 
-        let tag = tags.first!
         var passportTag: NFCISO7816Tag
-        switch tags.first! {
+        guard let tag = tags.first else {
+            eventLogger.log(.invalidTagDetected)
+
+            let errorMessage = NFCViewDisplayMessage.error(NFCPassportReaderError.TagNotValid)
+            self.invalidateSession(errorMessage: errorMessage, error: NFCPassportReaderError.TagNotValid)
+            return
+        }
+
+        switch tag {
         case let .iso7816(tag):
             passportTag = tag
         default:

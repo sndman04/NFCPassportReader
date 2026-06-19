@@ -83,6 +83,38 @@ class SOD : DataGroup {
         let p = SimpleASN1DumpParser()
         asn1 = try p.parse(data: Data(body))
     }
+
+    private func itemBytes(_ item: ASN1Item) throws -> [UInt8] {
+        let end = item.pos + item.headerLen + item.length
+        guard item.pos >= 0,
+              item.headerLen >= 0,
+              item.length >= 0,
+              end <= pkcs7CertificateData.count else {
+            throw OpenSSLError.UnableToExtractSignedDataFromPKCS7("Data in invalid format")
+        }
+
+        return [UInt8](pkcs7CertificateData[item.pos ..< end])
+    }
+
+    private func octetStringData(_ item: ASN1Item) throws -> Data {
+        guard item.type.hasPrefix("OCTET STRING"),
+              item.value.count.isMultiple(of: 2) else {
+            throw OpenSSLError.UnableToExtractSignedDataFromPKCS7("Data in invalid format")
+        }
+
+        var bytes: [UInt8] = []
+        var index = item.value.startIndex
+        while index < item.value.endIndex {
+            let nextIndex = item.value.index(index, offsetBy: 2)
+            guard let byte = UInt8(item.value[index..<nextIndex], radix: 16) else {
+                throw OpenSSLError.UnableToExtractSignedDataFromPKCS7("Data in invalid format")
+            }
+            bytes.append(byte)
+            index = nextIndex
+        }
+
+        return Data(bytes)
+    }
     
     /// Returns the public key from the embedded X509 certificate
     /// - Returns pointer to the public key
@@ -93,7 +125,11 @@ class SOD : DataGroup {
         }
         
         let certs = try OpenSSLUtils.getX509CertificatesFromPKCS7(pkcs7Der:Data(pkcs7CertificateData))
-        if let key = X509_get_pubkey (certs[0].cert) {
+        guard let cert = certs.first else {
+            throw OpenSSLError.UnableToExtractSignedDataFromPKCS7("No signing certificate found")
+        }
+
+        if let key = X509_get_pubkey(cert.cert) {
             pubKey = key
             return key
         }
@@ -113,13 +149,7 @@ class SOD : DataGroup {
             throw OpenSSLError.UnableToExtractSignedDataFromPKCS7("Data in invalid format")
         }
         
-        var sigData : Data?
-        if content.type.hasPrefix("OCTET STRING" ) {
-            sigData = Data(hexRepToBin( content.value ))
-        }
-        
-        guard let ret = sigData else { throw OpenSSLError.UnableToExtractSignedDataFromPKCS7("noDataReturned") }
-        return ret
+        return try octetStringData(content)
     }
     
     /// Gets the digest algorithm used to hash the encapsulated content in the signed data section (if present)
@@ -147,7 +177,10 @@ class SOD : DataGroup {
             throw OpenSSLError.UnableToExtractSignedDataFromPKCS7("Data in invalid format")
         }
         
-        var bytes = [UInt8](self.pkcs7CertificateData[signedAttrs.pos ..< signedAttrs.pos + signedAttrs.headerLen + signedAttrs.length])
+        var bytes = try itemBytes(signedAttrs)
+        guard !bytes.isEmpty else {
+            throw OpenSSLError.UnableToExtractSignedDataFromPKCS7("Data in invalid format")
+        }
         
         // The first byte will be 0xA0 -> as its a explicit tag for a contextual item which we need to convert
         // for the hash to calculate correctly
@@ -186,9 +219,7 @@ class SOD : DataGroup {
                 if let set = attrObj?.getChild(1),
                    let digestVal = set.getChild(0) {
                     
-                    if digestVal.type.hasPrefix("OCTET STRING" ) {
-                        sigData = Data(hexRepToBin( digestVal.value ) )
-                    }
+                    sigData = try octetStringData(digestVal)
                 }
             }
         }
@@ -210,13 +241,7 @@ class SOD : DataGroup {
             throw OpenSSLError.UnableToExtractSignedDataFromPKCS7("Data in invalid format")
         }
         
-        var sigData : Data?
-        if signature.type.hasPrefix("OCTET STRING" ) {
-            sigData = Data(hexRepToBin( signature.value ))
-        }
-        
-        guard let ret = sigData else { throw OpenSSLError.UnableToExtractSignedDataFromPKCS7("noDataReturned") }
-        return ret
+        return try octetStringData(signature)
     }
     
     /// Gets the signature algorithm used (if present)

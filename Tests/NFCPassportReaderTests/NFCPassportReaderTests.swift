@@ -70,8 +70,9 @@ final class NFCPassportReaderTests: XCTestCase {
             XCTAssertEqual(offset, 3)
         }
         
-        // Test Too Big
-        XCTAssertThrowsError(try toAsn1Length(65536))
+        XCTAssertThrowsError(try asn1Length([]))
+        XCTAssertThrowsError(try asn1Length([0x81]))
+        XCTAssertThrowsError(try asn1Length([0x82, 0x01]))
     }
     
     func testToASNLength() {
@@ -128,10 +129,27 @@ final class NFCPassportReaderTests: XCTestCase {
         // Test Too Big
         XCTAssertThrowsError(try toAsn1Length(65536))
     }
+
+    func testHexRepToBinRejectsInvalidInputWithoutTrapping() {
+        XCTAssertEqual(hexRepToBin("not hex"), [])
+        XCTAssertEqual(hexRepToBin("AAZ1"), [])
+        XCTAssertEqual(hexRepToBin("F"), [0x0f])
+    }
+
+    func testUnpadHandlesEmptyAndZeroOnlyInputWithoutTrapping() {
+        XCTAssertEqual(unpad([]), [])
+        XCTAssertEqual(unpad([0x00, 0x00]), [0x00, 0x00])
+        XCTAssertEqual(unpad([0x01, 0x80, 0x00]), [0x01])
+    }
+
+    func testDESMACRejectsShortKeyWithoutTrapping() {
+        XCTAssertEqual(desMAC(key: [], msg: []), [])
+        XCTAssertEqual(desMAC(key: [0x00], msg: [0x00]), [])
+    }
     
 
     func testDES3Encryption() {
-        let msg = [UInt8]("maryhadalittlelambaaaaaa".data(using: .utf8)!)
+        let msg = [UInt8]("maryhadalittlelambaaaaaa".utf8)
         let iv : [UInt8] = [0, 0, 0, 0, 0, 0, 0, 0]
         let key : [UInt8] = [191, 73, 56, 112, 158, 148, 146, 127, 157, 76, 117, 8, 239, 128, 87, 42]
         let enc = tripleDESEncrypt(key: key, message: msg, iv: iv)
@@ -149,7 +167,7 @@ final class NFCPassportReaderTests: XCTestCase {
         XCTAssertEqual( val, "maryhadalittlelambaaaaaa" )
     }
     
-    func testSecureMessagingProtect() {
+    func testSecureMessagingProtect() throws {
         
         let KSenc = hexRepToBin("8FDCFE759E40A4DF4575160B3BFB79FB")
         let KSmac = hexRepToBin("2AE92531E55707D9C4CEF8C2D6E5AD70")
@@ -158,8 +176,11 @@ final class NFCPassportReaderTests: XCTestCase {
         let sm = SecureMessaging(ksenc: KSenc, ksmac: KSmac, ssc: ssc)
         
         let data : [UInt8] = [0x00, 0xA4, 0x02, 0x0C, 0x02, 0x01, 0x01, 0x00]
-        let apdu = NFCISO7816APDU(data:Data(data))!
-        let protApdu = try! sm.protect( apdu: apdu )
+        guard let apdu = NFCISO7816APDU(data: Data(data)) else {
+            XCTFail("Unable to create test APDU")
+            return
+        }
+        let protApdu = try sm.protect(apdu: apdu)
         
         XCTAssertNotNil(protApdu.data )
         XCTAssertEqual( protApdu.instructionClass, 0x0c )
@@ -167,7 +188,7 @@ final class NFCPassportReaderTests: XCTestCase {
         XCTAssertEqual( protApdu.p1Parameter, 0x02 )
         XCTAssertEqual( protApdu.p2Parameter, 0x0c )
         
-        let hexDataRep = binToHexRep( [UInt8](protApdu.data!))
+        let hexDataRep = binToHexRep([UInt8](protApdu.data ?? Data()))
         XCTAssertEqual( hexDataRep, "870901CC69089F8F1AB4698E08B6334B3ABD5A9E09" )
         XCTAssertEqual( protApdu.expectedResponseLength, 0 )
     }
@@ -209,30 +230,105 @@ final class NFCPassportReaderTests: XCTestCase {
 
         }
     }
+
+    func testSecureMessagingRejectsMalformedChecksumObject() {
+        let KSenc = hexRepToBin("8FDCFE759E40A4DF4575160B3BFB79FB")
+        let KSmac = hexRepToBin("2AE92531E55707D9C4CEF8C2D6E5AD70")
+        let ssc = hexRepToBin("73061884A0E57AA8")
+
+        let sm = SecureMessaging(ksenc: KSenc, ksmac: KSmac, ssc: ssc)
+        let malformed = ResponseAPDU(data: hexRepToBin("990290008E08C61E44"), sw1: 0x90, sw2: 0x00)
+
+        XCTAssertThrowsError(try sm.unprotect(rapdu: malformed)) { error in
+            guard case NFCPassportReaderError.MissingMandatoryFields = error else {
+                XCTFail("Expected MissingMandatoryFields, got \(error)")
+                return
+            }
+        }
+    }
+
+    func testSecureMessagingRejectsMalformedEncryptedDataObject() {
+        let KSenc = hexRepToBin("8FDCFE759E40A4DF4575160B3BFB79FB")
+        let KSmac = hexRepToBin("2AE92531E55707D9C4CEF8C2D6E5AD70")
+        let ssc = hexRepToBin("73061884A0E57AAA")
+
+        let sm = SecureMessaging(ksenc: KSenc, ksmac: KSmac, ssc: ssc)
+        let malformed = ResponseAPDU(data: hexRepToBin("87090156D0990290008E08D6B9C0DA21DC965F"), sw1: 0x90, sw2: 0x00)
+
+        XCTAssertThrowsError(try sm.unprotect(rapdu: malformed)) { error in
+            guard case NFCPassportReaderError.D087Malformed = error else {
+                XCTFail("Expected D087Malformed, got \(error)")
+                return
+            }
+        }
+    }
+
+    func testSecureMessagingTreatsMalformedStatusObjectAsStatusResponse() throws {
+        let KSenc = hexRepToBin("8FDCFE759E40A4DF4575160B3BFB79FB")
+        let KSmac = hexRepToBin("2AE92531E55707D9C4CEF8C2D6E5AD70")
+        let ssc = hexRepToBin("73061884A0E57AA8")
+
+        let sm = SecureMessaging(ksenc: KSenc, ksmac: KSmac, ssc: ssc)
+        let malformed = ResponseAPDU(data: hexRepToBin("9901908E08D6B9C0DA21DC965F"), sw1: 0x90, sw2: 0x00)
+        let response = try sm.unprotect(rapdu: malformed)
+
+        XCTAssertEqual(response.data, [])
+        XCTAssertEqual(response.sw1, 0x90)
+        XCTAssertEqual(response.sw2, 0x8E)
+    }
+
+    @available(iOS 15, *)
+    func testBACSessionKeysRejectShortMutualAuthenticationResponse() {
+        let bac = BACHandler()
+
+        XCTAssertThrowsError(try bac.sessionKeys(data: [0x00, 0x01])) { error in
+            guard case NFCPassportReaderError.InvalidMRZKey = error else {
+                XCTFail("Expected InvalidMRZKey, got \(error)")
+                return
+            }
+        }
+    }
     
     
     func testConvertECDSAPlainTODer() {
         let sigText = "67e147aac644325792dfa0b1615956dc4ed54e8cd859341571db98003431936e0651e9a3cdbcea3c8accd75a6f6bf07eb6bcf9ad1728e21aa854049e634e6fbf"
         let sig = hexRepToBin(sigText)
         
-        let ecsig = ECDSA_SIG_new()
+        guard let ecsig = ECDSA_SIG_new() else {
+            XCTFail("Unable to allocate ECDSA signature")
+            return
+        }
         defer { ECDSA_SIG_free(ecsig) }
         sig.withUnsafeBufferPointer { (unsafeBufPtr) in
-            let unsafePointer = unsafeBufPtr.baseAddress!
+            guard let unsafePointer = unsafeBufPtr.baseAddress else { return }
             let r = BN_bin2bn(unsafePointer, 32, nil)
             let s = BN_bin2bn(unsafePointer + 32, 32, nil)
             ECDSA_SIG_set0(ecsig, r, s)
         }
         
-        var derEncodedSignature: UnsafeMutablePointer<UInt8>? = nil
-        let derLength = i2d_ECDSA_SIG(ecsig, &derEncodedSignature)
-
+        let derLength = i2d_ECDSA_SIG(ecsig, nil)
+        guard derLength > 0 else {
+            XCTFail("Unable to DER-encode ECDSA signature")
+            return
+        }
         var derBytes = [UInt8](repeating: 0, count: Int(derLength))
-        for b in 0..<Int(derLength) {
-            derBytes[b] = derEncodedSignature![b]
+        derBytes.withUnsafeMutableBufferPointer { buffer in
+            var pointer = buffer.baseAddress
+            _ = i2d_ECDSA_SIG(ecsig, &pointer)
         }
 
         XCTAssertNoThrow(try OpenSSLUtils.ASN1Parse(data: Data(derBytes)), "Successfully parsed" )
+    }
+
+    func testVerifyECDSASignatureRejectsMalformedSignature() {
+        guard let key = EVP_PKEY_new() else {
+            XCTFail("Unable to allocate EVP_PKEY")
+            return
+        }
+        defer { EVP_PKEY_free(key) }
+
+        XCTAssertFalse(OpenSSLUtils.verifyECDSASignature(publicKey: key, signature: [], data: []))
+        XCTAssertFalse(OpenSSLUtils.verifyECDSASignature(publicKey: key, signature: [0x01], data: []))
     }
 
     

@@ -54,7 +54,7 @@ public class OpenSSLUtils {
     
     static func X509ToPEM( x509: OpaquePointer ) -> String {
         
-        let out = BIO_new(BIO_s_mem())!
+        guard let out = BIO_new(BIO_s_mem()) else { return "" }
         defer { BIO_free( out) }
         
         PEM_write_bio_X509(out, x509);
@@ -65,7 +65,7 @@ public class OpenSSLUtils {
     
     static func pubKeyToPEM( pubKey: OpaquePointer ) -> String {
         
-        let out = BIO_new(BIO_s_mem())!
+        guard let out = BIO_new(BIO_s_mem()) else { return "" }
         defer { BIO_free( out) }
         
         PEM_write_bio_PUBKEY(out, pubKey);
@@ -76,7 +76,7 @@ public class OpenSSLUtils {
     
     static func privKeyToPEM( privKey: OpaquePointer ) -> String {
         
-        let out = BIO_new(BIO_s_mem())!
+        guard let out = BIO_new(BIO_s_mem()) else { return "" }
         defer { BIO_free( out) }
 
         PEM_write_bio_PrivateKey(out, privKey, nil, nil, 0, nil, nil)
@@ -87,9 +87,9 @@ public class OpenSSLUtils {
     
     static func pkcs7DataToPEM( pkcs7: Data ) -> String {
         
-        let inf = BIO_new(BIO_s_mem())!
+        guard let inf = BIO_new(BIO_s_mem()) else { return "" }
         defer { BIO_free( inf) }
-        let out = BIO_new(BIO_s_mem())!
+        guard let out = BIO_new(BIO_s_mem()) else { return "" }
         defer { BIO_free( out) }
         
         let _ = pkcs7.withUnsafeBytes { (ptr) in
@@ -410,19 +410,27 @@ public class OpenSSLUtils {
     /// - Parameter data: The data used to generate the signature
     /// - Returns: True if the signature was verified
     static func verifyECDSASignature( publicKey:OpaquePointer, signature: [UInt8], data: [UInt8], digestType: String = "" ) -> Bool {
+        guard !signature.isEmpty,
+              signature.count.isMultiple(of: 2),
+              let ecsig = ECDSA_SIG_new() else {
+            return false
+        }
                 
         // We first need to convert the signature from PLAIN ECDSA to ASN1 DER encoded
-        let ecsig = ECDSA_SIG_new()
         defer { ECDSA_SIG_free(ecsig) }
         let sigData = signature
         let l = sigData.count / 2
         sigData.withUnsafeBufferPointer { (unsafeBufPtr) in
-            let unsafePointer = unsafeBufPtr.baseAddress!
+            guard let unsafePointer = unsafeBufPtr.baseAddress else { return }
             let r = BN_bin2bn(unsafePointer, Int32(l), nil)
             let s = BN_bin2bn((unsafePointer + l), Int32(l), nil)
             ECDSA_SIG_set0(ecsig, r, s)
         }
         let sigSize = i2d_ECDSA_SIG(ecsig, nil)
+        guard sigSize > 0 else {
+            return false
+        }
+
         var derBytes = [UInt8](repeating: 0, count: Int(sigSize))
         derBytes.withUnsafeMutableBufferPointer { (unsafeBufPtr) in
             var unsafePointer = unsafeBufPtr.baseAddress
@@ -475,7 +483,11 @@ public class OpenSSLUtils {
                 var didFix = false
                 for (idx, rec) in intRecords.enumerated() {
                     // Only process if the first byte is a 0
-                    if rec.value[0] != 0 {
+                    guard let firstByte = rec.value.first else {
+                        continue
+                    }
+
+                    if firstByte != 0 {
                         continue
                     }
 
@@ -491,7 +503,7 @@ public class OpenSSLUtils {
                         var address = ptr.baseAddress
                         let v = d2i_ASN1_INTEGER(nil, &address, data.count)
                         defer { ASN1_INTEGER_free(v) }
-                        if v == nil {
+                        if v == nil && rec.value.count > 1 {
                             // Not a valid BigInteger, so remove the first value and try again
                             let newRec = TKBERTLVRecord( tag: rec.tag, value: rec.value[1...])
 
@@ -758,25 +770,27 @@ public class OpenSSLUtils {
     }
     
 
-    public static func computeSharedSecret( privateKeyPair: OpaquePointer, publicKey: OpaquePointer ) -> [UInt8] {
+    public static func computeSharedSecret( privateKeyPair: OpaquePointer, publicKey: OpaquePointer ) throws -> [UInt8] {
         guard let ctx = EVP_PKEY_CTX_new(privateKeyPair, nil) else {
-            return []
+            throw NFCPassportReaderError.InvalidDataPassed("Unable to create shared-secret context")
         }
         defer{ EVP_PKEY_CTX_free(ctx) }
 
         guard EVP_PKEY_derive_init(ctx) == 1,
               EVP_PKEY_derive_set_peer(ctx, publicKey) == 1 else {
-            return []
+            throw NFCPassportReaderError.InvalidDataPassed("Unable to initialise shared-secret derivation")
         }
 
         var keyLen = 0
-        guard EVP_PKEY_derive(ctx, nil, &keyLen) == 1 else {
-            return []
+        guard EVP_PKEY_derive(ctx, nil, &keyLen) == 1,
+              keyLen > 0 else {
+            throw NFCPassportReaderError.InvalidDataPassed("Unable to determine shared-secret length")
         }
 
         var secret = [UInt8](repeating: 0, count: keyLen)
-        guard EVP_PKEY_derive(ctx, &secret, &keyLen) == 1 else {
-            return []
+        guard EVP_PKEY_derive(ctx, &secret, &keyLen) == 1,
+              keyLen > 0 else {
+            throw NFCPassportReaderError.InvalidDataPassed("Unable to derive shared secret")
         }
         secret = [UInt8](secret.prefix(keyLen))
         return secret

@@ -21,6 +21,7 @@ public enum NFCPassportReaderError: Error {
     case MissingMandatoryFields
     case CannotDecodeASN1Length
     case InvalidASN1Value
+    case InvalidASN1Structure
     case UnableToProtectAPDU
     case UnableToUnprotectAPDU
     case UnsupportedDataGroup
@@ -56,6 +57,7 @@ public enum NFCPassportReaderError: Error {
             case .MissingMandatoryFields: return "MissingMandatoryFields"
             case .CannotDecodeASN1Length: return "CannotDecodeASN1Length"
             case .InvalidASN1Value: return "InvalidASN1Value"
+            case .InvalidASN1Structure: return "InvalidASN1Structure"
             case .UnableToProtectAPDU: return "UnableToProtectAPDU"
             case .UnableToUnprotectAPDU: return "UnableToUnprotectAPDU"
             case .UnsupportedDataGroup: return "UnsupportedDataGroup"

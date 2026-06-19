@@ -11,6 +11,23 @@ final class PassportReaderLoggingTests: XCTestCase {
         }
     }
 
+    private final class ProgressRecorder: @unchecked Sendable {
+        private let lock = NSLock()
+        private var recordedEvents: [PassportReaderProgressEvent] = []
+
+        var events: [PassportReaderProgressEvent] {
+            lock.lock()
+            defer { lock.unlock() }
+            return recordedEvents
+        }
+
+        func record(_ event: PassportReaderProgressEvent) {
+            lock.lock()
+            defer { lock.unlock() }
+            recordedEvents.append(event)
+        }
+    }
+
     func testLoggerDefaultsToOff() {
         let sink = CapturingLogger()
         let logger = PassportReaderEventLogger(level: .off, sink: sink)
@@ -180,16 +197,16 @@ final class PassportReaderLoggingTests: XCTestCase {
     @available(iOS 15, *)
     func testFixtureReaderCanReturnModelAndProgressWithoutNFC() async throws {
         let fixture = PassportReaderFixture(result: .success(NFCPassportModel()))
-        var progressEvents: [PassportReaderProgressEvent] = []
+        let progressRecorder = ProgressRecorder()
 
         let model = try await fixture.readPassport(
             mrzKey: "SYNTHETIC",
             scanProfile: .identityOnly,
-            progressHandler: { progressEvents.append($0) }
+            progressHandler: { progressRecorder.record($0) }
         )
 
         XCTAssertNotNil(model)
-        XCTAssertEqual(progressEvents, [.waitingForPassport, .complete])
+        XCTAssertEqual(progressRecorder.events, [.waitingForPassport, .complete])
     }
 
     @available(iOS 15, *)

@@ -24,6 +24,9 @@ public class DataGroup {
         // Skip the first byte which is the header byte
         pos = 1
         let _ = try getNextLength()
+        guard pos <= data.count else {
+            throw NFCPassportReaderError.InvalidASN1Structure
+        }
         self.body = [UInt8](data[pos...])
         
         try parse(data)
@@ -41,6 +44,10 @@ public class DataGroup {
         }
 
         if binToHex(data[pos]) & 0x0F == 0x0F {
+            guard pos + 1 < data.count else {
+                throw NFCPassportReaderError.InvalidASN1Structure
+            }
+
             tag = Int(binToHex(data[pos..<pos+2]))
             pos += 2
         } else {
@@ -59,6 +66,11 @@ public class DataGroup {
     
     func getNextValue() throws -> [UInt8] {
         let length = try getNextLength()
+        guard length >= 0,
+              pos + length <= data.count else {
+            throw NFCPassportReaderError.InvalidASN1Structure
+        }
+
         let value = [UInt8](data[pos ..< pos+length])
         pos += length
         return value
@@ -92,10 +104,18 @@ public class DataGroup {
     }
 
     public func verifyTag(_ tag: Int, oneOf expectedTags: [Int]) throws {
+        guard let firstExpectedTag = expectedTags.first else {
+            throw NFCPassportReaderError.InvalidResponse(
+                dataGroupId: datagroupType,
+                expectedTag: 0,
+                actualTag: tag
+            )
+        }
+
         if !expectedTags.contains(tag) {
             throw NFCPassportReaderError.InvalidResponse(
                 dataGroupId: datagroupType,
-                expectedTag: expectedTags.first!,
+                expectedTag: firstExpectedTag,
                 actualTag: tag
             )
         }

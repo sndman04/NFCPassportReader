@@ -65,6 +65,9 @@ public class SecureMessaging {
         let N = pad(paddedSSC + M, blockSize:padLength)
 
         var CC = mac(algoName: algoName, key: self.ksmac, msg: N)
+        guard !CC.isEmpty else {
+            throw NFCPassportReaderError.UnableToProtectAPDU
+        }
         if CC.count > 8 {
             CC = [UInt8](CC[0..<8])
         }
@@ -91,7 +94,9 @@ public class SecureMessaging {
             protectedAPDU += [0x00]
         }
         
-        let newAPDU = NFCISO7816APDU(data:Data(protectedAPDU))!
+        guard let newAPDU = NFCISO7816APDU(data: Data(protectedAPDU)) else {
+            throw NFCPassportReaderError.UnableToProtectAPDU
+        }
         return newAPDU
     }
 
@@ -113,12 +118,20 @@ public class SecureMessaging {
         }
 
         let rapduBin = rapdu.data + [rapdu.sw1, rapdu.sw2]
+        guard !rapduBin.isEmpty else {
+            throw NFCPassportReaderError.MissingMandatoryFields
+        }
         
         // DO'87'
         // Mandatory if data is returned, otherwise absent
         if rapduBin[0] == 0x87 {
             let (encDataLength, o) = try asn1Length([UInt8](rapduBin[1...]))
             offset = 1 + o
+
+            guard offset < rapduBin.count,
+                  offset + Int(encDataLength) <= rapduBin.count else {
+                throw NFCPassportReaderError.D087Malformed
+            }
             
             if rapduBin[offset] != 0x1 {
                 throw NFCPassportReaderError.D087Malformed
@@ -144,15 +157,23 @@ public class SecureMessaging {
         offset += 4
         needCC = true
         
-        if do99[0] != 0x99 && do99[1] != 0x02 {
+        if do99[0] != 0x99 || do99[1] != 0x02 {
             //SM error, return the error code
             return ResponseAPDU(data: [], sw1: sw1, sw2: sw2)
         }
         
         // DO'8E'
         //Mandatory if DO'87' and/or DO'99' is present
-        if rapduBin[offset] == 0x8E {
+        if offset < rapduBin.count, rapduBin[offset] == 0x8E {
+            guard offset + 2 <= rapduBin.count else {
+                throw NFCPassportReaderError.MissingMandatoryFields
+            }
+
             let ccLength : Int = Int(binToHex(rapduBin[offset+1]))
+            guard offset + 2 + ccLength <= rapduBin.count else {
+                throw NFCPassportReaderError.MissingMandatoryFields
+            }
+
             let CC = [UInt8](rapduBin[offset+2 ..< offset+2+ccLength])
             // do8e = [UInt8](rapduBin[offset ..< offset+2+ccLength])
             
@@ -167,8 +188,11 @@ public class SecureMessaging {
             
             let K = pad(paddedSSC + do87 + do99, blockSize:padLength)
             var CCb = mac(algoName: algoName, key: self.ksmac, msg: K)
+            guard !CCb.isEmpty else {
+                throw NFCPassportReaderError.UnableToUnprotectAPDU
+            }
             if CCb.count > 8 {
-                CCb = [UInt8](CC[0..<8])
+                CCb = [UInt8](CCb[0..<8])
             }
             
             let res = (CC == CCb)
@@ -191,7 +215,14 @@ public class SecureMessaging {
                 // for AES the IV is the ssc with AES/EBC/NOPADDING
                 let paddedssc = [UInt8](repeating: 0, count: 8) + ssc
                 let iv = AESECBEncrypt(key: ksenc, message: paddedssc)
+                guard !iv.isEmpty else {
+                    throw NFCPassportReaderError.UnableToUnprotectAPDU
+                }
+
                 dec = AESDecrypt(key: self.ksenc, message: do87Data, iv: iv)
+            }
+            guard !dec.isEmpty else {
+                throw NFCPassportReaderError.UnableToUnprotectAPDU
             }
 
             // There is a payload
@@ -206,13 +237,18 @@ public class SecureMessaging {
     }
     
     func buildD087(apdu : NFCISO7816APDU) throws -> [UInt8] {
-        let cipher = [0x01] + self.padAndEncryptData(apdu)
+        let encryptedData = try self.padAndEncryptData(apdu)
+        let cipher = [0x01] + encryptedData
         let res = try [0x87] + toAsn1Length(cipher.count) + cipher
         return res
     }
     
-    func padAndEncryptData(_ apdu : NFCISO7816APDU) -> [UInt8] {
-        let data = [UInt8](apdu.data!)
+    func padAndEncryptData(_ apdu : NFCISO7816APDU) throws -> [UInt8] {
+        guard let apduData = apdu.data else {
+            throw NFCPassportReaderError.UnableToProtectAPDU
+        }
+
+        let data = [UInt8](apduData)
         let paddedData = pad( data, blockSize: padLength )
         
         let enc : [UInt8]
@@ -222,8 +258,16 @@ public class SecureMessaging {
             // for AES the IV is the ssc with AES/EBC/NOPADDING
             let paddedssc = [UInt8](repeating: 0, count: 8) + ssc
             let iv = AESECBEncrypt(key: ksenc, message: paddedssc)
+            guard !iv.isEmpty else {
+                throw NFCPassportReaderError.UnableToProtectAPDU
+            }
+
             enc = AESEncrypt(key: self.ksenc, message: paddedData, iv: iv)
         }
+        guard !enc.isEmpty else {
+            throw NFCPassportReaderError.UnableToProtectAPDU
+        }
+
         return enc
     }
     

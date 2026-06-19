@@ -37,18 +37,22 @@ public class DataGroup1 : DataGroup {
         
         switch docType {
             case .TD1:
-                self.parseTd1(body)
+                try self.parseTd1(body)
             case .TD2:
-                self.parseTd2(body)
+                try self.parseTd2(body)
             default:
-                self.parseOther(body)
+                try self.parseOther(body)
         }
         
         // Store MRZ data
         elements["5F1F"] = String(bytes: body, encoding:.utf8)
     }
     
-    func parseTd1(_ data : [UInt8]) {
+    func parseTd1(_ data : [UInt8]) throws {
+        guard data.count >= 90 else {
+            throw NFCPassportReaderError.InvalidASN1Structure
+        }
+
         elements["5F03"] = String(bytes: data[0..<2], encoding:.utf8)
         elements["5F28"] = String( bytes:data[2..<5], encoding:.utf8)
         elements["5A"] = String( bytes:data[5..<14], encoding:.utf8)
@@ -65,7 +69,11 @@ public class DataGroup1 : DataGroup {
         elements["5B"] = String( bytes:data[60...], encoding:.utf8)
     }
     
-    func parseTd2(_ data : [UInt8]) {
+    func parseTd2(_ data : [UInt8]) throws {
+        guard data.count >= 72 else {
+            throw NFCPassportReaderError.InvalidASN1Structure
+        }
+
         elements["5F03"] = String( bytes:data[0..<2], encoding:.utf8)
         elements["5F28"] = String( bytes:data[2..<5], encoding:.utf8)
         elements["5B"] = String( bytes:data[5..<36], encoding:.utf8)
@@ -81,7 +89,11 @@ public class DataGroup1 : DataGroup {
         elements["5F07"] = String( bytes:data[71..<72], encoding:.utf8)
     }
     
-    func parseOther(_ data : [UInt8]) {
+    func parseOther(_ data : [UInt8]) throws {
+        guard data.count >= 88 else {
+            throw NFCPassportReaderError.InvalidASN1Structure
+        }
+
         elements["5F03"] = String( bytes:data[0..<2], encoding:.utf8)
         elements["5F28"] = String( bytes:data[2..<5], encoding:.utf8)
         elements["5B"]   = String( bytes:data[5..<44], encoding:.utf8)

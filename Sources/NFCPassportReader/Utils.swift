@@ -30,7 +30,8 @@ extension Int {
 
 extension FileManager {
     static var documentDir : URL {
-        return FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
     }
 }
 
@@ -79,8 +80,7 @@ public func binToHex( _ val: UInt8 ) -> Int {
 }
 
 public func binToHex( _ val: [UInt8] ) -> UInt64 {
-    let hexVal = UInt64(binToHexRep(val), radix:16)!
-    return hexVal
+    UInt64(binToHexRep(val), radix:16) ?? 0
 }
 
 public func binToHex( _ val: ArraySlice<UInt8> ) -> UInt64 {
@@ -99,8 +99,7 @@ public func binToInt( _ val: ArraySlice<UInt8> ) -> Int {
 }
 
 public func binToInt( _ val: [UInt8] ) -> Int {
-    let hexVal = Int(binToHexRep(val), radix:16)!
-    return hexVal
+    Int(binToHexRep(val), radix:16) ?? 0
 }
 
 public func intToBin(_ data : Int, pad : Int = 2) -> [UInt8] {
@@ -119,12 +118,17 @@ public func hexRepToBin(_ val : String) -> [UInt8] {
     var output : [UInt8] = []
     var x = 0
     while x < val.count {
+        let byteString: Substring
         if x+2 <= val.count {
-            output.append( UInt8(val[x ..< x + 2], radix:16)! )
+            byteString = val[x ..< x + 2]
         } else {
-            output.append( UInt8(val[x ..< x+1], radix:16)! )
-
+            byteString = val[x ..< x+1]
         }
+
+        guard let byte = UInt8(byteString, radix: 16) else {
+            return []
+        }
+        output.append(byte)
         x += 2
     }
     return output
@@ -132,8 +136,8 @@ public func hexRepToBin(_ val : String) -> [UInt8] {
 
 public func xor(_ kifd : [UInt8], _ response_kicc : [UInt8] ) -> [UInt8] {
     var kseed = [UInt8]()
-    for i in 0 ..< kifd.count {
-        kseed.append( kifd[i] ^ response_kicc[i] )
+    for (left, right) in zip(kifd, response_kicc) {
+        kseed.append(left ^ right)
     }
     return kseed
 }
@@ -157,8 +161,12 @@ public func pad(_ toPad : [UInt8], blockSize : Int) -> [UInt8] {
 }
 
 public func unpad( _ tounpad : [UInt8]) -> [UInt8] {
+    guard !tounpad.isEmpty else {
+        return []
+    }
+
     var i = tounpad.count-1
-    while tounpad[i] == 0x00 {
+    while i > 0 && tounpad[i] == 0x00 {
         i -= 1
     }
     
@@ -181,6 +189,9 @@ public func mac(algoName: SecureMessagingSupportedAlgorithms, key : [UInt8], msg
 
 @available(iOS 13, macOS 10.15, *)
 public func desMAC(key : [UInt8], msg : [UInt8]) -> [UInt8]{
+    guard key.count >= 16 else {
+        return []
+    }
     
     let size = msg.count / 8
     var y : [UInt8] = [0,0,0,0,0,0,0,0]
@@ -273,13 +284,25 @@ public func asn1Length( _ data: ArraySlice<UInt8> ) throws -> (Int, Int) {
 
 @available(iOS 13, macOS 10.15, *)
 public func asn1Length(_ data : [UInt8]) throws -> (Int, Int)  {
-    if data[0] < 0x80 {
-        return (Int(binToHex(data[0])), 1)
+    guard let firstByte = data.first else {
+        throw NFCPassportReaderError.CannotDecodeASN1Length
     }
-    if data[0] == 0x81 {
+
+    if firstByte < 0x80 {
+        return (Int(binToHex(firstByte)), 1)
+    }
+    if firstByte == 0x81 {
+        guard data.count >= 2 else {
+            throw NFCPassportReaderError.CannotDecodeASN1Length
+        }
+
         return (Int(binToHex(data[1])), 2)
     }
-    if data[0] == 0x82 {
+    if firstByte == 0x82 {
+        guard data.count >= 3 else {
+            throw NFCPassportReaderError.CannotDecodeASN1Length
+        }
+
         let val = binToHex([UInt8](data[1..<3]))
         return (Int(val), 3)
     }
@@ -351,7 +374,11 @@ public func calcSHA1Hash( _ data: [UInt8] ) -> [UInt8] {
     
     return Array(hash)
     #else
-    fatalError("Couldn't import CryptoKit")
+    var digest = [UInt8](repeating: 0, count: Int(CC_SHA1_DIGEST_LENGTH))
+    data.withUnsafeBytes {
+        _ = CC_SHA1($0.baseAddress, CC_LONG(data.count), &digest)
+    }
+    return digest
     #endif
 }
 
@@ -381,7 +408,11 @@ public func calcSHA256Hash( _ data: [UInt8] ) -> [UInt8] {
     
     return Array(hash)
     #else
-    fatalError("Couldn't import CryptoKit")
+    var digest = [UInt8](repeating: 0, count: Int(CC_SHA256_DIGEST_LENGTH))
+    data.withUnsafeBytes {
+        _ = CC_SHA256($0.baseAddress, CC_LONG(data.count), &digest)
+    }
+    return digest
     #endif
 }
 
@@ -397,7 +428,11 @@ public func calcSHA512Hash( _ data: [UInt8] ) -> [UInt8] {
     
     return Array(hash)
     #else
-    fatalError("Couldn't import CryptoKit")
+    var digest = [UInt8](repeating: 0, count: Int(CC_SHA512_DIGEST_LENGTH))
+    data.withUnsafeBytes {
+        _ = CC_SHA512($0.baseAddress, CC_LONG(data.count), &digest)
+    }
+    return digest
     #endif
 }
 
@@ -413,7 +448,10 @@ public func calcSHA384Hash( _ data: [UInt8] ) -> [UInt8] {
     
     return Array(hash)
     #else
-    fatalError("Couldn't import CryptoKit")
+    var digest = [UInt8](repeating: 0, count: Int(CC_SHA384_DIGEST_LENGTH))
+    data.withUnsafeBytes {
+        _ = CC_SHA384($0.baseAddress, CC_LONG(data.count), &digest)
+    }
+    return digest
     #endif
 }
-

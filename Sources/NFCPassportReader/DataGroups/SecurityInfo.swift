@@ -71,24 +71,32 @@ public class SecurityInfo {
     static let ID_PACE_ECDH_CAM_AES_CBC_CMAC_256 = ID_PACE_ECDH_CAM + ".4"; // 0.4.0.127.0.7.2.2.4.6.4, id-PACE-ECDH-CAM-AES-CBC-CMAC-256
 
     public func getObjectIdentifier() -> String {
-        preconditionFailure("This method must be overridden")
+        ""
     }
     
     public func getProtocolOIDString() -> String {
-        preconditionFailure("This method must be overridden")
+        ""
     }
     
     static func getInstance( object : ASN1Item, body: [UInt8] ) -> SecurityInfo? {
-        let oid = object.getChild(0)?.value ?? ""
-        let requiredData = object.getChild(1)!
+        guard let oid = object.getChild(0)?.value,
+              let requiredData = object.getChild(1) else {
+            return nil
+        }
+
         var optionalData : ASN1Item? = nil
         if (object.getNumberOfChildren() == 3) {
             optionalData = object.getChild(2)
         }
         
         if ChipAuthenticationPublicKeyInfo.checkRequiredIdentifier(oid) {
-            
-            let keyData : [UInt8] = [UInt8](body[requiredData.pos ..< requiredData.pos+requiredData.headerLen+requiredData.length])
+            let keyDataEnd = requiredData.pos + requiredData.headerLen + requiredData.length
+            guard requiredData.pos >= 0,
+                  keyDataEnd <= body.count else {
+                return nil
+            }
+
+            let keyData : [UInt8] = [UInt8](body[requiredData.pos ..< keyDataEnd])
             
             var subjectPublicKeyInfo : OpaquePointer? = nil
             let _ = keyData.withUnsafeBytes { (ptr) in
@@ -99,11 +107,11 @@ public class SecurityInfo {
             
             if let subjectPublicKeyInfo = subjectPublicKeyInfo {
                                 
-                if optionalData == nil {
-                    return ChipAuthenticationPublicKeyInfo(oid:oid, pubKey:subjectPublicKeyInfo);
-                } else {
-                    let keyId = Int(optionalData!.value, radix: 16)
+                if let optionalData {
+                    let keyId = Int(optionalData.value, radix: 16)
                     return ChipAuthenticationPublicKeyInfo(oid:oid, pubKey:subjectPublicKeyInfo, keyId: keyId);
+                } else {
+                    return ChipAuthenticationPublicKeyInfo(oid:oid, pubKey:subjectPublicKeyInfo);
                 }
                 
             }
