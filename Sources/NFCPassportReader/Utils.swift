@@ -252,6 +252,10 @@ public func oidToBytes(oid : String, replaceTag : Bool) -> [UInt8] {
     var encOID = OpenSSLUtils.asn1EncodeOID(oid: oid)
     
     if replaceTag {
+        guard !encOID.isEmpty else {
+            return []
+        }
+
         // Replace tag (0x06) with 0x80
         encOID[0] = 0x80
     }

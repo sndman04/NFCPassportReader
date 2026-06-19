@@ -551,6 +551,51 @@ Remaining follow-up:
 - Configure a development team/signing identity in Xcode for device installation.
 - Run an on-device passport scan and verify that the app screen shows expected data while Xcode console output remains free of MRZ/access-key/APDU/key/data-group/image byte dumps.
 
+### 2026-06-19 Additional Full Bug-Check Loop
+
+Completed:
+
+- Re-ran the audit from additional angles: public error descriptions, CommonCrypto wrapper safety, malformed data-group length handling, OID encoding, forced unwrap/cast patterns, logging/privacy sinks, and remaining risky slicing hotspots.
+- Made `NFCPassportReaderError.localizedDescription` privacy-safe by default. Internal retry logic still uses the existing low-level `value` string where needed, but app-facing localized descriptions no longer include response text, status words, expected/actual tags, PACE detail strings, nested error descriptions, APDU/RAPDU fragments, key-material-like strings, or long hex values.
+- Sanitized `OpenSSLError.localizedDescription` and `PassiveAuthenticationError.localizedDescription` so ASN.1 dumps, OpenSSL reasons, certificate/parser detail, and data-group hash mismatch detail are not exposed through normal app error copy or accidental logging.
+- Hardened CommonCrypto helpers:
+  - AES CBC/ECB now rejects unsupported key lengths before calling `CCCrypt`.
+  - DES and 3DES now reject short keys and invalid IV lengths before calling `CCCrypt`.
+  - `DESDecrypt` now passes the caller-provided IV for CBC mode instead of always passing `nil`.
+- Hardened OID encoding:
+  - Invalid OID strings now return empty encoded bytes instead of passing nil OpenSSL objects onward.
+  - Encoded ASN.1 objects are freed after use.
+  - `oidToBytes(..., replaceTag: true)` now handles empty encodings without indexing into an empty array.
+- Hardened base `DataGroup` parsing:
+  - Empty, one-byte, and overlong-declared data groups now throw typed parse errors instead of risking invalid ranges.
+  - The parser now records the declared ASN.1 body boundary and `getNextTag`/`getNextLength`/`getNextValue` respect that boundary.
+  - DG11 and DG12 repeated-field loops now stop at the declared body boundary rather than the raw buffer end.
+- Added focused regression tests for privacy-safe localized descriptions, secondary error redaction, invalid crypto key/IV handling, DES CBC IV behavior, invalid OID encoding, and malformed/overlong base data-group input.
+
+Verification:
+
+- iOS package build succeeded:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build
+  ```
+
+- iOS package test build succeeded:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build-for-testing
+  ```
+
+- `git diff --check` passed.
+- Runtime-trap scan found no `try!`, forced casts, `fatalError`, precondition/assertion failures, forced `first`/`last`, or forced `baseAddress` hits in `Sources` or `Tests`.
+- Logging/privacy scan found no production raw logging, print diagnostics, clipboard, persistence, upload, or network diagnostics. Remaining OSLog usage is the typed redacted sink and remains off by default unless explicitly enabled.
+- The only warning in the iOS test-build output is the known non-source XCTest App Intents metadata warning: `Metadata extraction skipped. No AppIntents.framework dependency found.`
+
+Remaining follow-up:
+
+- Run an on-device passport scan before tagging. The added hardening is designed to fail closed, but real-chip PACE/BAC/CA interoperability still needs device validation.
+- Consider a future API split between internal diagnostic details and public app-safe errors if downstream code needs privacy-reviewed low-level troubleshooting without relying on `localizedDescription`.
+
 ## App-Side Migration Options
 
 ### Option A: Remote Fork

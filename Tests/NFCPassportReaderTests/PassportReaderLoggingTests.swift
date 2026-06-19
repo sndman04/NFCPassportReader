@@ -145,9 +145,42 @@ final class PassportReaderLoggingTests: XCTestCase {
     func testPACEErrorDescriptionDoesNotExposeTokenBytes() {
         let error = NFCPassportReaderError.PACEError("Step3 KeyAgreement", "Passport authentication token mismatch")
 
+        XCTAssertEqual(error.localizedDescription, "PACE authentication failed")
         XCTAssertFalse(error.localizedDescription.contains("["))
         XCTAssertFalse(error.localizedDescription.localizedCaseInsensitiveContains("expected"))
         XCTAssertFalse(error.localizedDescription.localizedCaseInsensitiveContains("received"))
+    }
+
+    func testReaderErrorLocalizedDescriptionsArePrivacySafe() {
+        let errors: [NFCPassportReaderError] = [
+            .ResponseError("Wrong length Le: SW2 indicates exact length", 0x6C, 0x20),
+            .InvalidResponse(dataGroupId: .DG1, expectedTag: 0x61, actualTag: 0x75),
+            .PACEError("Step3", "Expected [01, 02], received [03, 04]"),
+            .InvalidDataPassed("Kseed 00112233445566778899AABBCCDDEEFF"),
+            .NotYetSupported("APDU A0000002471001"),
+            .Unknown(NFCPassportReaderError.ResponseError("RAPDU 9000", 0x90, 0x00))
+        ]
+
+        let descriptions = errors.map(\.localizedDescription).joined(separator: "\n")
+        for fragment in ["Wrong length", "SW2", "0x6C", "expected", "received", "Kseed", "APDU", "RAPDU", "00112233445566778899AABBCCDDEEFF"] {
+            XCTAssertFalse(descriptions.localizedCaseInsensitiveContains(fragment))
+        }
+        XCTAssertNil(descriptions.range(of: #"[0-9A-Fa-f]{16,}"#, options: .regularExpression))
+    }
+
+    func testSecondaryErrorLocalizedDescriptionsArePrivacySafe() {
+        let errors: [Error] = [
+            OpenSSLError.UnableToParseASN1("ASN1 dump 00112233445566778899AABBCCDDEEFF"),
+            OpenSSLError.UnableToDecryptRSASignature("OpenSSL error with certificate bytes FFD8FFE000104A464946"),
+            PassiveAuthenticationError.InvalidDataGroupHash("DG1 expected 00112233445566778899 actual AABBCCDDEEFF001122"),
+            PassiveAuthenticationError.UnableToParseSODHashes("messageDigest A0000002471001")
+        ]
+
+        let descriptions = errors.map(\.localizedDescription).joined(separator: "\n")
+        for fragment in ["ASN1 dump", "OpenSSL error", "FFD8FFE000104A464946", "expected", "actual", "messageDigest", "A0000002471001"] {
+            XCTAssertFalse(descriptions.localizedCaseInsensitiveContains(fragment))
+        }
+        XCTAssertNil(descriptions.range(of: #"[0-9A-Fa-f]{16,}"#, options: .regularExpression))
     }
 
     func testScanProfilesMapToExpectedDataGroups() {

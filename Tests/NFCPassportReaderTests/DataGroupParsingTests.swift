@@ -151,17 +151,29 @@ final class DataGroupParsingTests: XCTestCase {
     }
 
     func testItShouldThrowAnErrorWhenActualTagDoesNotMatchExpectedTag() throws {
-        let sut = try DataGroup([1, 2])
+        let sut = try DataGroup([1, 0])
         let expected = 1
         let actual = 2
 
         XCTAssertThrowsError(try sut.verifyTag(actual, equals: expected)) { error in
-            XCTAssertEqual("InvalidResponse in Unknown. Expected: 01 Actual: 02", error.localizedDescription)
+            XCTAssertEqual("Invalid response in Unknown", error.localizedDescription)
         }
     }
 
+    func testBaseDataGroupRejectsMissingAndOverlongBodyWithoutTrapping() {
+        XCTAssertThrowsError(try DataGroup([]))
+        XCTAssertThrowsError(try DataGroup([0x61]))
+        XCTAssertThrowsError(try DataGroup([0x61, 0x02, 0x5F]))
+    }
+
+    func testBaseDataGroupUsesDeclaredBodyLength() throws {
+        let sut = try DataGroup([0x61, 0x01, 0x5F, 0x00])
+
+        XCTAssertEqual(sut.body, [0x5F])
+    }
+
     func testItShouldNotThrowAnErrorWhenActualTagMatchesExpectedTag() throws {
-        let sut = try DataGroup([1, 2])
+        let sut = try DataGroup([1, 0])
         let expected = 1
         let actual = 1
 
@@ -169,17 +181,17 @@ final class DataGroupParsingTests: XCTestCase {
     }
 
     func testItShouldThrowAnErrorWhenActualTagIsNotAnExpectedTag() throws {
-        let sut = try DataGroup([1, 2])
+        let sut = try DataGroup([1, 0])
         let expected = [1, 3]
         let actual = 2
 
         XCTAssertThrowsError(try sut.verifyTag(actual, oneOf: expected)) { error in
-            XCTAssertEqual("InvalidResponse in Unknown. Expected: 01 Actual: 02", error.localizedDescription)
+            XCTAssertEqual("Invalid response in Unknown", error.localizedDescription)
         }
     }
 
     func testItShouldNotThrowAnErrorWhenActualTagIsAnExpectedTag() throws {
-        let sut = try DataGroup([1, 2])
+        let sut = try DataGroup([1, 0])
         let expected = [1, 3]
         let actual = 3
 

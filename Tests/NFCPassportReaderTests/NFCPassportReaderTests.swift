@@ -146,6 +146,32 @@ final class NFCPassportReaderTests: XCTestCase {
         XCTAssertEqual(desMAC(key: [], msg: []), [])
         XCTAssertEqual(desMAC(key: [0x00], msg: [0x00]), [])
     }
+
+    func testCryptoWrappersRejectInvalidKeyAndIVLengths() {
+        XCTAssertEqual(AESEncrypt(key: [], message: [0x00], iv: [UInt8](repeating: 0, count: 16)), [])
+        XCTAssertEqual(AESDecrypt(key: [UInt8](repeating: 0, count: 16), message: [0x00], iv: []), [])
+        XCTAssertEqual(AESECBEncrypt(key: [0x00], message: [0x00]), [])
+        XCTAssertEqual(tripleDESEncrypt(key: [0x00], message: [0x00], iv: [UInt8](repeating: 0, count: 8)), [])
+        XCTAssertEqual(tripleDESDecrypt(key: [UInt8](repeating: 0, count: 16), message: [0x00], iv: []), [])
+        XCTAssertEqual(DESEncrypt(key: [0x00], message: [0x00], iv: [UInt8](repeating: 0, count: 8)), [])
+        XCTAssertEqual(DESDecrypt(key: [UInt8](repeating: 0, count: 8), message: [0x00], iv: []), [])
+    }
+
+    func testDESDecryptUsesCBCInitializationVector() {
+        let key: [UInt8] = [0x13, 0x34, 0x57, 0x79, 0x9B, 0xBC, 0xDF, 0xF1]
+        let iv: [UInt8] = [0x12, 0x34, 0x56, 0x78, 0x90, 0xAB, 0xCD, 0xEF]
+        let message: [UInt8] = [0x4E, 0x6F, 0x77, 0x20, 0x69, 0x73, 0x20, 0x20]
+
+        let encrypted = DESEncrypt(key: key, message: message, iv: iv)
+        XCTAssertFalse(encrypted.isEmpty)
+        XCTAssertEqual(DESDecrypt(key: key, message: encrypted, iv: iv), message)
+        XCTAssertNotEqual(DESDecrypt(key: key, message: encrypted, iv: [UInt8](repeating: 0, count: 8)), message)
+    }
+
+    func testInvalidOIDEncodingDoesNotTrap() {
+        XCTAssertEqual(OpenSSLUtils.asn1EncodeOID(oid: "not an oid"), [])
+        XCTAssertEqual(oidToBytes(oid: "not an oid", replaceTag: true), [])
+    }
     
 
     func testDES3Encryption() {

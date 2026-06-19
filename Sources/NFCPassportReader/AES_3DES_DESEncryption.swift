@@ -16,6 +16,10 @@ import CommonCrypto
 /// - Parameter iv: Initialisation vector
 @available(iOS 13, macOS 10.15, *)
 public func AESEncrypt(key:[UInt8], message:[UInt8], iv:[UInt8]) -> [UInt8] {
+    guard [kCCKeySizeAES128, kCCKeySizeAES192, kCCKeySizeAES256].contains(key.count),
+          iv.count == kCCBlockSizeAES128 else {
+        return []
+    }
     
     let dataLength = message.count
     
@@ -67,11 +71,11 @@ public func AESEncrypt(key:[UInt8], message:[UInt8], iv:[UInt8]) -> [UInt8] {
 /// - Parameter iv: Initialisation vector
 @available(iOS 13, macOS 10.15, *)
 public func AESDecrypt(key:[UInt8], message:[UInt8], iv:[UInt8]) -> [UInt8] {
-    var fixedKey = key
-    if key.count == 16 {
-        fixedKey += key[0..<8]
+    guard [kCCKeySizeAES128, kCCKeySizeAES192, kCCKeySizeAES256].contains(key.count),
+          iv.count == kCCBlockSizeAES128 else {
+        return []
     }
-    
+
     let data = Data(message)
     let dataLength = message.count
     
@@ -85,21 +89,22 @@ public func AESDecrypt(key:[UInt8], message:[UInt8], iv:[UInt8]) -> [UInt8] {
     
     var numBytesEncrypted = 0
     
-    let cryptStatus = fixedKey.withUnsafeBytes {keyBytes in
+    let cryptStatus = key.withUnsafeBytes {keyBytes in
         message.withUnsafeBytes{ dataBytes in
-            cryptData.withUnsafeMutableBytes{ cryptBytes in
-                CCCrypt(operation,
-                        algorithm,
-                        options,
-                        keyBytes.baseAddress,
-                        keyLength,
-                        iv,
-                        dataBytes.baseAddress,
-                        dataLength,
-                        cryptBytes.bindMemory(to: UInt8.self).baseAddress,
-                        cryptLen,
-                        &numBytesEncrypted)
-                
+            iv.withUnsafeBytes { ivBytes in
+                cryptData.withUnsafeMutableBytes{ cryptBytes in
+                    CCCrypt(operation,
+                            algorithm,
+                            options,
+                            keyBytes.baseAddress,
+                            keyLength,
+                            ivBytes.baseAddress,
+                            dataBytes.baseAddress,
+                            dataLength,
+                            cryptBytes.bindMemory(to: UInt8.self).baseAddress,
+                            cryptLen,
+                            &numBytesEncrypted)
+                }
             }
         }
     }
@@ -119,6 +124,9 @@ public func AESDecrypt(key:[UInt8], message:[UInt8], iv:[UInt8]) -> [UInt8] {
 /// - Parameter iv: Initialisation vector
 @available(iOS 13, macOS 10.15, *)
 public func AESECBEncrypt(key:[UInt8], message:[UInt8]) -> [UInt8] {
+    guard [kCCKeySizeAES128, kCCKeySizeAES192, kCCKeySizeAES256].contains(key.count) else {
+        return []
+    }
 
     let dataLength = message.count
     
@@ -171,6 +179,10 @@ public func tripleDESEncrypt(key:[UInt8], message:[UInt8], iv:[UInt8]) -> [UInt8
     var fixedKey = key
     if key.count == 16 {
         fixedKey += key[0..<8]
+    }
+    guard fixedKey.count == kCCKeySize3DES,
+          iv.count == kCCBlockSize3DES else {
+        return []
     }
     
     let dataLength = message.count
@@ -225,6 +237,10 @@ public func tripleDESDecrypt(key:[UInt8], message:[UInt8], iv:[UInt8]) -> [UInt8
     if key.count == 16 {
         fixedKey += key[0..<8]
     }
+    guard fixedKey.count == kCCKeySize3DES,
+          iv.count == kCCBlockSize3DES else {
+        return []
+    }
 
     let data = Data(message)
     let dataLength = message.count
@@ -241,19 +257,20 @@ public func tripleDESDecrypt(key:[UInt8], message:[UInt8], iv:[UInt8]) -> [UInt8
     
     let cryptStatus = fixedKey.withUnsafeBytes {keyBytes in
         message.withUnsafeBytes{ dataBytes in
-            cryptData.withUnsafeMutableBytes{ cryptBytes in
-                CCCrypt(operation,
-                        algorithm,
-                        options,
-                        keyBytes.baseAddress,
-                        keyLength,
-                        iv,
-                        dataBytes.baseAddress,
-                        dataLength,
-                        cryptBytes.bindMemory(to: UInt8.self).baseAddress,
-                        cryptLen,
-                        &numBytesEncrypted)
-
+            iv.withUnsafeBytes { ivBytes in
+                cryptData.withUnsafeMutableBytes{ cryptBytes in
+                    CCCrypt(operation,
+                            algorithm,
+                            options,
+                            keyBytes.baseAddress,
+                            keyLength,
+                            ivBytes.baseAddress,
+                            dataBytes.baseAddress,
+                            dataLength,
+                            cryptBytes.bindMemory(to: UInt8.self).baseAddress,
+                            cryptLen,
+                            &numBytesEncrypted)
+                }
             }
         }
     }
@@ -275,6 +292,10 @@ public func tripleDESDecrypt(key:[UInt8], message:[UInt8], iv:[UInt8]) -> [UInt8
 /// - Parameter options: Encryption options to use
 @available(iOS 13, macOS 10.15, *)
 public func DESEncrypt(key:[UInt8], message:[UInt8], iv:[UInt8], options:UInt32 = 0) -> [UInt8] {
+    guard key.count == kCCKeySizeDES,
+          options & UInt32(kCCOptionECBMode) != 0 || iv.count == kCCBlockSizeDES else {
+        return []
+    }
     
     let dataLength = message.count
     
@@ -325,6 +346,10 @@ public func DESEncrypt(key:[UInt8], message:[UInt8], iv:[UInt8], options:UInt32 
 /// - Parameter options: Decryption options to use
 @available(iOS 13, macOS 10.15, *)
 public func DESDecrypt(key:[UInt8], message:[UInt8], iv:[UInt8], options:UInt32 = 0) -> [UInt8] {
+    guard key.count == kCCKeySizeDES,
+          options & UInt32(kCCOptionECBMode) != 0 || iv.count == kCCBlockSizeDES else {
+        return []
+    }
     
     let dataLength = message.count
     
@@ -347,7 +372,7 @@ public func DESDecrypt(key:[UInt8], message:[UInt8], iv:[UInt8], options:UInt32 
                             options,
                             keyBytes.baseAddress,
                             keyLength,
-                            nil,
+                            options & UInt32(kCCOptionECBMode) != 0 ? nil : ivBytes.baseAddress,
                             dataBytes.baseAddress,
                             dataLength,
                             cryptBytes.bindMemory(to: UInt8.self).baseAddress,

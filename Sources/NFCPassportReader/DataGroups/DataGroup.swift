@@ -17,19 +17,26 @@ public class DataGroup {
     public private(set) var data : [UInt8] = []
     
     var pos = 0
+    private var bodyEnd = 0
     
     required init( _ data : [UInt8] ) throws {
         self.data = data
         
         // Skip the first byte which is the header byte
         pos = 1
-        let _ = try getNextLength()
-        guard pos <= data.count else {
+        let bodyLength = try getNextLength()
+        guard bodyLength >= 0,
+              pos + bodyLength <= data.count else {
             throw NFCPassportReaderError.InvalidASN1Structure
         }
-        self.body = [UInt8](data[pos...])
+        bodyEnd = pos + bodyLength
+        self.body = [UInt8](data[pos..<bodyEnd])
         
         try parse(data)
+    }
+
+    var hasUnreadBody: Bool {
+        pos < bodyEnd
     }
     
     func parse( _ data:[UInt8] ) throws {
@@ -39,12 +46,12 @@ public class DataGroup {
         var tag = 0
         
         // Fix for some passports that may have invalid data - ensure that we do have data!
-        guard data.count > pos else {
+        guard bodyEnd > pos else {
             throw NFCPassportReaderError.TagNotValid
         }
 
         if binToHex(data[pos]) & 0x0F == 0x0F {
-            guard pos + 1 < data.count else {
+            guard pos + 1 < bodyEnd else {
                 throw NFCPassportReaderError.InvalidASN1Structure
             }
 
@@ -58,7 +65,12 @@ public class DataGroup {
     }
     
     func getNextLength() throws -> Int  {
-        let end = pos+4 < data.count ? pos+4 : data.count
+        guard pos < data.count else {
+            throw NFCPassportReaderError.CannotDecodeASN1Length
+        }
+
+        let limit = bodyEnd == 0 ? data.count : bodyEnd
+        let end = pos+4 < limit ? pos+4 : limit
         let (len, lenOffset) = try asn1Length([UInt8](data[pos..<end]))
         pos += lenOffset
         return len
@@ -67,7 +79,7 @@ public class DataGroup {
     func getNextValue() throws -> [UInt8] {
         let length = try getNextLength()
         guard length >= 0,
-              pos + length <= data.count else {
+              pos + length <= bodyEnd else {
             throw NFCPassportReaderError.InvalidASN1Structure
         }
 

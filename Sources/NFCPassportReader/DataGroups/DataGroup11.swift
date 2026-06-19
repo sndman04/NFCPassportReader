@@ -61,6 +61,6 @@ public class DataGroup11 : DataGroup {
             } else if tag == 0x5F18 {
                 custodyInfo = val
             }
-        } while pos < data.count
+        } while hasUnreadBody
     }
 }

@@ -54,7 +54,7 @@ public class DataGroup12 : DataGroup {
             } else if tag == 0x5F56 {
                 personalizationDeviceSerialNr = String( bytes:val, encoding:.utf8)
             }
-        } while pos < data.count
+        } while hasUnreadBody
     }
     
     private func parseDateOfIssue(value: [UInt8]) -> String? {

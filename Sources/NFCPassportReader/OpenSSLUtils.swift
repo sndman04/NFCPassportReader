@@ -611,9 +611,15 @@ public class OpenSSLUtils {
     
     @available(iOS 13, macOS 10.15, *)
     static func asn1EncodeOID (oid : String) -> [UInt8] {
-        
-        let obj = OBJ_txt2obj( oid.cString(using: .utf8), 1)
+        guard let obj = OBJ_txt2obj(oid.cString(using: .utf8), 1) else {
+            return []
+        }
+        defer { ASN1_OBJECT_free(obj) }
+
         let payloadLen = i2d_ASN1_OBJECT(obj, nil)
+        guard payloadLen > 0 else {
+            return []
+        }
         
         var data  = [UInt8](repeating: 0, count: Int(payloadLen))
         
