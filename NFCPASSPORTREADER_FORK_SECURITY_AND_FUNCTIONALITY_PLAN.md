@@ -1374,6 +1374,50 @@ Verification:
 - `git diff --check` passed.
 - Repeated risky-pattern loops over logging, runtime traps, raw hash/status diagnostics, unsafe C boundaries, raw export/import APIs, and stale implementation markers found no new actionable production issues after the fixes above. Remaining hits are expected typed internals, test fixtures, or documentation references.
 
+### 2026-06-20 Remaining Plan Implementation Pass
+
+Completed:
+
+- Added `PassportReaderScanStage` and stage-aware `PassportReaderFailure` metadata so host apps can make retry decisions using safe scan phases such as waiting, connecting, PACE, BAC, reading a named data group, chip authentication, active authentication, passive authentication, and security-policy validation.
+- Added `PassportReaderPACEPolicy` to keep compatible BAC fallback by default, require PACE when advertised, or require an explicit CAN/PIN/PUK credential for workflows that should fail closed. Strict PACE policies are checked before opening an NFC scan when possible and again before attempting PACE.
+- Added `PassportDataGroupReadReport` and model/result/diagnostics propagation so support flows can see whether data groups were requested, advertised, read, skipped, blocked, unsupported, or failed without exposing raw group contents.
+- Added `PassportInteroperabilityRecord` for private real-device compatibility tracking with non-identifying country/feature-class outcomes and validation against MRZ-like text or long hex samples.
+- Added parser hardening tests for oversized DG7 image items and deterministic malformed ASN.1/data-group fuzz inputs, keeping all fixtures synthetic.
+- Updated `PassportChipReading` and `PassportReaderFixture` so app tests can exercise scan options, security policy, and PACE policy through the injectable reader abstraction.
+- Added `scripts/release_check.sh` and updated the iOS package workflow to use it for build, test-build, privacy scan, whitespace, and risky-diagnostics review.
+- Updated README, Notary migration notes, and the threat model for PACE policy, stage-aware failure metadata, data-group read reports, interoperability records, and the release-check workflow.
+
+Verification during this pass:
+
+- Required iOS package build passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build
+  ```
+
+- Full iOS simulator unit suite passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5'
+  ```
+
+  Result: 107 tests, 0 failures.
+
+- Consolidated release check passed:
+
+  ```sh
+  scripts/release_check.sh
+  ```
+
+  This reran the iOS package build, iOS build-for-testing, `scripts/privacy_scan.sh`, `git diff --check`, and the targeted risky-diagnostics search. Remaining search hits were reviewed as expected documentation, test fixtures, typed APDU/key internals, or redacted event logging.
+
+Remaining external or versioned follow-up:
+
+- Real-device interoperability remains required before tagging. The private matrix should include BAC-only, PACE-GM, unsupported IM/CAM-only, CA-supported, AA RSA, AA ECDSA, very large DG2, sparse DG11/DG12, multiple DG7 images, strict PACE policy, and connection-loss/chunk fallback behavior without recording real passport values.
+- Screenshot/background redaction and any Notary Journal UI retention controls must be implemented and verified in the app repo because this package does not own host-app screens, snapshots, analytics, crash-report configuration, clipboard policy, or persistence.
+- Certificate revocation checking remains explicitly not performed. Do not imply revocation status until the fork has a defined CRL/PKD data source, cache policy, offline behavior, test vectors, and real-device/revoked-certificate validation.
+- `NFCPassportModel` still exposes raw compatibility properties for source compatibility. A future major version should quarantine ordinary app integrations behind the privacy-first result types and move raw access into explicitly unsafe APIs only.
+
 ### Option A: Remote Fork
 
 Preferred long-term route:

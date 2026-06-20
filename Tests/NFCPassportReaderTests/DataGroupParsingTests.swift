@@ -163,6 +163,19 @@ final class DataGroupParsingTests: XCTestCase {
         XCTAssertEqual(dg7.imageDataItems, [[0x01, 0x02], [0x03, 0x04, 0x05]])
     }
 
+    func testDatagroup7RejectsOversizedImageItem() throws {
+        let oversizedImage = [UInt8](repeating: 0xA5, count: 10 * 1024 * 1024 + 1)
+        let body = try [0x02] + toAsn1Length(1) + [0x01] +
+            tlv(tag: [0x5F, 0x43], value: oversizedImage)
+        let data = try [UInt8]([0x67]) + toAsn1Length(body.count) + body
+
+        XCTAssertThrowsError(try DataGroupParser().parseDG(data: data)) { error in
+            guard case NFCPassportReaderError.UnknownImageFormat = error else {
+                return XCTFail("Expected UnknownImageFormat, got \(error)")
+            }
+        }
+    }
+
     func testAllLDSDataGroupTagsParseToTypedGroups() throws {
         let cases: [(UInt8, DataGroupId, DataGroup.Type)] = [
             (0x63, .DG3, DataGroup3.self),
@@ -409,6 +422,28 @@ final class DataGroupParsingTests: XCTestCase {
         XCTAssertNil(overflowingOID.objectIdentifier)
     }
 
+    func testSyntheticParserFuzzCorpusRejectsMalformedInputsWithoutTrapping() {
+        var generator = DeterministicByteGenerator(seed: 0xD00DCAFE)
+        for _ in 0..<200 {
+            let length = Int(generator.next() % 96)
+            let bytes = (0..<length).map { _ in generator.next() }
+
+            do {
+                _ = try DataGroupParser().parseDG(data: bytes)
+            } catch {
+                XCTAssertFalse(error.localizedDescription.localizedCaseInsensitiveContains("APDU"))
+                XCTAssertNil(error.localizedDescription.range(of: #"[0-9A-Fa-f]{32,}"#, options: .regularExpression))
+            }
+
+            do {
+                _ = try SimpleASN1Node.parse(bytes)
+            } catch {
+                XCTAssertFalse(error.localizedDescription.localizedCaseInsensitiveContains("APDU"))
+                XCTAssertNil(error.localizedDescription.range(of: #"[0-9A-Fa-f]{32,}"#, options: .regularExpression))
+            }
+        }
+    }
+
     func testItShouldThrowAnErrorWhenActualTagDoesNotMatchExpectedTag() throws {
         let sut = try DataGroup([1, 0])
         let expected = 1
@@ -530,5 +565,18 @@ private func fixedWidthBytes(_ value: Int, count: Int) -> [UInt8] {
     guard count > 0 else { return [] }
     return (0..<count).map { shift in
         UInt8((value >> ((count - shift - 1) * 8)) & 0xFF)
+    }
+}
+
+private struct DeterministicByteGenerator {
+    private var state: UInt64
+
+    init(seed: UInt64) {
+        self.state = seed
+    }
+
+    mutating func next() -> UInt8 {
+        state = state &* 6364136223846793005 &+ 1442695040888963407
+        return UInt8((state >> 32) & 0xFF)
     }
 }

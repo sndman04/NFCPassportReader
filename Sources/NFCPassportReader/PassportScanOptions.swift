@@ -23,7 +23,8 @@ public struct PassportScanOptions: Sendable, Equatable {
         useExtendedMode: true,
         operationTimeout: 60,
         photoPolicy: .read,
-        securityPolicy: .notaryRecommended
+        securityPolicy: .notaryRecommended,
+        pacePolicy: .allowBACFallback
     )
 
     public static let identityOnly = PassportScanOptions(
@@ -34,7 +35,8 @@ public struct PassportScanOptions: Sendable, Equatable {
         useExtendedMode: false,
         operationTimeout: 45,
         photoPolicy: .skip,
-        securityPolicy: .identityOnly
+        securityPolicy: .identityOnly,
+        pacePolicy: .allowBACFallback
     )
 
     public let scanProfile: PassportScanProfile
@@ -45,6 +47,7 @@ public struct PassportScanOptions: Sendable, Equatable {
     public let operationTimeout: TimeInterval?
     public let photoPolicy: PassportPhotoPolicy
     public let securityPolicy: PassportReaderSecurityPolicy
+    public let pacePolicy: PassportReaderPACEPolicy
 
     public init(
         scanProfile: PassportScanProfile = .custom([]),
@@ -54,7 +57,8 @@ public struct PassportScanOptions: Sendable, Equatable {
         useExtendedMode: Bool = false,
         operationTimeout: TimeInterval? = nil,
         photoPolicy: PassportPhotoPolicy = .read,
-        securityPolicy: PassportReaderSecurityPolicy = .default
+        securityPolicy: PassportReaderSecurityPolicy = .default,
+        pacePolicy: PassportReaderPACEPolicy = .allowBACFallback
     ) {
         self.scanProfile = scanProfile
         self.skipSecureElements = skipSecureElements
@@ -64,5 +68,6 @@ public struct PassportScanOptions: Sendable, Equatable {
         self.operationTimeout = operationTimeout
         self.photoPolicy = photoPolicy
         self.securityPolicy = securityPolicy
+        self.pacePolicy = pacePolicy
     }
 }

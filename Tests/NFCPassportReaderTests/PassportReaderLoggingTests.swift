@@ -290,8 +290,14 @@ final class PassportReaderLoggingTests: XCTestCase {
     func testFailureMetadataProvidesRetryGuidanceWithoutSensitiveDetails() {
         let connectionFailure = NFCPassportReaderError.ConnectionError.privacySafeFailure
         XCTAssertEqual(connectionFailure.reason, .connectionLost)
+        XCTAssertEqual(connectionFailure.stage, .unknown)
         XCTAssertTrue(connectionFailure.isRetryLikelyToHelp)
         XCTAssertFalse(connectionFailure.recoverySuggestion.localizedCaseInsensitiveContains("APDU"))
+
+        let dataGroupFailure = NFCPassportReaderError.ConnectionError.privacySafeFailure(at: .readingDataGroup(.DG2))
+        XCTAssertEqual(dataGroupFailure.stage, .readingDataGroup(.DG2))
+        XCTAssertTrue(dataGroupFailure.isRetryLikelyToHelp)
+        XCTAssertTrue(dataGroupFailure.recoverySuggestion.localizedCaseInsensitiveContains("steady"))
 
         let accessKeyFailure = NFCPassportReaderError.InvalidMRZKey.privacySafeFailure
         XCTAssertEqual(accessKeyFailure.reason, .accessKeyRejected)
@@ -495,6 +501,54 @@ final class PassportReaderLoggingTests: XCTestCase {
         XCTAssertEqual(identityOnly.scanProfile, .identityOnly)
         XCTAssertEqual(identityOnly.photoPolicy, .skip)
         XCTAssertEqual(identityOnly.securityPolicy, .identityOnly)
+        XCTAssertEqual(identityOnly.pacePolicy, .allowBACFallback)
+    }
+
+    @available(iOS 15, *)
+    func testPACEPolicyRequiresExplicitCredentialWithoutLoggingDetails() throws {
+        let reader = PassportReader()
+
+        XCTAssertNoThrow(try reader.validatePACEPolicyBeforeAttempt())
+
+        let strictOptions = PassportScanOptions(
+            scanProfile: .identityOnly,
+            pacePolicy: .requireExplicitCredential(.can)
+        )
+        XCTAssertEqual(strictOptions.pacePolicy, .requireExplicitCredential(.can))
+    }
+
+    func testDataGroupReadReportsAreSafeAndCanTrackSkippedStates() throws {
+        let model = NFCPassportModel()
+        model.recordDataGroupReadStatus(.requested, for: .DG1)
+        model.recordDataGroupReadStatus(.advertised, for: .DG2)
+        model.recordDataGroupReadStatus(.blockedByPolicy, for: .DG2)
+
+        let reports = model.identityResult.dataGroupReadReports
+        XCTAssertTrue(reports.contains(PassportDataGroupReadReport(dataGroup: .DG1, status: .requested)))
+        XCTAssertTrue(reports.contains(PassportDataGroupReadReport(dataGroup: .DG2, status: .blockedByPolicy)))
+        XCTAssertFalse(String(describing: reports).localizedCaseInsensitiveContains("APDU"))
+    }
+
+    func testInteroperabilityRecordRejectsIdentifyingLookingNotes() {
+        let safe = PassportInteroperabilityRecord(
+            issuingRegionCode: "USA",
+            chipFeatureClass: "PACE+DG2",
+            scanOptions: .notaryStrict,
+            verificationResult: nil,
+            trustLevel: nil,
+            notes: "Older chip, synthetic note only"
+        )
+        XCTAssertTrue(safe.containsOnlyNonIdentifyingFields)
+
+        let unsafe = PassportInteroperabilityRecord(
+            issuingRegionCode: "USA",
+            chipFeatureClass: "PACE+DG2",
+            scanOptions: .notaryStrict,
+            verificationResult: nil,
+            trustLevel: nil,
+            notes: "L898902C36UTO7408122F1204159ZE184226B"
+        )
+        XCTAssertFalse(unsafe.containsOnlyNonIdentifyingFields)
     }
 
     func testIdentityResultRequiresActualDG7ImagePayloadForSignaturePresence() throws {
@@ -525,6 +579,7 @@ final class PassportReaderLoggingTests: XCTestCase {
 
         XCTAssertEqual(successSummary.trustLevel, .inconclusive)
         XCTAssertEqual(successSummary.verificationResult?.overallStatus, .notChecked)
+        XCTAssertEqual(successSummary.dataGroupReadReports, [])
         XCTAssertNil(successSummary.failure)
     }
 
@@ -612,7 +667,8 @@ final class PassportReaderLoggingTests: XCTestCase {
             _ = try await fixture.readPassport(
                 mrzKey: "SYNTHETIC",
                 scanProfile: .identityOnly,
-                securityPolicy: PassportReaderSecurityPolicy(verificationRequirement: .passiveAuthentication)
+                securityPolicy: PassportReaderSecurityPolicy(verificationRequirement: .passiveAuthentication),
+                pacePolicy: .requirePACEWhenAdvertised
             )
             XCTFail("Expected policy failure")
         } catch let error as NFCPassportReaderError {

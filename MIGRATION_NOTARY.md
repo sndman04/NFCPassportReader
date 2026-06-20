@@ -75,18 +75,22 @@ For compatibility calls that still use `readPassport(mrzKey:tags:)`, an empty ta
 
 `PassportReaderSecurityPolicy.notaryRecommended` currently allows passport photo review, blocks unsafe raw export, and requires passive-authentication integrity checks to pass when verification is attempted. If Notary Journal needs a softer rollout while validating real passports, use `.default` temporarily and document the reason in this file before tagging.
 
+`PassportScanOptions.notaryStrict` uses the compatibility PACE policy `.allowBACFallback` so existing MRZ-based scans still work while Notary validates its passport population. After real-device coverage confirms the rollout path, the app can choose `.requirePACEWhenAdvertised` or `.requireExplicitCredential(.can)` for workflows where fallback should be blocked.
+
 Prefer `passport.identityResult` for app-facing mapping where possible. It omits MRZ text, raw data-group bytes, APDU data, certificates, cryptographic material, and image bytes while preserving normalized fields, verification status, trust level, and certificate-trust metadata. Passive authentication verifies the groups that were actually read; app copy should not imply unread optional groups were checked.
 
 Use `passport.verificationResult.*Detail` fields when the app needs to distinguish missing master list, skipped authentication, unsupported authentication, hash mismatch, signer trust failure, and other safe reasons. Do not parse raw error strings.
 
-Use `PassportReaderDiagnosticsSummary` for support flows that need safe scan metadata. Do not attach raw model dumps, screenshots of identity fields, console logs, or passport photos to support diagnostics.
+Use `PassportReaderDiagnosticsSummary` for support flows that need safe scan metadata, including data-group read reports that say whether a group was requested, advertised, read, skipped, blocked, unsupported, or failed. Do not attach raw model dumps, screenshots of identity fields, console logs, or passport photos to support diagnostics.
+
+For private interoperability tracking, use `PassportInteroperabilityRecord` with non-identifying country/feature-class outcomes only. Do not store MRZ text, document numbers, exact dates, images, APDUs, keys, certificate dumps, or long hex samples in compatibility notes.
 
 ## Failure Handling
 
 ```swift
 catch let error as NFCPassportReaderError {
-    let failure = error.privacySafeFailure
-    // Use failure.reason, failure.isRetryLikelyToHelp, and failure.recoverySuggestion.
+    let failure = error.privacySafeFailure(at: .unknown)
+    // Use failure.reason, failure.stage, failure.isRetryLikelyToHelp, and failure.recoverySuggestion.
 }
 ```
 
@@ -108,7 +112,7 @@ Do not use low-level BAC/session-key APIs from app code. This fork keeps BAC key
 
 - Build this package with the iOS package scheme.
 - Build Notary Journal against the fork tag.
-- Run the local privacy scan with `scripts/privacy_scan.sh`.
+- Run `scripts/release_check.sh` in the fork.
 - Run an on-device passport scan.
 - Validate `.notaryStrict` against real passports before making it mandatory in production, especially when the master list is absent or incomplete.
 - Confirm Xcode console output contains no MRZ/access-key/APDU/key/data-group/photo byte dumps.

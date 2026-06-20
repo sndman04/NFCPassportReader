@@ -30,6 +30,7 @@ public struct PassportIdentityResult: Sendable, Equatable {
     public let hasFaceImage: Bool
     public let hasSignatureImage: Bool
     public let dataGroupsRead: [DataGroupId]
+    public let dataGroupReadReports: [PassportDataGroupReadReport]
     public let verificationResult: PassportVerificationResult
     public let trustLevel: PassportTrustLevel
     public let certificateTrustMetadata: PassportCertificateTrustMetadata
@@ -56,6 +57,7 @@ public struct PassportIdentityResult: Sendable, Equatable {
             self.hasSignatureImage = false
         }
         self.dataGroupsRead = passport.dataGroupsAvailable
+        self.dataGroupReadReports = passport.dataGroupReadReports
         self.verificationResult = passport.verificationResult
         self.trustLevel = PassportTrustLevel(passport: passport)
         self.certificateTrustMetadata = PassportCertificateTrustMetadata(passport: passport)

@@ -116,6 +116,7 @@ public class NFCPassportModel {
     /// Prefer `identityResult` and `verificationResult` in host apps.
     public private(set) var dataGroupsRead : [DataGroupId:DataGroup] = [:]
     public private(set) var dataGroupHashes = [DataGroupId: DataGroupHash]()
+    public private(set) var dataGroupReadReports: [PassportDataGroupReadReport] = []
 
     public internal(set) var cardAccess : CardAccess?
     public internal(set) var BACStatus : PassportAuthenticationStatus = .notDone
@@ -282,6 +283,7 @@ public class NFCPassportModel {
         dataGroupsAvailable.removeAll(keepingCapacity: false)
         dataGroupsRead.removeAll(keepingCapacity: false)
         dataGroupHashes.removeAll(keepingCapacity: false)
+        dataGroupReadReports.removeAll(keepingCapacity: false)
         cardAccess = nil
         certificateSigningGroups.removeAll(keepingCapacity: false)
         activeAuthenticationChallenge.removeAll(keepingCapacity: false)
@@ -319,6 +321,14 @@ public class NFCPassportModel {
             ret["AASignature"] = Data(activeAuthenticationSignature).base64EncodedString()
         }
         return ret
+    }
+
+    func recordDataGroupReadStatus(_ status: PassportDataGroupReadStatus, for id: DataGroupId) {
+        guard id != .Unknown else { return }
+        let report = PassportDataGroupReadReport(dataGroup: id, status: status)
+        if !dataGroupReadReports.contains(report) {
+            dataGroupReadReports.append(report)
+        }
     }
 
     public func getHashesForDatagroups( hashAlgorythm: String ) -> [DataGroupId:[UInt8]]  {

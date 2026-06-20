@@ -20,6 +20,7 @@ public protocol PassportChipReading {
         operationTimeout: TimeInterval?,
         photoPolicy: PassportPhotoPolicy,
         securityPolicy: PassportReaderSecurityPolicy,
+        pacePolicy: PassportReaderPACEPolicy,
         progressHandler: PassportReaderProgressHandler?,
         customDisplayMessage: ((NFCViewDisplayMessage) -> String?)?
     ) async throws -> NFCPassportModel
@@ -38,6 +39,7 @@ extension PassportChipReading {
         operationTimeout: TimeInterval? = nil,
         photoPolicy: PassportPhotoPolicy = .read,
         securityPolicy: PassportReaderSecurityPolicy = .default,
+        pacePolicy: PassportReaderPACEPolicy = .allowBACFallback,
         progressHandler: PassportReaderProgressHandler? = nil,
         customDisplayMessage: ((NFCViewDisplayMessage) -> String?)? = nil
     ) async throws -> NFCPassportModel {
@@ -52,6 +54,31 @@ extension PassportChipReading {
             operationTimeout: operationTimeout,
             photoPolicy: photoPolicy,
             securityPolicy: securityPolicy,
+            pacePolicy: pacePolicy,
+            progressHandler: progressHandler,
+            customDisplayMessage: customDisplayMessage
+        )
+    }
+
+    public func readPassport(
+        mrzKey: String,
+        options: PassportScanOptions,
+        aaChallenge: [UInt8]? = nil,
+        progressHandler: PassportReaderProgressHandler? = nil,
+        customDisplayMessage: ((NFCViewDisplayMessage) -> String?)? = nil
+    ) async throws -> NFCPassportModel {
+        try await readPassport(
+            mrzKey: mrzKey,
+            scanProfile: options.scanProfile,
+            aaChallenge: aaChallenge,
+            skipSecureElements: options.skipSecureElements,
+            skipCA: options.skipCA,
+            skipPACE: options.skipPACE,
+            useExtendedMode: options.useExtendedMode,
+            operationTimeout: options.operationTimeout,
+            photoPolicy: options.photoPolicy,
+            securityPolicy: options.securityPolicy,
+            pacePolicy: options.pacePolicy,
             progressHandler: progressHandler,
             customDisplayMessage: customDisplayMessage
         )
@@ -80,6 +107,7 @@ public struct PassportReaderFixture: PassportChipReading {
         operationTimeout: TimeInterval? = nil,
         photoPolicy: PassportPhotoPolicy = .read,
         securityPolicy: PassportReaderSecurityPolicy = .default,
+        pacePolicy: PassportReaderPACEPolicy = .allowBACFallback,
         progressHandler: PassportReaderProgressHandler? = nil,
         customDisplayMessage: ((NFCViewDisplayMessage) -> String?)? = nil
     ) async throws -> NFCPassportModel {

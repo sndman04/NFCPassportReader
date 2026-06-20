@@ -118,13 +118,17 @@ let result = try await passportReader.readPassportIdentity(
 
 For compatibility flows that still need `NFCPassportModel`, call `removeSensitiveDataForPrivacy()` after projecting the app-facing values you need. This clears raw data groups, parsed hashes, card-access data, certificate objects, and active-authentication material held by that model instance. This is best-effort data minimization; Swift value copies and framework internals cannot guarantee complete memory zeroization.
 
-`PassportScanOptions` provides reviewed combinations of profile, timeout, photo policy, authentication flags, and security policy. `.notaryStrict` is the recommended starting point for Notary Journal style workflows; `.identityOnly` keeps collection minimal when the app does not need photo or optional verification groups.
+`PassportScanOptions` provides reviewed combinations of profile, timeout, photo policy, authentication flags, security policy, and PACE policy. `.notaryStrict` is the recommended starting point for Notary Journal style workflows; `.identityOnly` keeps collection minimal when the app does not need photo or optional verification groups.
+
+PACE policy defaults to `.allowBACFallback` for compatibility. Use `.requirePACEWhenAdvertised` only after validating the target passport population with real devices, and use `.requireExplicitCredential(.can)`, `.pin`, or `.puk` when the workflow has collected that credential and should fail rather than fall back to MRZ-derived PACE/BAC.
 
 If passive authentication runs without a CSCA master list, SOD signature and data-group hash checks can still report that the data groups actually read are internally consistent, but country signer trust is reported as not checked. A trusted signer result requires a master list from the issuing country or ICAO PKD.
 
 `PassportVerificationResult` keeps the original simple status properties and also includes safe detail fields such as `sodSignatureDetail`, `dataGroupHashDetail`, `countrySigningCertificateDetail`, `activeAuthenticationDetail`, and `chipAuthenticationDetail`. These distinguish cases such as not requested, not supported, skipped, missing SOD, missing master list, signer untrusted, hash mismatch, malformed SOD, unsupported algorithm, attempted failed, and passed without exposing raw hashes or certificate contents. `dataGroupCoverage` summarizes whether read groups were covered by SOD hashes.
 
-For support diagnostics, use `PassportReaderDiagnosticsSummary`. It records the scan profile, photo policy, security policy, safe failure reason, verification summary, trust level, and data-group names read. It does not include identity fields, MRZ text, APDUs, certificates, keys, raw data groups, or images.
+For support diagnostics, use `PassportReaderDiagnosticsSummary`. It records the scan profile, photo policy, security policy, safe failure reason, verification summary, trust level, data-group names read, and privacy-safe data-group read reports such as requested, advertised, read, skipped, blocked, unsupported, or failed. It does not include identity fields, MRZ text, APDUs, certificates, keys, raw data groups, or images.
+
+For private real-device compatibility tracking, use `PassportInteroperabilityRecord` and keep notes non-identifying. It is designed for country/feature-class outcomes, not passport numbers, MRZ text, image bytes, APDUs, keys, certificate dumps, or long hex samples.
 
 `PassportReaderPrivacyCopy` provides short suggested consent and diagnostics copy for host apps that want package-owned wording.
 
@@ -135,8 +139,8 @@ do {
     let passport = try await passportReader.readPassport(mrzKey: mrzKey, scanProfile: .fullVerification)
     let verification = passport.verificationResult
 } catch let error as NFCPassportReaderError {
-    let failure = error.privacySafeFailure
-    // Use failure.reason, failure.isRetryLikelyToHelp, and failure.recoverySuggestion.
+    let failure = error.privacySafeFailure(at: .readingDataGroup(.DG2))
+    // Use failure.reason, failure.stage, failure.isRetryLikelyToHelp, and failure.recoverySuggestion.
 }
 ```
 
@@ -212,11 +216,10 @@ Supported levels are `.off`, `.error`, `.info`, and `.debugRedacted`. `.debugRed
 Before tagging this fork for app consumption, run:
 
 ```bash
-DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build
-DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build-for-testing
-scripts/privacy_scan.sh
-git diff --check
+scripts/release_check.sh
 ```
+
+The release check script runs the required iOS package build, iOS build-for-testing, privacy scan, whitespace check, and a targeted risky diagnostics search. Review any search hits before tagging.
 
 `swift test` may fail in this environment because SwiftPM evaluates the package against macOS while the OpenSSL dependency requires a newer macOS target. Use the iOS/Xcode path above unless the package manifest is deliberately changed to support macOS tests.
 

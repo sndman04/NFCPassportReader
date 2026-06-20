@@ -20,6 +20,7 @@ public struct PassportReaderDiagnosticsSummary: Sendable, Equatable {
     public let verificationResult: PassportVerificationResult?
     public let trustLevel: PassportTrustLevel?
     public let dataGroupsRead: [DataGroupId]
+    public let dataGroupReadReports: [PassportDataGroupReadReport]
 
     public init(
         scanProfile: PassportScanProfile,
@@ -34,6 +35,7 @@ public struct PassportReaderDiagnosticsSummary: Sendable, Equatable {
         self.verificationResult = nil
         self.trustLevel = nil
         self.dataGroupsRead = []
+        self.dataGroupReadReports = []
     }
 
     public init(
@@ -49,6 +51,7 @@ public struct PassportReaderDiagnosticsSummary: Sendable, Equatable {
         self.verificationResult = passport.verificationResult
         self.trustLevel = PassportTrustLevel(passport: passport)
         self.dataGroupsRead = passport.dataGroupsAvailable
+        self.dataGroupReadReports = passport.dataGroupReadReports
     }
 
     public init(passport: NFCPassportModel) {
@@ -59,5 +62,6 @@ public struct PassportReaderDiagnosticsSummary: Sendable, Equatable {
         self.verificationResult = passport.verificationResult
         self.trustLevel = PassportTrustLevel(passport: passport)
         self.dataGroupsRead = passport.dataGroupsAvailable
+        self.dataGroupReadReports = passport.dataGroupReadReports
     }
 }

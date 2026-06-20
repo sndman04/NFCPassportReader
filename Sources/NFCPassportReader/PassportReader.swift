@@ -58,6 +58,7 @@ public class PassportReader : NSObject {
     private var skipSecureElements = true
     private var skipCA = false
     private var skipPACE = false
+    private var pacePolicy: PassportReaderPACEPolicy = .allowBACFallback
     private var effectivePhotoPolicy: PassportPhotoPolicy = .read
     
     // Extended mode is used for reading eMRTD's that support extended length APDUs
@@ -104,12 +105,15 @@ public class PassportReader : NSObject {
         dataAmountToReadOverride = amount
     }
     
-    public func readPassport( mrzKey : String, tags : [DataGroupId] = [], aaChallenge: [UInt8]? = nil, skipSecureElements : Bool = true, skipCA : Bool = false, skipPACE : Bool = false, useExtendedMode : Bool = false, operationTimeout: TimeInterval? = nil, photoPolicy: PassportPhotoPolicy = .read, securityPolicy: PassportReaderSecurityPolicy = .default, progressHandler: PassportReaderProgressHandler? = nil, customDisplayMessage : ((NFCViewDisplayMessage) -> String?)? = nil) async throws -> NFCPassportModel {
+    public func readPassport( mrzKey : String, tags : [DataGroupId] = [], aaChallenge: [UInt8]? = nil, skipSecureElements : Bool = true, skipCA : Bool = false, skipPACE : Bool = false, useExtendedMode : Bool = false, operationTimeout: TimeInterval? = nil, photoPolicy: PassportPhotoPolicy = .read, securityPolicy: PassportReaderSecurityPolicy = .default, pacePolicy: PassportReaderPACEPolicy = .allowBACFallback, progressHandler: PassportReaderProgressHandler? = nil, customDisplayMessage : ((NFCViewDisplayMessage) -> String?)? = nil) async throws -> NFCPassportModel {
         guard NFCNDEFReaderSession.readingAvailable else {
             pendingPACECredential = nil
             eventLogger.log(.readFailed(.nfcNotSupported))
             throw NFCPassportReaderError.NFCNotSupported
         }
+
+        self.pacePolicy = pacePolicy
+        try validatePACEPolicyBeforeSession(skipPACE: skipPACE)
 
         guard beginScanIfPossible() else {
             pendingPACECredential = nil
@@ -126,6 +130,7 @@ public class PassportReader : NSObject {
         self.aaChallenge = aaChallenge
         self.skipCA = skipCA
         self.skipPACE = skipPACE
+        self.pacePolicy = pacePolicy
         self.useExtendedMode = useExtendedMode
         self.securityPolicy = securityPolicy
         
@@ -138,6 +143,7 @@ public class PassportReader : NSObject {
                 securityPolicy: securityPolicy
             )
         )
+        self.dataGroupsToRead.forEach { self.passport.recordDataGroupReadStatus(.requested, for: $0) }
         self.nfcViewDisplayMessageHandler = customDisplayMessage
         self.progressHandler = progressHandler
         self.skipSecureElements = skipSecureElements
@@ -190,6 +196,7 @@ public class PassportReader : NSObject {
         operationTimeout: TimeInterval? = nil,
         photoPolicy: PassportPhotoPolicy = .read,
         securityPolicy: PassportReaderSecurityPolicy = .default,
+        pacePolicy: PassportReaderPACEPolicy = .allowBACFallback,
         progressHandler: PassportReaderProgressHandler? = nil,
         customDisplayMessage: ((NFCViewDisplayMessage) -> String?)? = nil
     ) async throws -> NFCPassportModel {
@@ -204,6 +211,7 @@ public class PassportReader : NSObject {
             operationTimeout: operationTimeout,
             photoPolicy: photoPolicy,
             securityPolicy: securityPolicy,
+            pacePolicy: pacePolicy,
             progressHandler: progressHandler,
             customDisplayMessage: customDisplayMessage
         )
@@ -222,6 +230,7 @@ public class PassportReader : NSObject {
         operationTimeout: TimeInterval? = nil,
         photoPolicy: PassportPhotoPolicy = .read,
         securityPolicy: PassportReaderSecurityPolicy = .default,
+        pacePolicy: PassportReaderPACEPolicy = .allowBACFallback,
         progressHandler: PassportReaderProgressHandler? = nil,
         customDisplayMessage: ((NFCViewDisplayMessage) -> String?)? = nil
     ) async throws -> NFCPassportModel {
@@ -237,6 +246,7 @@ public class PassportReader : NSObject {
             operationTimeout: operationTimeout,
             photoPolicy: photoPolicy,
             securityPolicy: securityPolicy,
+            pacePolicy: pacePolicy,
             progressHandler: progressHandler,
             customDisplayMessage: customDisplayMessage
         )
@@ -255,6 +265,7 @@ public class PassportReader : NSObject {
         operationTimeout: TimeInterval? = nil,
         photoPolicy: PassportPhotoPolicy = .read,
         securityPolicy: PassportReaderSecurityPolicy = .default,
+        pacePolicy: PassportReaderPACEPolicy = .allowBACFallback,
         progressHandler: PassportReaderProgressHandler? = nil,
         customDisplayMessage: ((NFCViewDisplayMessage) -> String?)? = nil
     ) async throws -> NFCPassportModel {
@@ -271,6 +282,7 @@ public class PassportReader : NSObject {
             operationTimeout: operationTimeout,
             photoPolicy: photoPolicy,
             securityPolicy: securityPolicy,
+            pacePolicy: pacePolicy,
             progressHandler: progressHandler,
             customDisplayMessage: customDisplayMessage
         )
@@ -294,6 +306,7 @@ public class PassportReader : NSObject {
             operationTimeout: options.operationTimeout,
             photoPolicy: options.photoPolicy,
             securityPolicy: options.securityPolicy,
+            pacePolicy: options.pacePolicy,
             progressHandler: progressHandler,
             customDisplayMessage: customDisplayMessage
         )
@@ -310,6 +323,7 @@ public class PassportReader : NSObject {
         operationTimeout: TimeInterval? = nil,
         photoPolicy: PassportPhotoPolicy = .read,
         securityPolicy: PassportReaderSecurityPolicy = .default,
+        pacePolicy: PassportReaderPACEPolicy = .allowBACFallback,
         progressHandler: PassportReaderProgressHandler? = nil,
         customDisplayMessage: ((NFCViewDisplayMessage) -> String?)? = nil
     ) async throws -> PassportChipReadResult {
@@ -324,6 +338,7 @@ public class PassportReader : NSObject {
             operationTimeout: operationTimeout,
             photoPolicy: photoPolicy,
             securityPolicy: securityPolicy,
+            pacePolicy: pacePolicy,
             progressHandler: progressHandler,
             customDisplayMessage: customDisplayMessage
         )
@@ -343,6 +358,7 @@ public class PassportReader : NSObject {
         operationTimeout: TimeInterval? = nil,
         photoPolicy: PassportPhotoPolicy = .read,
         securityPolicy: PassportReaderSecurityPolicy = .default,
+        pacePolicy: PassportReaderPACEPolicy = .allowBACFallback,
         progressHandler: PassportReaderProgressHandler? = nil,
         customDisplayMessage: ((NFCViewDisplayMessage) -> String?)? = nil
     ) async throws -> PassportChipReadResult {
@@ -357,6 +373,7 @@ public class PassportReader : NSObject {
             operationTimeout: operationTimeout,
             photoPolicy: photoPolicy,
             securityPolicy: securityPolicy,
+            pacePolicy: pacePolicy,
             progressHandler: progressHandler,
             customDisplayMessage: customDisplayMessage
         )
@@ -616,6 +633,8 @@ extension PassportReader {
                     throw NFCPassportReaderError.NotYetSupported("PACE not supported")
                 }
 
+                try validatePACEPolicyBeforeAttempt()
+
                 var lastPACEError: Error?
                 var didPACE = false
                 for paceInfo in orderedPACEInfos {
@@ -642,6 +661,9 @@ extension PassportReader {
                 trackingDelegate?.paceFailed()
 
                 passport.PACEStatus = .failed
+                if shouldFailInsteadOfFallingBackFromPACE(error: error) {
+                    throw error
+                }
                 eventLogger.log(.paceFailedFallbackToBAC)
                 emitProgress(.paceFailedFallbackToBAC)
             }
@@ -682,6 +704,52 @@ extension PassportReader {
         emitProgress(.complete)
 
         return self.passport
+    }
+
+    func validatePACEPolicyBeforeSession(skipPACE: Bool) throws {
+        if skipPACE, pacePolicy != .allowBACFallback {
+            pendingPACECredential = nil
+            throw NFCPassportReaderError.PACEError(
+                "Credential policy",
+                "PACE cannot be disabled for the requested policy"
+            )
+        }
+
+        if case .requireExplicitCredential(let requiredReference) = pacePolicy {
+            guard let credential = pendingPACECredential,
+                  credential.reference == requiredReference else {
+                pendingPACECredential = nil
+                throw NFCPassportReaderError.PACEError(
+                    "Credential policy",
+                    "Explicit PACE credential required"
+                )
+            }
+        }
+    }
+
+    func validatePACEPolicyBeforeAttempt() throws {
+        switch pacePolicy {
+        case .allowBACFallback, .requirePACEWhenAdvertised:
+            return
+        case .requireExplicitCredential(let requiredReference):
+            guard paceKeyReference == requiredReference,
+                  paceKey != nil,
+                  paceKey != mrzKey else {
+                throw NFCPassportReaderError.PACEError(
+                    "Credential policy",
+                    "Explicit PACE credential required"
+                )
+            }
+        }
+    }
+
+    func shouldFailInsteadOfFallingBackFromPACE(error: Error) -> Bool {
+        switch pacePolicy {
+        case .allowBACFallback:
+            return false
+        case .requirePACEWhenAdvertised, .requireExplicitCredential:
+            return true
+        }
     }
     
     
@@ -731,6 +799,7 @@ extension PassportReader {
             self.passport.addDataGroup( .COM, dataGroup:com )
             self.addDatagroupsToRead(com: com, to: &DGsToRead)
         }
+        DGsToRead.forEach { self.passport.recordDataGroupReadStatus(.advertised, for: $0) }
         
         if DGsToRead.contains( .DG14 ) {
             
@@ -766,12 +835,14 @@ extension PassportReader {
             }
         }
 
+        let advertisedDataGroups = DGsToRead
         DGsToRead = PassportDataGroupReadPolicy(
             requestedDataGroups: dataGroupsToRead,
             readAllDataGroups: readAllDatagroups,
             skipSecureElements: skipSecureElements,
             photoPolicy: effectivePhotoPolicy
         ).apply(to: DGsToRead)
+        recordSkippedDataGroups(advertised: advertisedDataGroups, selected: DGsToRead)
         for dgId in DGsToRead {
             self.updateReaderSessionMessage( alertMessage: NFCViewDisplayMessage.readingDataGroupProgress(dgId, 0) )
             if let dg = try await readDataGroup(tagReader:tagReader, dgId:dgId) {
@@ -794,9 +865,11 @@ extension PassportReader {
             do {
                 let response = try await tagReader.readDataGroup(dataGroup:dgId)
                 let dg = try DataGroupParser().parseDG(data: response)
+                self.passport.recordDataGroupReadStatus(.read, for: dgId)
                 return dg
             } catch let error as NFCPassportReaderError {
                 eventLogger.log(.dataGroupReadFailed(dgId))
+                self.passport.recordDataGroupReadStatus(.failed, for: dgId)
                 nfcPassportReaderError = error
 
                 var redoBAC = false
@@ -825,6 +898,7 @@ extension PassportReader {
                 } else if error.isUnsupportedDataGroupRead {
                     // OK, this DataGroup is not supported, lets skip it
                     eventLogger.log(.unsupportedDataGroup(dgId))
+                    self.passport.recordDataGroupReadStatus(.unsupported, for: dgId)
                     return nil
                 }
                 
@@ -856,6 +930,21 @@ extension PassportReader {
         
         // SOD should not be present in COM, but just in case we check before adding it so its not read twice
         if !DGsToRead.contains(.SOD) { DGsToRead.insert(.SOD, at: 0) }
+    }
+
+    private func recordSkippedDataGroups(advertised: [DataGroupId], selected: [DataGroupId]) {
+        let selectedSet = Set(selected)
+        let requestedSet = Set(dataGroupsToRead)
+        for dataGroup in advertised where !selectedSet.contains(dataGroup) {
+            if (dataGroup == .DG2 && effectivePhotoPolicy == .skip)
+                || (skipSecureElements && (dataGroup == .DG3 || dataGroup == .DG4)) {
+                passport.recordDataGroupReadStatus(.blockedByPolicy, for: dataGroup)
+            } else if !readAllDatagroups && !requestedSet.contains(dataGroup) {
+                passport.recordDataGroupReadStatus(.skippedByProfile, for: dataGroup)
+            } else {
+                passport.recordDataGroupReadStatus(.skippedByProfile, for: dataGroup)
+            }
+        }
     }
 }
 #endif

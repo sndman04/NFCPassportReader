@@ -26,10 +26,13 @@ This fork reads identity-document NFC data. Privacy, security, correctness, and 
 - Sensitive low-level parsing and crypto errors should fail closed without exposing raw values.
 - Scan profiles and photo policy let apps request only the data groups they need.
 - `PassportReaderSecurityPolicy` centralizes photo access, raw-export permission, and verification strictness.
+- `PassportReaderPACEPolicy` lets callers keep compatible BAC fallback, require PACE when advertised, or require an explicit CAN/PIN/PUK credential for workflows that should fail closed.
 - `PassportIdentityResult` gives host apps normalized fields and verification metadata without MRZ text, raw data groups, APDUs, certificates, keys, or image bytes.
 - `PassportChipReadResult` and `PassportReader.readPassportIdentity(...)` provide a privacy-first scan path that does not return the raw compatibility model to the host app.
 - `NFCPassportModel.removeSensitiveDataForPrivacy()` provides best-effort cleanup of raw groups, parsed hashes, card-access data, certificates, and active-authentication material for compatibility callers after projection.
 - `UnsafePassportRawDataExporter` requires an explicit policy opt-in for rare raw export workflows.
+- `PassportReaderFailure` carries stage-aware retry metadata without exposing low-level error payloads, and data-group read reports describe requested/advertised/read/skipped/blocked/unsupported/failed states without raw contents.
+- `PassportInteroperabilityRecord` is limited to non-identifying real-device compatibility notes and rejects MRZ-like strings or long hex samples.
 - Parser and crypto boundaries should reject malformed input without traps, out-of-bounds reads, or empty cryptographic outputs.
 - DG2 and DG7 image parsing applies explicit size and structural bounds before retaining image bytes or allowing image decode.
 
