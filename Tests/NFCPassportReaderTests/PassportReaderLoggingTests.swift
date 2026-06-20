@@ -188,7 +188,7 @@ final class PassportReaderLoggingTests: XCTestCase {
     func testScanProfilesMapToExpectedDataGroups() {
         XCTAssertEqual(PassportScanProfile.identityOnly.dataGroups, [.COM, .SOD, .DG1])
         XCTAssertEqual(PassportScanProfile.identityWithPhoto.dataGroups, [.COM, .SOD, .DG1, .DG2])
-        XCTAssertEqual(PassportScanProfile.fullVerification.dataGroups, [.COM, .SOD, .DG1, .DG2, .DG12, .DG14, .DG15])
+        XCTAssertEqual(PassportScanProfile.fullVerification.dataGroups, [.COM, .SOD, .DG1, .DG2, .DG7, .DG11, .DG12, .DG14, .DG15])
     }
 
     func testPACEKeyReferencesUseStandardPasswordReferenceValues() {
@@ -332,6 +332,37 @@ final class PassportReaderLoggingTests: XCTestCase {
         XCTAssertEqual(PassportPhotoPolicy.skip.apply(to: requested), [.COM, .SOD, .DG1, .DG12])
     }
 
+    func testDataGroupReadPolicyAppliesPrivacyFiltersAfterCOMExpansion() {
+        let advertisedByCOM: [DataGroupId] = [.SOD, .DG1, .DG2, .DG3, .DG4, .DG7, .DG11, .DG12]
+        let readAllPolicy = PassportDataGroupReadPolicy(
+            requestedDataGroups: [.COM, .SOD],
+            readAllDataGroups: true,
+            skipSecureElements: true,
+            photoPolicy: .skip
+        )
+
+        XCTAssertEqual(readAllPolicy.apply(to: advertisedByCOM), [.SOD, .DG1, .DG7, .DG11, .DG12])
+
+        let explicitPolicy = PassportDataGroupReadPolicy(
+            requestedDataGroups: [.COM, .SOD, .DG1, .DG2, .DG11],
+            readAllDataGroups: false,
+            skipSecureElements: false,
+            photoPolicy: .skip
+        )
+
+        XCTAssertEqual(explicitPolicy.apply(to: advertisedByCOM), [.SOD, .DG1, .DG11])
+    }
+
+    func testIdentityOnlySecurityPolicyTurnsLegacyEmptyTagsIntoMinimalRead() {
+        let requested = PassportDataGroupReadPolicy.requestedDataGroups(
+            tags: [],
+            photoPolicy: .read,
+            securityPolicy: .identityOnly
+        )
+
+        XCTAssertEqual(requested, [.COM, .SOD, .DG1])
+    }
+
     func testSecurityPolicyCanDisallowPassportPhotoReads() {
         let policy = PassportReaderSecurityPolicy.identityOnly
 
@@ -367,6 +398,14 @@ final class PassportReaderLoggingTests: XCTestCase {
         XCTAssertEqual(result.certificateTrustMetadata.masterListProvided, false)
         XCTAssertEqual(result.verificationResult.overallStatus, .notChecked)
         XCTAssertFalse(Mirror(reflecting: result).children.contains { $0.label == "passportMRZ" })
+    }
+
+    func testIdentityResultRequiresActualDG7ImagePayloadForSignaturePresence() throws {
+        let model = NFCPassportModel()
+        let dg7WithoutImages = try XCTUnwrap(try DataGroupParser().parseDG(data: [0x67, 0x03, 0x02, 0x01, 0x00]) as? DataGroup7)
+        model.addDataGroup(.DG7, dataGroup: dg7WithoutImages)
+
+        XCTAssertFalse(model.identityResult.hasSignatureImage)
     }
 
     func testDiagnosticsSummaryContainsOnlySafeScanMetadata() {

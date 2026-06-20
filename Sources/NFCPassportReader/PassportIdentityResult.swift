@@ -50,7 +50,11 @@ public struct PassportIdentityResult: Sendable, Equatable {
         self.residenceAddress = passport.residenceAddress
         self.phoneNumber = passport.phoneNumber
         self.hasFaceImage = passport.getDataGroup(.DG2) != nil
-        self.hasSignatureImage = passport.getDataGroup(.DG7) != nil
+        if let dg7 = passport.getDataGroup(.DG7) as? DataGroup7 {
+            self.hasSignatureImage = !dg7.imageDataItems.isEmpty
+        } else {
+            self.hasSignatureImage = false
+        }
         self.dataGroupsRead = passport.dataGroupsAvailable
         self.verificationResult = passport.verificationResult
         self.trustLevel = PassportTrustLevel(passport: passport)

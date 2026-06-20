@@ -15,7 +15,7 @@ Logging is off by default. If diagnostics are needed, use `.error` or `.info` wi
 
 ## Recommended Scan Call
 
-The current app requests `.COM`, `.SOD`, `.DG1`, `.DG2`, `.DG12`, `.DG14`, and `.DG15`, which maps to `.fullVerification`.
+The previous app call requested `.COM`, `.SOD`, `.DG1`, `.DG2`, `.DG12`, `.DG14`, and `.DG15`. In this fork, `.fullVerification` also includes `.DG7` and `.DG11` so Notary Journal can collect signature/mark image presence and optional personal details such as place of birth when the chip provides them. Use a `.custom(...)` profile if the app must preserve the narrower historical collection set.
 
 ```swift
 let passport = try await reader.readPassport(
@@ -44,11 +44,12 @@ let passport = try await reader.readPassport(
 )
 ```
 
-Use `.identityOnly` or `.identityWithPhoto` only after confirming Notary Journal does not need optional details or chip-authentication groups for its workflow.
+Use `.identityOnly` or `.identityWithPhoto` only after confirming Notary Journal does not need optional details, signature/mark images, or chip-authentication groups for its workflow.
+For compatibility calls that still use `readPassport(mrzKey:tags:)`, an empty tag list plus `securityPolicy: .identityOnly` now resolves to the minimal identity group set instead of reading every group advertised by COM.
 
 `PassportReaderSecurityPolicy.notaryRecommended` currently allows passport photo review, blocks unsafe raw export, and requires passive-authentication integrity checks to pass when verification is attempted. If Notary Journal needs a softer rollout while validating real passports, use `.default` temporarily and document the reason in this file before tagging.
 
-Prefer `passport.identityResult` for app-facing mapping where possible. It omits MRZ text, raw data-group bytes, APDU data, certificates, cryptographic material, and image bytes while preserving normalized fields, verification status, trust level, and certificate-trust metadata.
+Prefer `passport.identityResult` for app-facing mapping where possible. It omits MRZ text, raw data-group bytes, APDU data, certificates, cryptographic material, and image bytes while preserving normalized fields, verification status, trust level, and certificate-trust metadata. Passive authentication verifies the groups that were actually read; app copy should not imply unread optional groups were checked.
 
 Use `PassportReaderDiagnosticsSummary` for support flows that need safe scan metadata. Do not attach raw model dumps, screenshots of identity fields, console logs, or passport photos to support diagnostics.
 

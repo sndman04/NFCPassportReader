@@ -270,15 +270,15 @@ Possible mapping:
 
 - `identityOnly`: `.COM`, `.SOD`, `.DG1`
 - `identityWithPhoto`: `.COM`, `.SOD`, `.DG1`, `.DG2`
-- `fullVerification`: `.COM`, `.SOD`, `.DG1`, `.DG2`, `.DG12`, `.DG14`, `.DG15`
+- `fullVerification`: `.COM`, `.SOD`, `.DG1`, `.DG2`, `.DG7`, `.DG11`, `.DG12`, `.DG14`, `.DG15`
 
-The current app requests:
+The original app request was:
 
 ```swift
 [.COM, .SOD, .DG1, .DG2, .DG12, .DG14, .DG15]
 ```
 
-Before changing behavior, confirm which groups are actually required for Notary Journal's workflow.
+The fork's `.fullVerification` profile now deliberately reads DG7 and DG11 as well, so signature/mark image presence and optional personal details such as place of birth can be collected when needed. Use `.custom(...)` to preserve the narrower historical set.
 
 ### 4. Retry Strategy Improvements
 
@@ -1018,6 +1018,79 @@ Remaining follow-up:
 
 - Add deterministic NFC-session seams if future work needs direct unit tests for Active Authentication event emission, PACE fallback ordering under thrown tag-reader errors, or chunk-size fallback behavior without hardware.
 - Run on-device interoperability checks before tagging, especially very large DG2 records, PACE-GM passports, unsupported IM/CAM-only passports, sparse optional DG11/DG12 records, and RSA/ECDSA Active Authentication chips.
+
+### 2026-06-20 Repository Gap Review
+
+Reviewed scan coverage, verification semantics, privacy surfaces, logging, public APIs, tests, migration notes, and the current threat model.
+
+Potential gaps to resolve or deliberately accept:
+
+- `photoPolicy` and `PassportReaderSecurityPolicy.allowsPassportPhoto` only filter explicitly requested data groups. Legacy `readPassport(mrzKey:tags: [])` still flips into "read all from COM" mode after policy filtering, so a caller using `.identityOnly` security policy plus empty tags could still read DG2 if the chip advertises it. Prefer making empty tags resolve through an explicit scan profile or applying photo/security filtering again after COM expansion.
+- Passive-authentication wording is still easy to overstate. `passportDataNotTampered` and `PassportVerificationResult.dataGroupHashStatus` are computed over the groups actually read, not every hash listed in SOD or every group present in COM. That is useful for minimal scans, but app copy and policy names should say "read data groups matched SOD" rather than implying the whole document was verified.
+- `PassportScanProfile.fullVerification` mirrors the current Notary Journal group list but does not include DG11 or DG7. That means `placeOfBirth`, residence address, phone number, DG11 personal number, and signature/mark images remain absent unless a custom profile opts in. This may be correct for privacy, but Notary Journal should explicitly decide whether those fields are needed.
+- `NFCPassportModel` remains a compatibility surface that publicly exposes sensitive fields or raw handles such as `passportMRZ`, `dataGroupsRead`, `getDataGroup(_:)`, `activeAuthenticationChallenge`, and `activeAuthenticationSignature`. `identityResult` is the safer integration path, but a future major version should quarantine or remove the raw model surface from ordinary app use.
+- Chip Authentication retry state appears incomplete: `readDataGroups` creates a local `ChipAuthenticationHandler`, but does not assign it to `self.caHandler`. Later retry logic checks `self.caHandler != nil` before falling back from chip-authenticated reads, so that recovery path may never execute after successful CA. This needs an NFC seam or device validation.
+- Active Authentication is only attempted when DG15 is read. Policies such as `.activeAuthenticationWhenSupported` and `.fullVerificationWhenSupported` can only know support if DG15 was requested and parsed; app profiles that omit DG15 should treat active-auth status as not checked, not unsupported.
+- On-device coverage remains the main release blocker. The private interoperability matrix should cover BAC-only, PACE-GM, unsupported IM/CAM-only, CA-supported, AA RSA, AA ECDSA, very large DG2, sparse DG11/DG12, multiple DG7 images, and connection-loss/chunk fallback cases without recording real passport values.
+
+Verification during this review:
+
+- Read the fork plan, migration notes, threat model, scan/profile/security-policy code, model/result surfaces, logging, parser tests, and risky logging/API search output.
+- Did not change production code or run a full iOS build in this pass; this was a findings review only.
+
+### 2026-06-20 Repository Gap Fix Pass
+
+Completed:
+
+- Added `PassportDataGroupReadPolicy` so data-group filtering is centralized and testable.
+- Re-applied photo policy after COM expansion, fixing legacy empty-tag reads that could otherwise read DG2 despite `photoPolicy: .skip` or `allowsPassportPhoto: false`.
+- Made `securityPolicy: .identityOnly` plus legacy `tags: []` resolve to the minimal identity profile (`.COM`, `.SOD`, `.DG1`) instead of reading every COM-advertised group.
+- Expanded `.fullVerification` to include `.DG7` and `.DG11` in addition to the previous Notary Journal set, so signature/mark image presence and optional personal details such as place of birth are collected when available.
+- Preserved `self.caHandler` during Chip Authentication so data-group retry logic can detect that CA was active and re-establish BAC if a later read requires fallback.
+- Tightened passive-authentication wording in README, migration notes, and trust copy to describe the groups actually read rather than implying unread optional groups were verified.
+- Clarified sensitive compatibility properties on `NFCPassportModel`, while keeping source compatibility and continuing to steer apps toward `identityResult` and `verificationResult`.
+- Fixed `PassportIdentityResult.hasSignatureImage` so an empty DG7 record no longer reports signature image presence.
+- Prevented duplicate entries in `dataGroupsAvailable` when the same data group is added more than once.
+
+Tests added or updated:
+
+- `.fullVerification` now expects `.COM`, `.SOD`, `.DG1`, `.DG2`, `.DG7`, `.DG11`, `.DG12`, `.DG14`, and `.DG15`.
+- Post-COM data-group policy filtering covers DG2 photo removal, DG3/DG4 secure-element removal, explicit requested-group filtering, and read-all filtering.
+- Legacy empty tags with `.identityOnly` security policy resolve to the minimal identity group set.
+- Empty DG7 data no longer sets `identityResult.hasSignatureImage`.
+
+Verification:
+
+- iOS package build succeeded:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build
+  ```
+
+- iOS package test build succeeded:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build-for-testing
+  ```
+
+- Full iOS simulator unit suite passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.3.1'
+  ```
+
+  Result: 87 tests, 0 failures.
+
+- `scripts/privacy_scan.sh` passed.
+- `git diff --check` passed.
+- Targeted risky-pattern search found no active production raw logging, print diagnostics, direct `Logger`, `os_log`, runtime traps, clipboard, persistence, network, or accidental raw-export usage. Remaining hits were expected API names, typed redacted `eventLogger.log(...)` calls, OpenSSL API names, documentation, and negative-test fixtures.
+- The only warning observed in the iOS test-build path remains the known non-source XCTest App Intents metadata warning: `Metadata extraction skipped. No AppIntents.framework dependency found.`
+
+Second-pass residual gaps:
+
+- Real-device interoperability remains required before tagging, especially `.fullVerification` with newly included DG7/DG11, PACE-GM, unsupported IM/CAM-only chips, Chip Authentication fallback, RSA/ECDSA Active Authentication, very large DG2, sparse DG11/DG12, and connection-loss/chunk fallback behavior.
+- `NFCPassportModel` still exposes raw compatibility surfaces by design for this source-compatible fork. Future major-version cleanup should move ordinary app integrations fully to safe projected result types and quarantine raw access behind an explicitly unsafe namespace or module.
+- Active Authentication support is still only knowable when DG15 is read. Profiles that omit DG15 should continue to present active authentication as not checked rather than unsupported.
 
 ### Option A: Remote Fork
 

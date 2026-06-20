@@ -58,11 +58,11 @@ public enum PassportTrustLevel: Sendable, Equatable, CustomStringConvertible {
         case .chipReadOnly:
             return "Passport chip data was read, but verification did not complete."
         case .dataIntegrityVerified:
-            return "Passport chip data matched the signed document security object."
+            return "The read passport chip data groups matched the signed document security object."
         case .documentSignerTrusted:
-            return "Passport chip data integrity and signer trust were verified."
+            return "The read passport chip data groups matched the signed document security object, and signer trust was verified."
         case .chipAuthenticated:
-            return "Passport chip data and chip authentication were verified."
+            return "The read passport chip data groups and chip authentication were verified."
         case .verificationFailed:
             return "Passport chip verification failed."
         case .inconclusive:

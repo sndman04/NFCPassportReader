@@ -44,6 +44,8 @@ public class NFCPassportModel {
         return name.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
     }()
     
+    /// Sensitive raw MRZ text from DG1. Prefer `identityResult` for app-facing mapping and do not log,
+    /// persist, upload, or display this value outside a deliberate privacy-reviewed workflow.
     public private(set) lazy var passportMRZ : String = { return passportDataElements?["5F1F"] ?? "NOT FOUND" }()
     
     // Extract fields from DG11 if present
@@ -110,6 +112,8 @@ public class NFCPassportModel {
     
     // Parsed datagroup hashes
     public private(set) var dataGroupsAvailable = [DataGroupId]()
+    /// Raw parsed data groups retained for compatibility, verification, and explicit unsafe export paths.
+    /// Prefer `identityResult` and `verificationResult` in host apps.
     public private(set) var dataGroupsRead : [DataGroupId:DataGroup] = [:]
     public private(set) var dataGroupHashes = [DataGroupId: DataGroupHash]()
 
@@ -122,7 +126,9 @@ public class NFCPassportModel {
     public private(set) var documentSigningCertificateVerified : Bool = false
     public private(set) var passportDataNotTampered : Bool = false
     public private(set) var activeAuthenticationPassed : Bool = false
+    /// Sensitive Active Authentication challenge retained for compatibility and explicit unsafe export paths.
     public private(set) var activeAuthenticationChallenge : [UInt8] = []
+    /// Sensitive Active Authentication signature retained for compatibility and explicit unsafe export paths.
     public private(set) var activeAuthenticationSignature : [UInt8] = []
     public private(set) var verificationErrors : [Error] = []
     public private(set) var passportVerificationAttempted : Bool = false
@@ -230,11 +236,13 @@ public class NFCPassportModel {
     
     public func addDataGroup(_ id : DataGroupId, dataGroup: DataGroup ) {
         self.dataGroupsRead[id] = dataGroup
-        if id != .COM && id != .SOD {
+        if id != .COM && id != .SOD && !self.dataGroupsAvailable.contains(id) {
             self.dataGroupsAvailable.append( id )
         }
     }
 
+    /// Returns a raw parsed data group. Prefer `identityResult`, `verificationResult`, or dedicated
+    /// image accessors unless the host app has an explicit privacy-reviewed need for raw chip data.
     public func getDataGroup( _ id : DataGroupId ) -> DataGroup? {
         return dataGroupsRead[id]
     }

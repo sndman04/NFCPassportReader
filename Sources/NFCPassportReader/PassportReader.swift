@@ -58,6 +58,7 @@ public class PassportReader : NSObject {
     private var skipSecureElements = true
     private var skipCA = false
     private var skipPACE = false
+    private var effectivePhotoPolicy: PassportPhotoPolicy = .read
     
     // Extended mode is used for reading eMRTD's that support extended length APDUs
     private var useExtendedMode = false
@@ -128,8 +129,15 @@ public class PassportReader : NSObject {
         self.useExtendedMode = useExtendedMode
         self.securityPolicy = securityPolicy
         
+        self.effectivePhotoPolicy = securityPolicy.apply(to: photoPolicy)
         self.dataGroupsToRead.removeAll()
-        self.dataGroupsToRead.append( contentsOf: securityPolicy.apply(to: photoPolicy).apply(to: tags))
+        self.dataGroupsToRead.append(
+            contentsOf: PassportDataGroupReadPolicy.requestedDataGroups(
+                tags: tags,
+                photoPolicy: photoPolicy,
+                securityPolicy: securityPolicy
+            )
+        )
         self.nfcViewDisplayMessageHandler = customDisplayMessage
         self.progressHandler = progressHandler
         self.skipSecureElements = skipSecureElements
@@ -626,6 +634,7 @@ extension PassportReader {
                 if let dg14 = try await readDataGroup(tagReader:tagReader, dgId:.DG14) as? DataGroup14 {
                     self.passport.addDataGroup( .DG14, dataGroup:dg14 )
                     let caHandler = ChipAuthenticationHandler(dg14: dg14, tagReader: tagReader)
+                    self.caHandler = caHandler
                      
                     if caHandler.isChipAuthenticationSupported {
                         eventLogger.log(.chipAuthenticationStarted)
@@ -649,14 +658,12 @@ extension PassportReader {
             }
         }
 
-        // If we are skipping secure elements then remove .DG3 and .DG4
-        if self.skipSecureElements {
-            DGsToRead = DGsToRead.filter { $0 != .DG3 && $0 != .DG4 }
-        }
-
-        if self.readAllDatagroups != true {
-            DGsToRead = DGsToRead.filter { dataGroupsToRead.contains($0) }
-        }
+        DGsToRead = PassportDataGroupReadPolicy(
+            requestedDataGroups: dataGroupsToRead,
+            readAllDataGroups: readAllDatagroups,
+            skipSecureElements: skipSecureElements,
+            photoPolicy: effectivePhotoPolicy
+        ).apply(to: DGsToRead)
         for dgId in DGsToRead {
             self.updateReaderSessionMessage( alertMessage: NFCViewDisplayMessage.readingDataGroupProgress(dgId, 0) )
             if let dg = try await readDataGroup(tagReader:tagReader, dgId:dgId) {

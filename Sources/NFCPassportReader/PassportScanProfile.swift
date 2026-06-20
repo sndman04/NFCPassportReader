@@ -20,8 +20,8 @@ public enum PassportScanProfile: Sendable, Equatable {
     /// Reads identity data and the face image data group.
     case identityWithPhoto
 
-    /// Reads the groups currently used by the Notary Journal integration for
-    /// identity, photo, optional details, and chip/authentication material.
+    /// Reads identity, photo, optional personal details, signature/mark image,
+    /// and chip/authentication material used by a complete notary review.
     case fullVerification
 
     /// Reads an explicit set of data groups.
@@ -34,7 +34,7 @@ public enum PassportScanProfile: Sendable, Equatable {
         case .identityWithPhoto:
             return [.COM, .SOD, .DG1, .DG2]
         case .fullVerification:
-            return [.COM, .SOD, .DG1, .DG2, .DG12, .DG14, .DG15]
+            return [.COM, .SOD, .DG1, .DG2, .DG7, .DG11, .DG12, .DG14, .DG15]
         case .custom(let dataGroups):
             return dataGroups.uniquedPreservingOrder()
         }
@@ -47,4 +47,3 @@ private extension Array where Element: Hashable {
         return filter { seen.insert($0).inserted }
     }
 }
-

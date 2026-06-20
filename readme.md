@@ -86,7 +86,8 @@ let passport = try await passportReader.readPassport(
 
 Supported scan profiles are `.identityOnly`, `.identityWithPhoto`, `.fullVerification`, and `.custom([DataGroupId])`.
 Prefer the smallest profile that supports the app workflow.
-Use `photoPolicy: .skip` to remove DG2 from the requested data groups when the app does not need passport face image data.
+`.fullVerification` reads COM, SOD, DG1, DG2, DG7, DG11, DG12, DG14, and DG15 for identity, photo, signature/mark image, optional personal details, document details, and chip/authentication checks.
+Use `photoPolicy: .skip` to remove DG2 from the requested data groups when the app does not need passport face image data. The policy is also applied after COM expansion for legacy empty-tag reads.
 
 Use `PassportReaderSecurityPolicy` to centralize privacy and verification decisions:
 
@@ -100,10 +101,11 @@ let passport = try await passportReader.readPassport(
 ```
 
 Security policies can disallow passport photo reads even when a broader scan profile requests DG2, block raw export by default, and require verification strictness such as `.passiveAuthentication`, `.trustedPassiveAuthentication`, or `.fullVerificationWhenSupported`.
+For legacy `readPassport(mrzKey:tags:)` calls that pass an empty tag list, `securityPolicy: .identityOnly` resolves to the minimal identity profile instead of expanding to every group advertised by COM.
 
 For app-facing data, prefer `passport.identityResult`. It contains normalized identity fields, verification status, trust level, and certificate-trust metadata, and intentionally omits MRZ text, raw data-group bytes, APDUs, certificates, keys, and image bytes.
 
-If passive authentication runs without a CSCA master list, SOD signature and data-group hash checks can still report that the read data is internally consistent, but country signer trust is reported as not checked. A trusted signer result requires a master list from the issuing country or ICAO PKD.
+If passive authentication runs without a CSCA master list, SOD signature and data-group hash checks can still report that the data groups actually read are internally consistent, but country signer trust is reported as not checked. A trusted signer result requires a master list from the issuing country or ICAO PKD.
 
 For support diagnostics, use `PassportReaderDiagnosticsSummary`. It records the scan profile, photo policy, security policy, safe failure reason, verification summary, trust level, and data-group names read. It does not include identity fields, MRZ text, APDUs, certificates, keys, raw data groups, or images.
 
@@ -206,7 +208,7 @@ Passive Authentication is now part of the main library and can be used to ensure
 
 It requires a set of CSCA certificates in PEM format from a master list, either from a country that publishes its master list or from the ICAO PKD repository. See `scripts/README.md` for helper-script notes.
 
-The LDS Security Object hash list is parsed directly from DER, so all DG1-DG16 hash entries can be checked without relying on OpenSSL text-dump formatting. SOD signature verification tries the configured verifier first and then the alternate CMS/manual verifier before falling back to unsigned encapsulated-content extraction for data-group hash comparison. In that fallback case the signature status remains failed while data-group hash status can still report whether the read groups match the SOD.
+The LDS Security Object hash list is parsed directly from DER, so all DG1-DG16 hash entries can be checked without relying on OpenSSL text-dump formatting. SOD signature verification tries the configured verifier first and then the alternate CMS/manual verifier before falling back to unsigned encapsulated-content extraction for data-group hash comparison. In that fallback case the signature status remains failed while data-group hash status can still report whether the read groups match the SOD. Minimal scan profiles verify the groups they read; they do not prove that unread optional groups match their SOD hashes.
 
 When no master list is supplied, signer-chain trust is not checked rather than failed. Apps should present that as an incomplete trust-anchor configuration, not as evidence that the passport or chip data is bad.
 
