@@ -2375,6 +2375,20 @@ Remaining follow-up:
 
 - Wait for the pushed GitHub Actions run to confirm the hosted macOS runner is green before cutting a stable tag.
 
+### 2026-06-20 Stable Notary Release Tag
+
+Decision:
+
+- Use `notary-2.3.1-privacy.1` as the first stable app-consumption tag for this privacy fork. This avoids pointing Notary Journal at the moving `codex/privacy-safe-logging` branch while still making the fork lineage and privacy purpose explicit.
+
+Pre-tag verification:
+
+- GitHub Actions reported the `iOS Package` workflow for commit `1d59dcb` as `completed | success` after the CI ripgrep dependency fix.
+
+Remaining follow-up:
+
+- Push this plan note, wait for the final branch-head CI run to complete successfully, then create and push `notary-2.3.1-privacy.1` on that exact commit.
+
 ### Option A: Remote Fork
 
 Preferred long-term route:
