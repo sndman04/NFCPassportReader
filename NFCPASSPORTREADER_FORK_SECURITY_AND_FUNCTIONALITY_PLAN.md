@@ -2347,6 +2347,34 @@ Remaining follow-up:
 
 - Let GitHub CI run on the pushed branch, then tag a stable fork release such as `notary-2.3.1-privacy.1` only after CI is green and any required real-device Notary validation is complete.
 
+### 2026-06-20 GitHub Actions Ripgrep Dependency Fix
+
+Completed:
+
+- Updated `.github/workflows/ios-package.yml` to install `ripgrep` before running `scripts/release_check.sh`, fixing the GitHub Actions failure where `privacy_scan.sh` could not find `rg`.
+- Added a `grep -R -E` fallback to `scripts/privacy_scan.sh` so the privacy gate still runs on minimal environments without `rg`.
+- Added the same fallback shape to the risky-pattern report in `scripts/release_check.sh`; the report no longer silently disappears when `rg` is unavailable.
+
+Verification:
+
+- Privacy scan fallback passed with `rg` intentionally absent from `PATH`:
+
+  ```sh
+  PATH=/usr/bin:/bin:/usr/sbin:/sbin scripts/privacy_scan.sh
+  ```
+
+- Consolidated release check passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer scripts/release_check.sh
+  ```
+
+  Result: required iOS package build, iOS build-for-testing, external API surface probe, privacy scan, whitespace check, and risky-diagnostics search all completed successfully.
+
+Remaining follow-up:
+
+- Wait for the pushed GitHub Actions run to confirm the hosted macOS runner is green before cutting a stable tag.
+
 ### Option A: Remote Fork
 
 Preferred long-term route:

@@ -13,9 +13,16 @@ scripts/api_surface_check.sh
 scripts/privacy_scan.sh
 git diff --check
 
-rg -n \
-  "Logger\\.|os_log|print\\(|UIPasteboard|UserDefaults|URLSession|dumpPassportData\\(|Kseed|KSenc|KSmac|RND\\.IFD|RND\\.ICC|APDU|RAPDU|FFD8FFE0" \
-  Sources Tests readme.md MIGRATION_NOTARY.md THREAT_MODEL.md NFCPASSPORTREADER_FORK_SECURITY_AND_FUNCTIONALITY_PLAN.md \
-  || true
+if command -v rg >/dev/null 2>&1; then
+  rg -n \
+    "Logger\\.|os_log|print\\(|UIPasteboard|UserDefaults|URLSession|dumpPassportData\\(|Kseed|KSenc|KSmac|RND\\.IFD|RND\\.ICC|APDU|RAPDU|FFD8FFE0" \
+    Sources Tests readme.md MIGRATION_NOTARY.md THREAT_MODEL.md NFCPASSPORTREADER_FORK_SECURITY_AND_FUNCTIONALITY_PLAN.md \
+    || true
+else
+  grep -R -n -E \
+    "Logger\\.|os_log|print\\(|UIPasteboard|UserDefaults|URLSession|dumpPassportData\\(|Kseed|KSenc|KSmac|RND\\.IFD|RND\\.ICC|APDU|RAPDU|FFD8FFE0" \
+    Sources Tests readme.md MIGRATION_NOTARY.md THREAT_MODEL.md NFCPASSPORTREADER_FORK_SECURITY_AND_FUNCTIONALITY_PLAN.md \
+    || true
+fi
 
 echo "Release check completed. Review expected documentation/test/type-name hits from the risky-pattern search above."
