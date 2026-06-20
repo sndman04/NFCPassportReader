@@ -27,6 +27,10 @@ class NFCPassportModel {
     public var documentNumber : String { return (passportDataElements?["5A"] ?? "?").replacingOccurrences(of: "<", with: "" ) }
     public var issuingAuthority : String { return passportDataElements?["5F28"] ?? "?" }
     public var documentExpiryDate : String { return passportDataElements?["59"] ?? "?" }
+    public var dateOfIssue : String? {
+        guard let dg12 = dataGroupsRead[.DG12] as? DataGroup12 else { return nil }
+        return dg12.dateOfIssue
+    }
     public var dateOfBirth : String { return passportDataElements?["5F57"] ?? "?" }
     public var gender : String { return passportDataElements?["5F35"] ?? "?" }
     public var nationality : String { return passportDataElements?["5F2C"] ?? "?" }

@@ -342,7 +342,10 @@ public class PassportReader : NSObject {
             progressHandler: progressHandler,
             customDisplayMessage: customDisplayMessage
         )
-        let result = PassportChipReadResult(passport: passport)
+        let result = PassportChipReadResult(
+            passport: passport,
+            photoPolicy: securityPolicy.apply(to: photoPolicy)
+        )
         passport.removeSensitiveDataForPrivacy()
         return result
     }
@@ -381,7 +384,10 @@ public class PassportReader : NSObject {
             progressHandler: progressHandler,
             customDisplayMessage: customDisplayMessage
         )
-        let result = PassportChipReadResult(passport: passport)
+        let result = PassportChipReadResult(
+            passport: passport,
+            photoPolicy: securityPolicy.apply(to: photoPolicy)
+        )
         passport.removeSensitiveDataForPrivacy()
         return result
     }
@@ -416,7 +422,10 @@ public class PassportReader : NSObject {
             progressHandler: progressHandler,
             customDisplayMessage: customDisplayMessage
         )
-        let result = PassportChipReadResult(passport: passport)
+        let result = PassportChipReadResult(
+            passport: passport,
+            photoPolicy: securityPolicy.apply(to: photoPolicy)
+        )
         passport.removeSensitiveDataForPrivacy()
         return result
     }
@@ -435,7 +444,10 @@ public class PassportReader : NSObject {
             progressHandler: progressHandler,
             customDisplayMessage: customDisplayMessage
         )
-        let result = PassportChipReadResult(passport: passport)
+        let result = PassportChipReadResult(
+            passport: passport,
+            photoPolicy: options.securityPolicy.apply(to: options.photoPolicy)
+        )
         passport.removeSensitiveDataForPrivacy()
         return result
     }

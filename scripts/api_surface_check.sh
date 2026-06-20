@@ -25,13 +25,13 @@ let package = Package(
         .library(name: "ExternalAPISurfaceProbe", targets: ["ExternalAPISurfaceProbe"])
     ],
     dependencies: [
-        .package(path: "$ROOT_DIR")
+        .package(name: "NFCPassportReader", path: "$ROOT_DIR")
     ],
     targets: [
         .target(
             name: "ExternalAPISurfaceProbe",
             dependencies: [
-                .product(name: "NFCPassportReader", package: "Passport Chip Fork")
+                .product(name: "NFCPassportReader", package: "NFCPassportReader")
             ]
         )
     ]

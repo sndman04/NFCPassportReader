@@ -395,7 +395,7 @@ This backlog turns the latest repository audit into implementable work. The item
 Privacy-first result and lifetime controls:
 
 1. Add a first-class privacy-preserving read API, such as `PassportReader.readPassportIdentity(...)`, that returns only `PassportIdentityResult` and never hands the caller an `NFCPassportModel`.
-2. Add a non-raw `PassportChipReadResult` wrapper for apps that need identity, verification, trust level, certificate/master-list metadata, and safe diagnostics in one value. This type must not expose raw data groups, MRZ text, APDUs, keys, certificates, active-authentication challenge/signature bytes, or image bytes, and it should not conform to `Codable`.
+2. Add a non-raw `PassportChipReadResult` wrapper for apps that need identity, verification, trust level, certificate/master-list metadata, optional explicitly requested face-image bytes, and safe diagnostics in one value. This type must not expose raw data groups, MRZ text, APDUs, keys, certificates, or active-authentication challenge/signature bytes, and it should not conform to `Codable`.
 3. Add explicit sensitive-data cleanup on `NFCPassportModel` for callers that still receive the compatibility model. Cleanup should clear raw data groups, parsed hash values, card-access data, certificate objects, and active-authentication challenge/signature bytes after the caller has projected the values it needs.
 4. Document that cleanup is best-effort because Swift value copies and framework internals cannot guarantee complete memory zeroization.
 5. Add tests proving cleanup removes raw export material and that the privacy-first read path returns identity data without leaving raw groups accessible to the caller.
@@ -657,7 +657,7 @@ Completed:
   - `.identityOnly` disallows DG2/photo reads and raw export.
   - `.notaryRecommended` allows photo review, blocks unsafe raw export, and requires passive-authentication integrity checks when verification is attempted.
   - Reader APIs now accept `securityPolicy:` and apply it before NFC reads and after verification.
-- Added `PassportIdentityResult` as an app-facing projection that intentionally omits MRZ text, raw data-group bytes, APDUs, certificates, keys, and image bytes while preserving normalized fields, verification result, trust level, certificate metadata, and data-group names.
+- Added `PassportIdentityResult` as an app-facing projection that intentionally omits MRZ text, raw data-group bytes, APDUs, certificates, keys, and image bytes while preserving normalized fields, verification result, trust level, certificate metadata, and data-group names. Face-image bytes now live only on `PassportChipReadResult.faceImageData` when the effective photo policy is `.read`.
 - Added `PassportTrustLevel`, `privacySafeExplanation`, and `PassportCertificateTrustMetadata`, including whether a master list was provided during verification.
 - Added `UnsafePassportRawDataExporter`, requiring an explicit `PassportReaderSecurityPolicy(allowsUnsafeRawDataExport: true)` opt-in for deliberate raw export workflows.
 - Kept `NFCPassportModel.dumpPassportData(...)` deprecated for source compatibility, but routed it through an internal `unsafeDumpPassportData(...)` helper and updated docs to steer callers away from it.
@@ -1894,7 +1894,7 @@ Remaining follow-up:
 Completed:
 
 - Reviewed the remaining public low-level protocol, parser, certificate, byte-conversion, AES/DES, and OpenSSL helper symbols after the public scan API was moved to `PassportChipReadResult`.
-- Confirmed the app-facing read path still avoids returning raw data groups, APDUs, certificates, secure-messaging keys, Active Authentication challenge/signature bytes, and chip image bytes through `PassportChipReadResult`.
+- Confirmed the app-facing read path still avoids returning raw data groups, APDUs, certificates, secure-messaging keys, and Active Authentication challenge/signature bytes through `PassportChipReadResult`; chip photo bytes are exposed only through the explicit sensitive `faceImageData` field when the effective photo policy is `.read`.
 - Made low-level NFC/session protocol types module-internal: `TagReader`, `ResponseAPDU`, `BACHandler`, `PACEHandler`, `SecureMessaging`, and `SecureMessagingSupportedAlgorithms`.
 - Made low-level byte, hash, MAC, padding, ASN.1-length, OID, AES/DES, OpenSSL, certificate-wrapper, raw data-group parser, SecurityInfo, FaceImageInfo, and internal hash-detail helpers module-internal.
 - Kept `DataGroupId` public because it is part of safe scan profiles, diagnostics, and read reports.
@@ -2290,6 +2290,62 @@ Verification:
 Remaining follow-up:
 
 - Cleanup remains best-effort data minimization, not guaranteed memory zeroization. Real-device scanning is still the only remaining validation for hardware timing, chip variability, and NFC transport behavior.
+
+### 2026-06-20 Notary Adoption Readiness Pass
+
+Completed:
+
+- Refactored the large synthetic DG2 facial-record test expression that caused Swift CI to report `unable to type-check this expression in reasonable time`.
+- Fixed `scripts/api_surface_check.sh` to give the local path dependency the explicit package identity `NFCPassportReader` and to reference that identity in `.product(...)`, so the probe is not tied to a checkout directory named `Passport Chip Fork`.
+- Added `PassportChipReadResult.faceImageData: PassportChipImageResult?` as an explicit sensitive opt-in result field. It is populated only when the effective `PassportPhotoPolicy` is `.read` and DG2 produced face-image bytes; `.skip` leaves it nil even if a test model contains DG2.
+- Added `PassportChipImageResult` with image bytes, format, MIME type, width, and height for app review workflows that intentionally need the chip photo. Documentation now calls out the biometric-data handling requirements.
+- Added `PassportIdentityResult.dateOfIssue` projected from DG12 so Notary Journal can continue issue-date autofill without raw `DataGroup12` access.
+- Confirmed `PassportVerificationResult` already exposes simple chip/active authentication statuses plus safe detail reasons and `privacySafeExplanation` copy for passed, failed, not supported, and not requested/skipped cases.
+
+Tests added:
+
+- DG2 safe-result projection now verifies `faceImageData` appears for `.read` and is nil for `.skip`.
+- DG12 parsing now verifies `PassportIdentityResult.dateOfIssue` carries the normalized issue date.
+
+Verification:
+
+- Focused Notary adoption tests passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:NFCPassportReaderTests/DataGroupParsingTests/testIdentityResultReportsFaceImageOnlyWhenDG2ContainsImagePayload -only-testing:NFCPassportReaderTests/DataGroupParsingTests/testDatagroup12Parsing
+  ```
+
+  Result: 2 tests, 0 failures.
+
+- Full iOS simulator suite passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5'
+  ```
+
+  Result: 147 tests, 0 failures.
+
+- Required iOS package build succeeded:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build
+  ```
+
+- `scripts/api_surface_check.sh` passed, including the fixed explicit package identity.
+- `scripts/privacy_scan.sh` passed.
+- `git diff --check` passed.
+- Targeted risky-pattern search over changed API/reader/test/docs/script files found no new raw production logging sink. Remaining hits are expected privacy documentation, synthetic test fixtures, typed redacted `eventLogger.log(...)` calls, internal APDU/type names, and the explicit sensitive `faceImageData` API.
+- Consolidated release check passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer scripts/release_check.sh
+  ```
+
+  Result: required iOS package build, iOS build-for-testing, external API surface probe, privacy scan, whitespace check, and risky-diagnostics search all completed successfully. Risky-pattern hits were reviewed as expected documentation, negative tests, synthetic fixtures, internal APDU/key identifiers, OpenSSL type names, or redacted diagnostic events.
+
+Remaining follow-up:
+
+- Let GitHub CI run on the pushed branch, then tag a stable fork release such as `notary-2.3.1-privacy.1` only after CI is green and any required real-device Notary validation is complete.
 
 ### Option A: Remote Fork
 

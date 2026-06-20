@@ -114,12 +114,21 @@ final class DataGroupParsingTests: XCTestCase {
     }
 
     func testIdentityResultReportsFaceImageOnlyWhenDG2ContainsImagePayload() throws {
-        let dg2 = try dataGroup2Fixture(imageBytes: [0xFF, 0xD8, 0xFF, 0xE1, 0x00, 0x10])
+        let imageBytes = [UInt8]([0xFF, 0xD8, 0xFF, 0xE1, 0x00, 0x10])
+        let dg2 = try dataGroup2Fixture(imageBytes: imageBytes)
         let parsed = try XCTUnwrap(try DataGroupParser().parseDG(data: dg2) as? DataGroup2)
         let model = NFCPassportModel()
         model.addDataGroup(.DG2, dataGroup: parsed)
 
         XCTAssertTrue(model.identityResult.hasFaceImage)
+
+        let readResult = PassportChipReadResult(passport: model, photoPolicy: .read)
+        XCTAssertEqual(readResult.faceImageData?.data, Data(imageBytes))
+        XCTAssertEqual(readResult.faceImageData?.format, .jpeg)
+        XCTAssertEqual(readResult.faceImageData?.mimeType, "image/jpeg")
+
+        let skippedResult = PassportChipReadResult(passport: model, photoPolicy: .skip)
+        XCTAssertNil(skippedResult.faceImageData)
     }
 
     func testModelPrivacyCleanupScrubsRetainedDataGroupPayloadsBeforeReleasingReferences() throws {
@@ -399,6 +408,10 @@ final class DataGroupParsingTests: XCTestCase {
             }
             XCTAssertEqual(dg12.issuingAuthority, "TESTER")
             XCTAssertEqual(dg12.dateOfIssue, "20180326")
+
+            let model = NFCPassportModel()
+            model.addDataGroup(.DG12, dataGroup: dg12)
+            XCTAssertEqual(model.identityResult.dateOfIssue, "20180326")
         }
     }
 
@@ -1010,19 +1023,20 @@ private func iso19794FaceRecordPayload(imageBytesItems: [[UInt8]]) -> [UInt8] {
 }
 
 private func iso19794FacialRecord(imageBytes: [UInt8]) -> [UInt8] {
-    let recordTail = fixedWidthBytes(0, count: 2) +
-        [0x00, 0x00, 0x00] +
-        [0x00, 0x00, 0x00] +
-        [0x00, 0x00] +
-        [0x00, 0x00, 0x00] +
-        [0x00, 0x00, 0x00] +
-        [0x00, 0x00] +
-        fixedWidthBytes(1, count: 2) +
-        fixedWidthBytes(1, count: 2) +
-        [0x00, 0x00] +
-        [0x00, 0x00] +
-        [0x00, 0x00] +
-        imageBytes
+    var recordTail = fixedWidthBytes(0, count: 2)
+    recordTail.reserveCapacity(32 + imageBytes.count)
+    recordTail += [0x00, 0x00, 0x00]
+    recordTail += [0x00, 0x00, 0x00]
+    recordTail += [0x00, 0x00]
+    recordTail += [0x00, 0x00, 0x00]
+    recordTail += [0x00, 0x00, 0x00]
+    recordTail += [0x00, 0x00]
+    recordTail += fixedWidthBytes(1, count: 2)
+    recordTail += fixedWidthBytes(1, count: 2)
+    recordTail += [0x00, 0x00]
+    recordTail += [0x00, 0x00]
+    recordTail += [0x00, 0x00]
+    recordTail += imageBytes
     return fixedWidthBytes(4 + recordTail.count, count: 4) + recordTail
 }
 

@@ -39,7 +39,11 @@ let result = try await reader.readPassportIdentity(
 )
 ```
 
-`PassportChipReadResult` exposes normalized identity, verification, trust, certificate/master-list metadata, and safe diagnostics without returning `NFCPassportModel` or raw chip data. It intentionally omits MRZ text, raw data groups, APDUs, certificates, keys, active-authentication challenge/signature bytes, and image bytes.
+`PassportChipReadResult` exposes normalized identity, optional `faceImageData`, verification, trust, certificate/master-list metadata, and safe diagnostics without returning `NFCPassportModel` or raw chip data. It intentionally omits MRZ text, raw data groups, APDUs, certificates, keys, and active-authentication challenge/signature bytes.
+
+Use `result.faceImageData` only when Notary Journal's review workflow needs the chip photo. It is populated only when the effective photo policy is `.read`, such as `.notaryStrict` with `PassportReaderSecurityPolicy.notaryRecommended`. Treat it as sensitive biometric data: keep it transient, do not log it, and do not include it in support diagnostics.
+
+Use `result.identity.dateOfIssue` for DG12 issue-date autofill. This replaces the old app-side dependency on raw `DataGroup12`.
 
 Use `.identityOnly` or `.identityWithPhoto` only after confirming Notary Journal does not need optional details, signature/mark images, or chip-authentication groups for its workflow.
 
@@ -72,7 +76,7 @@ Depend on `PassportChipReading` in app services and inject `PassportReaderFixtur
 
 ## Raw Data Boundary
 
-Raw passport dump import/export APIs are not public in this fork. Notary Journal should use the projected `PassportChipReadResult` only and should not add support tooling that stores raw data groups, APDUs, active-authentication challenge/signature bytes, certificate dumps, or passport image bytes.
+Raw passport dump import/export APIs are not public in this fork. Notary Journal should use the projected `PassportChipReadResult` only and should not add support tooling that stores raw data groups, APDUs, active-authentication challenge/signature bytes, certificate dumps, or passport image bytes outside the deliberately requested transient `faceImageData` review path.
 
 Do not use low-level BAC/session-key APIs from app code. This fork keeps BAC key material internal to the reader flow; Notary Journal should depend on `PassportReader` or `PassportChipReading` only.
 

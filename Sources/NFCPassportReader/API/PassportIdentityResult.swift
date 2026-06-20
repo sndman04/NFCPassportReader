@@ -18,6 +18,7 @@ public struct PassportIdentityResult: Sendable, Equatable {
     public let documentNumber: String
     public let issuingAuthority: String
     public let documentExpiryDate: String
+    public let dateOfIssue: String?
     public let dateOfBirth: String
     public let gender: String
     public let nationality: String
@@ -41,6 +42,7 @@ public struct PassportIdentityResult: Sendable, Equatable {
         self.documentNumber = passport.documentNumber
         self.issuingAuthority = passport.issuingAuthority
         self.documentExpiryDate = passport.documentExpiryDate
+        self.dateOfIssue = passport.dateOfIssue
         self.dateOfBirth = passport.dateOfBirth
         self.gender = passport.gender
         self.nationality = passport.nationality

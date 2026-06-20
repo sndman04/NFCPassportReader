@@ -85,6 +85,7 @@ Supported scan profiles are `.identityOnly`, `.identityWithPhoto`, `.fullVerific
 Prefer the smallest profile that supports the app workflow.
 `.fullVerification` reads COM, SOD, DG1, DG2, DG7, DG11, DG12, DG14, and DG15 for identity, photo, signature/mark image, optional personal details, document details, and chip/authentication checks.
 Use `photoPolicy: .skip` to remove DG2 from the requested data groups when the app does not need passport face image data.
+When `photoPolicy: .read` remains allowed by the effective `PassportReaderSecurityPolicy`, `PassportChipReadResult.faceImageData` returns the first DG2 face image as explicitly sensitive `PassportChipImageResult` bytes for workflows such as in-app document review. Treat this value as biometric data: do not log it, attach it to diagnostics, or persist/upload it without a separate app-level privacy decision.
 
 Use `PassportReaderSecurityPolicy` to centralize privacy and verification decisions:
 
@@ -97,7 +98,9 @@ let result = try await passportReader.readPassportIdentity(
 
 Security policies can disallow passport photo reads even when a broader scan profile requests DG2 and require verification strictness such as `.passiveAuthentication`, `.trustedPassiveAuthentication`, or `.fullVerificationWhenSupported`.
 
-`PassportChipReadResult` contains `identity`, `verificationResult`, `trustLevel`, `certificateTrustMetadata`, and `diagnosticsSummary`. It intentionally does not expose the internal raw model, MRZ text, data-group bytes, APDUs, certificates, keys, active-authentication challenge/signature bytes, or image bytes. It also intentionally does not conform to `Codable`.
+`PassportChipReadResult` contains `identity`, optional `faceImageData`, `verificationResult`, `trustLevel`, `certificateTrustMetadata`, and `diagnosticsSummary`. It intentionally does not expose the internal raw model, MRZ text, raw data-group bytes, APDUs, certificates, keys, or active-authentication challenge/signature bytes. It also intentionally does not conform to `Codable`.
+
+`PassportIdentityResult.dateOfIssue` exposes the normalized DG12 issue date when DG12 is read and the chip provides it. This lets apps fill issue-date fields without reopening raw DG12 model access.
 
 `PassportScanOptions` provides reviewed combinations of profile, timeout, photo policy, authentication flags, security policy, and PACE policy. `.notaryStrict` is the recommended starting point for Notary Journal style workflows; `.identityOnly` keeps collection minimal when the app does not need photo or optional verification groups.
 
