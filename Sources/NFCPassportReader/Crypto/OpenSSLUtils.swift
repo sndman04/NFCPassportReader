@@ -10,9 +10,13 @@ import OpenSSL
 import CryptoTokenKit
 
 @available(iOS 13, macOS 10.15, *)
-public class OpenSSLUtils {
-    /// Returns any OpenSSL Error as a String
-    public static func getOpenSSLError() -> String {
+class OpenSSLUtils {
+    /// Returns any OpenSSL error as a string.
+    ///
+    /// This is an internal low-level helper, not an app-facing diagnostic surface. Do not include
+    /// returned OpenSSL text in user-visible errors, logs, support tickets, or telemetry without a
+    /// separate privacy review.
+    static func getOpenSSLError() -> String {
         
         guard let out = BIO_new(BIO_s_mem()) else { return "Unknown" }
         defer { BIO_free(out) }
@@ -194,25 +198,38 @@ public class OpenSSLUtils {
     ///
     ///      This should return Verification Successful and the signed data
     static func verifyAndReturnSODEncapsulatedDataUsingCMS( sod : SOD ) throws -> Data {
-        
+        return try verifyAndReturnCMSEncapsulatedData(Data(sod.body), trustedCertificatesURL: nil)
+    }
+
+    static func verifyAndReturnCMSEncapsulatedData(_ cmsDer: Data, trustedCertificatesURL: URL?) throws -> Data {
         guard let inf = BIO_new(BIO_s_mem()) else { throw OpenSSLError.VerifyAndReturnSODEncapsulatedData("CMS - Unable to allocate input buffer") }
         defer { BIO_free(inf) }
-        
+
         guard let out = BIO_new(BIO_s_mem()) else { throw OpenSSLError.VerifyAndReturnSODEncapsulatedData("CMS - Unable to allocate output buffer") }
         defer { BIO_free(out) }
-        
-        let _ = sod.body.withUnsafeBytes { (ptr) in
-            BIO_write(inf, ptr.baseAddress?.assumingMemoryBound(to: UInt8.self), Int32(sod.body.count))
+
+        let _ = cmsDer.withUnsafeBytes { (ptr) in
+            BIO_write(inf, ptr.baseAddress?.assumingMemoryBound(to: UInt8.self), Int32(cmsDer.count))
         }
-        
+
         guard let cms = d2i_CMS_bio(inf, nil) else {
             throw OpenSSLError.VerifyAndReturnSODEncapsulatedData("CMS - Verification of P7 failed - unable to create CMS")
         }
         defer { CMS_ContentInfo_free(cms) }
-        
-        let flags : UInt32 = UInt32(CMS_NO_SIGNER_CERT_VERIFY)
-        
-        if CMS_verify(cms, nil, nil, nil, out, flags) == 0 {
+
+        var store: OpaquePointer?
+        if let trustedCertificatesURL {
+            store = try makeX509Store(CAFile: trustedCertificatesURL)
+        }
+        defer {
+            if let store {
+                X509_STORE_free(store)
+            }
+        }
+
+        let flags: UInt32 = trustedCertificatesURL == nil ? UInt32(CMS_NO_SIGNER_CERT_VERIFY) : 0
+
+        if CMS_verify(cms, nil, store, nil, out, flags) == 0 {
             throw OpenSSLError.VerifyAndReturnSODEncapsulatedData("CMS - Verification of P7 failed - unable to verify signature")
         }
         let len = BIO_ctrl(out, BIO_CTRL_PENDING, 0, nil)
@@ -225,6 +242,33 @@ public class OpenSSLUtils {
         let sigData = Data(buffer)
         
         return sigData
+    }
+
+    private static func makeX509Store(CAFile: URL) throws -> OpaquePointer {
+        guard let store = X509_STORE_new() else {
+            throw OpenSSLError.UnableToVerifyX509CertificateForSOD("Unable to create certificate store")
+        }
+
+        X509_STORE_set_verify_cb(store) { (ok, ctx) -> Int32 in
+            let certError = X509_STORE_CTX_get_error(ctx)
+            if ok == 0 && certError == X509_V_ERR_EC_KEY_EXPLICIT_PARAMS {
+                return 1
+            }
+            return ok
+        }
+
+        guard let lookup = X509_STORE_add_lookup(store, X509_LOOKUP_file()) else {
+            X509_STORE_free(store)
+            throw OpenSSLError.UnableToVerifyX509CertificateForSOD("Unable to add lookup to store")
+        }
+
+        let rc = X509_LOOKUP_ctrl(lookup, X509_L_FILE_LOAD, CAFile.path, Int(X509_FILETYPE_PEM), nil)
+        guard rc == 1 else {
+            X509_STORE_free(store)
+            throw OpenSSLError.UnableToVerifyX509CertificateForSOD("Unable to load trusted certificates")
+        }
+
+        return store
     }
     
     
@@ -255,31 +299,6 @@ public class OpenSSLUtils {
         
         return encapsulatedContent
     }
-    
-    /// Parses a signed data structures encoded in ASN1 format and returns the structure in text format
-    /// - Parameter data: The data to be parsed in ASN1 format
-    /// - Returns: The parsed data as A String
-    static func ASN1Parse( data: Data ) throws -> String {
-        
-        guard let out = BIO_new(BIO_s_mem()) else { throw OpenSSLError.UnableToParseASN1("Unable to allocate output buffer") }
-        defer { BIO_free(out) }
-        
-        var parsed : String = ""
-        let _ = try data.withUnsafeBytes { (ptr) in
-            let rc = ASN1_parse_dump(out, ptr.baseAddress?.assumingMemoryBound(to: UInt8.self), data.count, 0, 0)
-            if rc == 0 {
-                let str = OpenSSLUtils.getOpenSSLError()
-                throw OpenSSLError.UnableToParseASN1("Failed to parse ASN1 Data - \(str)")
-            }
-            
-            parsed = bioToString(bio: out)
-        }
-        
-        return parsed
-    }
-    
-    
-    
     /// Reads a public key in DER SubjectPublicKeyInfo format and converts it to an OpenSSL EVP_PKEY value.
     /// - Parameter data: The public key in DER format
     /// - Returns: The EVP_PKEY value
@@ -430,19 +449,8 @@ public class OpenSSLUtils {
     /// - Returns: True if the signature was verified
     static func verifySignature( data : [UInt8], signature : [UInt8], pubKey : OpaquePointer, digestType: String ) -> Bool {
         
-        var digest = "sha256"
         let digestType = digestType.lowercased()
-        if digestType.contains( "sha1" ) {
-            digest = "sha1"
-        } else if digestType.contains( "sha224" ) {
-            digest = "sha224"
-        } else if digestType.contains( "sha256" ) || digestType.contains( "rsassapss" ) {
-            digest = "sha256"
-        } else if digestType.contains( "sha384" ) {
-            digest = "sha384"
-        } else if digestType.contains( "sha512" ) {
-            digest = "sha512"
-        }
+        let digest = digestName(forSignatureType: digestType)
         
         // Fix for some invalid ECDSA based signatures
         // An ECDSA signature comprises of a Sequence of 2 big integers (R & S) and the verification
@@ -553,6 +561,25 @@ public class OpenSSLUtils {
         return true
     }
 
+    static func digestName(forSignatureType digestType: String) -> String {
+        let digestType = digestType.lowercased()
+        if digestType.contains("sha1") {
+            return "sha1"
+        } else if digestType.contains("sha224") {
+            return "sha224"
+        } else if digestType.contains("sha256") || digestType.contains("rsassapss") {
+            return "sha256"
+        } else if digestType.contains("sha384") {
+            return "sha384"
+        } else if digestType.contains("sha512") {
+            return "sha512"
+        } else if digestType.contains("ripemd160") {
+            return "ripemd160"
+        }
+
+        return "sha256"
+    }
+
     @available(iOS 13, macOS 10.15, *)
     static func generateAESCMAC( key: [UInt8], message : [UInt8] ) -> [UInt8] {
         guard let mac = EVP_MAC_fetch(nil, "CMAC", nil) else {
@@ -642,8 +669,12 @@ public class OpenSSLUtils {
         return data
     }
 
+    /// Returns an encoded public key from an OpenSSL key.
+    ///
+    /// This internal low-level helper may expose cryptographic material used during PACE or Chip
+    /// Authentication. Do not log, persist, or transmit returned bytes.
     @available(iOS 13, macOS 10.15, *)
-    public static func getPublicKeyData(from key:OpaquePointer) -> [UInt8]? {
+    static func getPublicKeyData(from key:OpaquePointer) -> [UInt8]? {
         var data : [UInt8] = []
         // Get Key type
         let v = EVP_PKEY_get_base_id( key )
@@ -728,9 +759,12 @@ public class OpenSSLUtils {
         return keyPair
     }
     
-    // Caller is responsible for freeing the key
+    /// Decodes an encoded public key using the domain parameters from another OpenSSL key.
+    ///
+    /// Caller is responsible for freeing the returned key. This is an internal low-level helper for
+    /// passport protocol internals; do not surface inputs or outputs in diagnostics.
     @available(iOS 13, macOS 10.15, *)
-    public static func decodePublicKeyFromBytes(pubKeyData: [UInt8], params: OpaquePointer) -> OpaquePointer? {
+    static func decodePublicKeyFromBytes(pubKeyData: [UInt8], params: OpaquePointer) -> OpaquePointer? {
         let keyType = EVP_PKEY_get_base_id( params )
         if keyType == EVP_PKEY_DH || keyType == EVP_PKEY_DHX {
             var p: OpaquePointer?
@@ -786,8 +820,11 @@ public class OpenSSLUtils {
         }
     }
     
-
-    public static func computeSharedSecret( privateKeyPair: OpaquePointer, publicKey: OpaquePointer ) throws -> [UInt8] {
+    /// Computes a Diffie-Hellman/ECDH shared secret from an OpenSSL private key and peer public key.
+    ///
+    /// The returned bytes are sensitive session-key material. Never log, persist, or transmit the
+    /// result.
+    static func computeSharedSecret( privateKeyPair: OpaquePointer, publicKey: OpaquePointer ) throws -> [UInt8] {
         guard let ctx = EVP_PKEY_CTX_new(privateKeyPair, nil) else {
             throw NFCPassportReaderError.InvalidDataPassed("Unable to create shared-secret context")
         }

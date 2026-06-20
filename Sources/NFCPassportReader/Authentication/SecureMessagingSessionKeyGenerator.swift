@@ -79,7 +79,7 @@ class SecureMessagingSessionKeyGenerator {
                     keyBytes = [UInt8](hashResult[0..<16] + hashResult[0..<8])
                     break;
                 default:
-                    throw NFCPassportReaderError.InvalidDataPassed("Can only use DESede with 128-but key length")
+                    throw NFCPassportReaderError.UnsupportedCipherAlgorithm
             }
         } else if cipherAlgName.lowercased() == "aes" || cipherAlgName.lowercased().hasPrefix("aes") {
             // TR-SAC 1.01, 4.2.2.
@@ -91,10 +91,10 @@ class SecureMessagingSessionKeyGenerator {
                 case 256:
                     keyBytes = [UInt8](hashResult[0..<32]) // NOTE: 256 = 32 * 8
                 default:
-                    throw NFCPassportReaderError.InvalidDataPassed("Can only use AES with 128-bit, 192-bit key or 256-bit length")
+                    throw NFCPassportReaderError.UnsupportedCipherAlgorithm
             }
         } else {
-            throw NFCPassportReaderError.InvalidDataPassed( "Unsupported cipher algorithm used" )
+            throw NFCPassportReaderError.UnsupportedCipherAlgorithm
         }
         
         return keyBytes
@@ -114,7 +114,7 @@ class SecureMessagingSessionKeyGenerator {
             return "SHA256";
         }
         
-        throw NFCPassportReaderError.InvalidDataPassed("Unsupported cipher algorithm or key length")
+        throw NFCPassportReaderError.UnsupportedCipherAlgorithm
     }
     
     /// This generates a SHA-X hash based on the passed in algo.

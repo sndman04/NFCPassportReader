@@ -8,7 +8,7 @@ import Foundation
 import OpenSSL
 
 @available(iOS 13, macOS 10.15, *)
-public class DataGroup15 : DataGroup {
+class DataGroup15 : DataGroup {
     
     public private(set) var rsaPublicKey : OpaquePointer?
     public private(set) var ecdsaPublicKey : OpaquePointer?
@@ -16,12 +16,7 @@ public class DataGroup15 : DataGroup {
     public override var datagroupType: DataGroupId { .DG15 }
 
     deinit {
-        if ( ecdsaPublicKey != nil ) {
-            EVP_PKEY_free(ecdsaPublicKey);
-        }
-        if ( rsaPublicKey != nil ) {
-            EVP_PKEY_free(rsaPublicKey);
-        }
+        removeSensitiveDataForPrivacy()
     }
     
     required init( _ data : [UInt8] ) throws {
@@ -43,5 +38,17 @@ public class DataGroup15 : DataGroup {
         default:
             EVP_PKEY_free(key)
         }
+    }
+
+    override func removeSensitiveDataForPrivacy() {
+        if let key = ecdsaPublicKey {
+            EVP_PKEY_free(key)
+            ecdsaPublicKey = nil
+        }
+        if let key = rsaPublicKey {
+            EVP_PKEY_free(key)
+            rsaPublicKey = nil
+        }
+        super.removeSensitiveDataForPrivacy()
     }
 }

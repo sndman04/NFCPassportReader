@@ -8,7 +8,7 @@
 import Foundation
 import OpenSSL
 
-public enum PACEMappingType {
+enum PACEMappingType {
     case GM  // Generic Mapping
     case IM  // Integrated Mapping
     case CAM // Chip Authentication Mapping
@@ -26,7 +26,7 @@ public enum PACEMappingType {
 }
 
 @available(iOS 13, macOS 10.15, *)
-public class PACEInfo : SecurityInfo {
+class PACEInfo : SecurityInfo {
     
     // Standardized domain parameters. Based on Table 6.
     public static let PARAM_ID_GFP_1024_160 = 0
@@ -183,12 +183,12 @@ public class PACEInfo : SecurityInfo {
         ID_PACE_DH_IM_3DES_CBC_CBC: "id-PACE-DH-IM-3DES-CBC-CBC",
         ID_PACE_DH_IM_AES_CBC_CMAC_128: "id-PACE-DH-IM-AES-CBC-CMAC-128",
         ID_PACE_DH_IM_AES_CBC_CMAC_192: "id-PACE-DH-IM-AES-CBC-CMAC-192",
-        ID_PACE_DH_IM_AES_CBC_CMAC_256: "id-PACE_DH-IM-AES-CBC-CMAC-256",
+        ID_PACE_DH_IM_AES_CBC_CMAC_256: "id-PACE-DH-IM-AES-CBC-CMAC-256",
         ID_PACE_ECDH_GM_3DES_CBC_CBC: "id-PACE-ECDH-GM-3DES-CBC-CBC",
         ID_PACE_ECDH_GM_AES_CBC_CMAC_128: "id-PACE-ECDH-GM-AES-CBC-CMAC-128",
         ID_PACE_ECDH_GM_AES_CBC_CMAC_192: "id-PACE-ECDH-GM-AES-CBC-CMAC-192",
         ID_PACE_ECDH_GM_AES_CBC_CMAC_256: "id-PACE-ECDH-GM-AES-CBC-CMAC-256",
-        ID_PACE_ECDH_IM_3DES_CBC_CBC: "id-PACE-ECDH-IM_3DES-CBC-CBC",
+        ID_PACE_ECDH_IM_3DES_CBC_CBC: "id-PACE-ECDH-IM-3DES-CBC-CBC",
         ID_PACE_ECDH_IM_AES_CBC_CMAC_128: "id-PACE-ECDH-IM-AES-CBC-CMAC-128",
         ID_PACE_ECDH_IM_AES_CBC_CMAC_192: "id-PACE-ECDH-IM-AES-CBC-CMAC-192",
         ID_PACE_ECDH_IM_AES_CBC_CMAC_256: "id-PACE-ECDH-IM-AES-CBC-CMAC-256",
@@ -219,41 +219,44 @@ public class PACEInfo : SecurityInfo {
         return PACEInfo.toProtocolOIDString(oid:oid)
     }
     
-    public func getVersion() -> Int {
+    func getVersion() -> Int {
         return version
     }
     
-    public func getParameterId() -> Int? {
+    func getParameterId() -> Int? {
         return parameterId
     }
     
-    public func getParameterSpec() throws -> Int32 {
+    func getParameterSpec() throws -> Int32 {
         return try PACEInfo.getParameterSpec(stdDomainParam: self.parameterId ?? -1 )
     }
     
-    public func getMappingType() throws -> PACEMappingType {
+    func getMappingType() throws -> PACEMappingType {
         return try PACEInfo.toMappingType(oid: oid); // Either GM, CAM, or IM.
     }
     
-    public func getKeyAgreementAlgorithm() throws -> String {
+    func getKeyAgreementAlgorithm() throws -> String {
         return try PACEInfo.toKeyAgreementAlgorithm(oid: oid); // Either DH or ECDH.
     }
     
-    public func getCipherAlgorithm() throws -> String {
+    func getCipherAlgorithm() throws -> String {
         return try PACEInfo.toCipherAlgorithm(oid: oid); // Either DESede or AES.
     }
     
-    public func getDigestAlgorithm() throws -> String {
+    func getDigestAlgorithm() throws -> String {
         return try PACEInfo.toDigestAlgorithm(oid: oid); // Either SHA-1 or SHA-256.
     }
     
-    public func getKeyLength() throws -> Int {
+    func getKeyLength() throws -> Int {
         return try PACEInfo.toKeyLength(oid: oid); // Of the enc cipher. Either 128, 192, or 256.
     }
 
-    public var isImplementedForReading: Bool {
-        guard let mappingType = try? getMappingType(),
-              mappingType == .GM else {
+    var isImplementedForReading: Bool {
+        guard let mappingType = try? getMappingType() else {
+            return false
+        }
+
+        guard mappingType != .CAM || (try? getKeyAgreementAlgorithm()) == "ECDH" else {
             return false
         }
 
@@ -261,7 +264,7 @@ public class PACEInfo : SecurityInfo {
     }
 
     /// Caller is required to free the returned EVP_PKEY value
-    public func createMappingKey( ) throws -> OpaquePointer {
+    func createMappingKey( ) throws -> OpaquePointer {
         switch try getKeyAgreementAlgorithm() {
             case "DH":
                 switch try getParameterSpec() {
@@ -313,7 +316,7 @@ public class PACEInfo : SecurityInfo {
             case PARAM_ID_ECP_NIST_P521_R1:
                 return NID_secp521r1 //"secp224r1";
             default:
-                throw NFCPassportReaderError.InvalidDataPassed( "Unable to lookup p arameterSpec - invalid oid" )
+                throw NFCPassportReaderError.InvalidDataPassed( "Unable to lookup parameterSpec - invalid oid" )
         }
     }
     

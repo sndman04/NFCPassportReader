@@ -9,6 +9,7 @@ export DEVELOPER_DIR
 
 xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build
 xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build-for-testing
+scripts/api_surface_check.sh
 scripts/privacy_scan.sh
 git diff --check
 

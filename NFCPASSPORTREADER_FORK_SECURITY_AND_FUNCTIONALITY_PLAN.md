@@ -1097,7 +1097,7 @@ Completed:
 - Centralized DG11/DG12 LDS text decoding through `LDSStringDecoder`, preserving valid UTF-8 multilingual names, places, authorities, and observations while avoiding nil drops on malformed text bytes.
 - Added `PassportPACEKeyReference` for MRZ, CAN, PIN, and PUK PACE password-reference values.
 - Added source-compatible `PassportReader.readPassport(...)` overloads that let callers provide an alternate PACE credential/reference while still passing the MRZ key for BAC fallback.
-- Kept PACE Integrated Mapping (IM) explicitly unsupported rather than pretending it works. This remains a standards-compliant combination that requires real cryptographic implementation and chip validation.
+- Historical note: this pass kept PACE Integrated Mapping (IM) explicitly unsupported rather than pretending it worked. This was superseded by the later 2026-06-20 PACE Integrated Mapping pass; real-chip validation still remains.
 - Updated README support matrix and usage examples for all LDS data groups, alternate PACE credentials, and the remaining IM/CAM boundary.
 
 Tests added:
@@ -1127,7 +1127,7 @@ Verification:
 
 Remaining follow-up:
 
-- Implement and validate PACE Integrated Mapping (IM) and Chip Authentication Mapping (CAM) before claiming complete PACE coverage for every standards-compliant passport.
+- PACE Integrated Mapping (IM) and Chip Authentication Mapping (CAM) now have implementation coverage in later 2026-06-20 passes; real-chip validation remains required before claiming complete PACE coverage for every standards-compliant passport.
 - Run on-device interoperability checks before tagging.
 - Maintain a private real-passport interoperability matrix across BAC, PACE-GM, PACE-IM, PACE-CAM, extended-length behavior, sparse DG11/DG12, and multilingual optional text without recording real passport values.
 
@@ -1136,7 +1136,7 @@ Remaining follow-up:
 Completed:
 
 - Preserved unrecognized DG14/CardAccess `SecurityInfo` entries as redacted `UnknownSecurityInfo` values instead of silently dropping them.
-- Added `CardAccess.paceInfos` and PACE selection logic so chips advertising multiple PACE mappings use implemented GM options when available and report unsupported-only IM/CAM sets explicitly.
+- Added `CardAccess.paceInfos` and PACE selection logic so chips advertising multiple PACE mappings use implemented GM options when available and report then-unimplemented IM/CAM-only sets explicitly. This historical limitation was later narrowed by the PACE-IM and PACE-CAM implementation passes.
 - Added a per-`PACEInfo` `PACEHandler` path and updated `PassportReader` to attempt advertised PACE options in an implementation-aware order.
 - Added a small DER parser for structured ASN.1 nodes and switched SOD data-group hash extraction to parse the LDS Security Object directly instead of depending on OpenSSL text-dump formatting.
 - Hardened SOD CMS/manual signature extraction so signer info is found structurally even when optional CMS certificate or CRL fields shift child positions.
@@ -1149,7 +1149,7 @@ Tests added:
 
 - DG7 multiple-image parsing keeps both image payloads and preserves the first-image compatibility API.
 - Structured SOD LDS Security Object parsing covers data-group hash extraction and rejects invalid data-group numbers.
-- PACE option ordering prefers implemented GM over an earlier unsupported mapping.
+- PACE option ordering originally preferred implemented GM over an earlier unsupported mapping. Later PACE-IM/PACE-CAM work added implemented alternatives, while retaining real-chip validation as the release blocker.
 - Unknown `SecurityInfo` OIDs are retained as redacted objects.
 
 Verification:
@@ -1173,7 +1173,7 @@ Verification:
 
 Remaining follow-up:
 
-- Implement and validate PACE Integrated Mapping (IM) and Chip Authentication Mapping (CAM) before claiming complete PACE coverage for every standards-compliant passport.
+- PACE Integrated Mapping (IM) and Chip Authentication Mapping (CAM) now have implementation coverage in later 2026-06-20 passes; real-chip validation remains required before claiming complete PACE coverage for every standards-compliant passport.
 - Run on-device interoperability checks against real chips before tagging, especially PACE option ordering, CMS SOD variants, multiple DG7 image items, and RSA/ECDSA Active Authentication documents.
 
 ### 2026-06-20 Full Security And Edge-Case Bug Check Loop
@@ -1230,7 +1230,7 @@ Verification:
 Remaining follow-up:
 
 - Add deterministic NFC-session seams if future work needs direct unit tests for Active Authentication event emission, PACE fallback ordering under thrown tag-reader errors, or chunk-size fallback behavior without hardware.
-- Run on-device interoperability checks before tagging, especially very large DG2 records, PACE-GM passports, unsupported IM/CAM-only passports, sparse optional DG11/DG12 records, and RSA/ECDSA Active Authentication chips.
+- Run on-device interoperability checks before tagging, especially very large DG2 records, PACE-GM/PACE-IM/PACE-CAM passports, sparse optional DG11/DG12 records, and RSA/ECDSA Active Authentication chips.
 
 ### 2026-06-20 Repository Gap Review
 
@@ -1241,10 +1241,10 @@ Potential gaps to resolve or deliberately accept:
 - `photoPolicy` and `PassportReaderSecurityPolicy.allowsPassportPhoto` only filter explicitly requested data groups. Legacy `readPassport(mrzKey:tags: [])` still flips into "read all from COM" mode after policy filtering, so a caller using `.identityOnly` security policy plus empty tags could still read DG2 if the chip advertises it. Prefer making empty tags resolve through an explicit scan profile or applying photo/security filtering again after COM expansion.
 - Passive-authentication wording is still easy to overstate. `passportDataNotTampered` and `PassportVerificationResult.dataGroupHashStatus` are computed over the groups actually read, not every hash listed in SOD or every group present in COM. That is useful for minimal scans, but app copy and policy names should say "read data groups matched SOD" rather than implying the whole document was verified.
 - `PassportScanProfile.fullVerification` mirrors the current Notary Journal group list but does not include DG11 or DG7. That means `placeOfBirth`, residence address, phone number, DG11 personal number, and signature/mark images remain absent unless a custom profile opts in. This may be correct for privacy, but Notary Journal should explicitly decide whether those fields are needed.
-- `NFCPassportModel` remains a compatibility surface that publicly exposes sensitive fields or raw handles such as `passportMRZ`, `dataGroupsRead`, `getDataGroup(_:)`, `activeAuthenticationChallenge`, and `activeAuthenticationSignature`. `identityResult` is the safer integration path, but a future major version should quarantine or remove the raw model surface from ordinary app use.
+- `NFCPassportModel` is now an internal working model rather than the public app-facing scan result. It still retains sensitive fields and raw handles internally while a scan is being projected, so ordinary integrations should continue to use `readPassportIdentity(...) -> PassportChipReadResult` and call-site documentation should not steer apps back to the raw model.
 - Chip Authentication retry state appears incomplete: `readDataGroups` creates a local `ChipAuthenticationHandler`, but does not assign it to `self.caHandler`. Later retry logic checks `self.caHandler != nil` before falling back from chip-authenticated reads, so that recovery path may never execute after successful CA. This needs an NFC seam or device validation.
 - Active Authentication is only attempted when DG15 is read. Policies such as `.activeAuthenticationWhenSupported` and `.fullVerificationWhenSupported` can only know support if DG15 was requested and parsed; app profiles that omit DG15 should treat active-auth status as not checked, not unsupported.
-- On-device coverage remains the main release blocker. The private interoperability matrix should cover BAC-only, PACE-GM, unsupported IM/CAM-only, CA-supported, AA RSA, AA ECDSA, very large DG2, sparse DG11/DG12, multiple DG7 images, and connection-loss/chunk fallback cases without recording real passport values.
+- On-device coverage remains the main release blocker. The private interoperability matrix should cover BAC-only, PACE-GM, PACE-IM, PACE-CAM, CA-supported, AA RSA, AA ECDSA, very large DG2, sparse DG11/DG12, multiple DG7 images, and connection-loss/chunk fallback cases without recording real passport values.
 
 Verification during this review:
 
@@ -1301,8 +1301,8 @@ Verification:
 
 Second-pass residual gaps:
 
-- Real-device interoperability remains required before tagging, especially `.fullVerification` with newly included DG7/DG11, PACE-GM, unsupported IM/CAM-only chips, Chip Authentication fallback, RSA/ECDSA Active Authentication, very large DG2, sparse DG11/DG12, and connection-loss/chunk fallback behavior.
-- `NFCPassportModel` still exposes raw compatibility surfaces by design for this source-compatible fork. Future major-version cleanup should move ordinary app integrations fully to safe projected result types and quarantine raw access behind an explicitly unsafe namespace or module.
+- Real-device interoperability remains required before tagging, especially `.fullVerification` with newly included DG7/DG11, PACE-GM, PACE-IM, PACE-CAM, Chip Authentication fallback, RSA/ECDSA Active Authentication, very large DG2, sparse DG11/DG12, and connection-loss/chunk fallback behavior.
+- `NFCPassportModel` remains the internal working container for raw data groups, certificates, and Active Authentication material. The public integration path should stay on `PassportChipReadResult`; future cleanup can continue shrinking internal raw retention windows without reintroducing raw public APIs.
 - Active Authentication support is still only knowable when DG15 is read. Profiles that omit DG15 should continue to present active authentication as not checked rather than unsupported.
 
 ### 2026-06-20 Implementation Gap Cleanup Pass
@@ -1413,10 +1413,10 @@ Verification during this pass:
 
 Remaining external or versioned follow-up:
 
-- Real-device interoperability remains required before tagging. The private matrix should include BAC-only, PACE-GM, unsupported IM/CAM-only, CA-supported, AA RSA, AA ECDSA, very large DG2, sparse DG11/DG12, multiple DG7 images, strict PACE policy, and connection-loss/chunk fallback behavior without recording real passport values.
+- Real-device interoperability remains required before tagging. The private matrix should include BAC-only, PACE-GM, PACE-IM, PACE-CAM, CA-supported, AA RSA, AA ECDSA, very large DG2, sparse DG11/DG12, multiple DG7 images, strict PACE policy, and connection-loss/chunk fallback behavior without recording real passport values.
 - Screenshot/background redaction and any Notary Journal UI retention controls must be implemented and verified in the app repo because this package does not own host-app screens, snapshots, analytics, crash-report configuration, clipboard policy, or persistence.
 - Certificate revocation checking remains explicitly not performed. Do not imply revocation status until the fork has a defined CRL/PKD data source, cache policy, offline behavior, test vectors, and real-device/revoked-certificate validation.
-- `NFCPassportModel` still exposes raw compatibility properties for source compatibility. A future major version should quarantine ordinary app integrations behind the privacy-first result types and move raw access into explicitly unsafe APIs only.
+- `NFCPassportModel` still retains raw compatibility properties internally. A future major version can further shrink or isolate those internals, but ordinary app integrations should remain on the privacy-first result types.
 
 ### 2026-06-20 Repository Structure Pass
 
@@ -1517,6 +1517,779 @@ Verification during this pass:
 - A broad risky-pattern search found no active production raw logging, removed raw import/export APIs, or direct print/Logger/os_log sinks. Remaining hits were reviewed as documentation, negative-test fixtures, internal APDU/key type names, or scanner patterns.
 
 - `scripts/release_check.sh` was attempted after the successful direct build/test run, but the local Xcode/CoreSimulator services failed to initialize and xcodebuild reported package discovery errors despite `Package.swift` being present. Treat this as an environment issue for this handoff; rerun the release wrapper before tagging if CoreSimulator is restarted.
+
+### 2026-06-20 Parser Standards Coverage Pass
+
+Completed:
+
+- Expanded LDS optional-text decoding for DG11 and DG12. `LDSStringDecoder` is now BOM-aware for UTF-8 and UTF-16, uses UTF-16 endianness heuristics for null-padded text, and falls back through common Latin encodings before replacement UTF-8. This improves multilingual issuer-field handling without exposing raw text bytes in diagnostics.
+- Expanded DG2 face-image handling to preserve multiple biometric information templates when a chip includes more than one template in DG2, and multiple facial records embedded inside a single ISO/IEC 19794-5 face-image payload. The existing `imageData` compatibility property remains the first retained image, while `imageDataItems` retains all parsed images.
+- Relaxed DG2 JPEG validation from only accepting JFIF APP0 headers to accepting standard JPEG marker starts, while keeping JPEG 2000 support, byte limits, dimension limits, feature-point bounds, and malformed-payload rejection.
+- Updated README support notes to state the package's LDS1 eMRTD scope, DG2 multiple-image behavior, broader DG11/DG12 decoding, and explicit non-support for optional LDS2 applications.
+
+Tests added:
+
+- DG2 JPEG payload with a non-JFIF marker is accepted.
+- DG2 multiple biometric templates preserve all image payloads while keeping first-image compatibility.
+- DG2 multiple facial records inside one biometric template preserve all image payloads while keeping first-image compatibility.
+- DG11 UTF-16 big-endian text with BOM parses correctly.
+- DG12 Latin-1 issuer text parses correctly.
+
+Verification:
+
+- Focused iOS simulator core/parsing suites passed after the Active Authentication RIPEMD160 fix:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:NFCPassportReaderTests/NFCPassportReaderTests -only-testing:NFCPassportReaderTests/DataGroupParsingTests
+  ```
+
+  Result: 74 tests, 0 failures.
+
+- Focused iOS simulator parsing suite passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:NFCPassportReaderTests/DataGroupParsingTests
+  ```
+
+  Result: 42 tests, 0 failures.
+
+- Full iOS simulator unit suite passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5'
+  ```
+
+  Result: 111 tests, 0 failures.
+
+- Required iOS package build passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build
+  ```
+
+- Consolidated release check passed:
+
+  ```sh
+  scripts/release_check.sh
+  ```
+
+  This reran the iOS package build, iOS build-for-testing, `scripts/privacy_scan.sh`, `git diff --check`, and the targeted risky-diagnostics search.
+
+- Targeted scan of changed files found no new active runtime logging, raw export APIs, raw APDU/key diagnostics, or sensitive byte dumps. Remaining hits are expected documentation, synthetic parser fixtures, negative-test assertions, and internal type names.
+
+Remaining follow-up:
+
+- PACE Integrated Mapping (IM) now has standards-vector implementation coverage; real-chip validation still remains before the fork can claim complete PACE coverage for every standards-compliant passport.
+- DG2 multi-image parsing now has synthetic coverage for multiple biometric templates and multiple facial records in one template. Real-chip fixture validation is still needed before claiming exhaustive DG2 biometric-record interoperability.
+- LDS2 applications remain out of scope for this package unless product requirements expand beyond LDS1 eMRTD passport identity reads.
+- Real-device interoperability remains required before tagging.
+
+### 2026-06-20 PACE CAM Selection Pass
+
+Completed:
+
+- Allowed ECDH PACE Chip Authentication Mapping (CAM) OIDs to be selected for reader PACE attempts when standardized domain parameters are available.
+- Routed CAM mapping through the same Generic Mapping exchange, matching the ICAO description that CAM extends Generic Mapping, and required the final CAM data object (`0x8A`) to be present before accepting the PACE exchange.
+- Added internal CAM proof validation for the DG14 path. The final CAM data object is decrypted with the PACE encryption key, unpadded, and checked by verifying that `CAIC * PKIC` equals the chip's PACE mapping public key for one of the DG14 `ChipAuthenticationPublicKeyInfo` keys.
+- Treat a successful DG14 CAM proof as chip-authentication success and skip redundant separate Chip Authentication in that case. If the DG14 proof is absent or fails, the existing separate Chip Authentication flow can still run when supported.
+- Kept CAM proof material internal. The transient CAM verification result is cleared after DG14 proof evaluation and is also cleared by model sensitive-data cleanup.
+- Added internal EF.CardSecurity reading and CMS encapsulated SecurityInfos parsing for master-file file `011D`. This is intentionally non-trusting until EF.CardSecurity signature validation is implemented.
+- Updated README support notes to distinguish implemented DG14-based CAM proof validation and EF.CardSecurity parsing from the remaining trust-based EF.CardSecurity key-selection gap.
+
+Tests added:
+
+- ECDH-CAM PACEInfo is considered readable for PACE selection.
+- Synthetic ECDH-CAM proof verification succeeds against the matching chip-authentication public key and fails against a different key.
+- Synthetic EF.CardSecurity CMS encapsulated SecurityInfos content parses into PACE security info without using real passport data.
+
+Verification:
+
+- Focused iOS simulator diagnostics suite passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:NFCPassportReaderTests/PassportReaderLoggingTests
+  ```
+
+  Result: 47 tests, 0 failures.
+
+- Focused iOS simulator parsing suite passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:NFCPassportReaderTests/DataGroupParsingTests
+  ```
+
+  Result: 41 tests, 0 failures.
+
+- Full iOS simulator unit suite passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5'
+  ```
+
+  Result: 114 tests, 0 failures.
+
+- Required iOS package build passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build
+  ```
+
+- `scripts/privacy_scan.sh`, `git diff --check && git diff --cached --check`, and `scripts/release_check.sh` passed.
+- Targeted scan of changed files found no new active runtime logging, raw export APIs, raw APDU/key diagnostics, or sensitive byte dumps. Remaining hits are expected documentation, synthetic parser fixtures, negative-test assertions, and internal type names.
+
+Remaining follow-up:
+
+- PACE Integrated Mapping (IM) now has standards-vector implementation coverage in the later IM pass; real-chip validation still remains.
+- EF.CardSecurity signature validation and trust-based CAM key selection now have implementation coverage, but still need real-document validation with a trusted master list before release claims are broadened.
+- Real-device interoperability remains required before tagging.
+
+### 2026-06-20 EF.CardSecurity CAM Trust Pass
+
+Completed:
+
+- Added CMS signature verification for EF.CardSecurity using the same privacy-safe encapsulated-content extraction path as SOD verification, with optional CSCA/master-list trust-store validation.
+- Kept parse-only EF.CardSecurity content non-trusting. Parsed SecurityInfos can be inspected internally, but they satisfy CAM only when the EF.CardSecurity signer was verified against the configured trust store.
+- Allowed a trusted EF.CardSecurity chip-authentication public key to validate PACE-CAM immediately after PACE succeeds. If trusted EF.CardSecurity validation is unavailable or fails, the existing DG14 CAM proof path and separate Chip Authentication fallback remain in place.
+- Cleared transient EF.CardSecurity CMS bytes after signature verification attempts and kept CAM proof material internal.
+- Updated README support notes so CAM coverage distinguishes trusted EF.CardSecurity CAM, DG14 CAM fallback, separate Chip Authentication fallback, and the then-remaining PACE-IM path. PACE-IM implementation coverage was added in the later 2026-06-20 IM pass.
+
+Tests added:
+
+- Synthetic EF.CardSecurity content still parses without real passport data.
+- Synthetic unsigned EF.CardSecurity content fails CMS verification and does not become trusted.
+
+Verification:
+
+- Focused iOS simulator parsing suite passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:NFCPassportReaderTests/DataGroupParsingTests
+  ```
+
+  Result: 43 tests, 0 failures.
+
+- Focused iOS simulator diagnostics suite passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:NFCPassportReaderTests/PassportReaderLoggingTests
+  ```
+
+  Result: 47 tests, 0 failures.
+
+- Full iOS simulator unit suite passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5'
+  ```
+
+  Result: 115 tests, 0 failures.
+
+- Required iOS package build passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build
+  ```
+
+- `scripts/privacy_scan.sh`, `git diff --check && git diff --cached --check`, and `scripts/release_check.sh` passed.
+- Targeted scan of changed files found no new active runtime logging, raw export APIs, raw APDU/key diagnostics, or sensitive byte dumps. Remaining hits are expected documentation, synthetic parser fixtures, negative-test assertions, internal type names, and typed redacted event logging.
+
+Remaining follow-up:
+
+- PACE Integrated Mapping (IM) now has standards-vector implementation coverage in the later IM pass; real-chip validation still remains.
+- EF.CardSecurity trust behavior still needs real-document validation with an actual master list.
+- Real-device interoperability remains required before tagging.
+
+### 2026-06-20 PACE Integrated Mapping Pass
+
+Completed:
+
+- Implemented PACE Integrated Mapping (IM) step 2 for standardized DH and ECDH domain parameters. The reader now sends the terminal IM nonce in mapping data object `0x81`, requires the chip's `0x82` response to be empty, derives the IM field value from the decrypted passport nonce and terminal nonce, and creates mapped domain parameters before key agreement.
+- Added the IM pseudorandom field mapping for AES and 3DES PACE cipher suites using the ICAO CBC-based construction with zero IV and the standardized `c0`/`c1` constants.
+- Added OpenSSLCompat helpers for DH IM parameter mapping (`gHat = Rp(s,t)^((p-1)/q) mod p`) and ECDH IM parameter mapping using the ICAO Appendix B affine point-encoding algorithm.
+- Updated PACE option selection so implemented IM options with standardized domain parameters are eligible for reading, alongside GM and ECDH-CAM.
+- Kept IM inputs and mapped parameters internal. No nonce, key, APDU, mapped-field, or generator bytes are logged or surfaced through public diagnostics.
+- Updated README support notes so IM is no longer described as unsupported, while retaining the real-device validation requirement before broad release claims.
+
+Tests added:
+
+- ICAO Appendix H ECDH IM pseudorandom field mapping vector.
+- ICAO Appendix H ECDH IM mapped generator vector.
+- ICAO Appendix H DH IM mapped generator vector.
+- PACE option selection now preserves an implemented IM option before a later GM option instead of treating IM as unsupported.
+
+Verification:
+
+- Focused iOS simulator diagnostics suite passed after the IM selection update:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:NFCPassportReaderTests/PassportReaderLoggingTests
+  ```
+
+  Result: 50 tests, 0 failures.
+
+- Full iOS simulator unit suite passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5'
+  ```
+
+  Result: 118 tests, 0 failures.
+
+- Required iOS package build passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build
+  ```
+
+- `scripts/privacy_scan.sh`, `git diff --check && git diff --cached --check`, and `scripts/release_check.sh` passed.
+- Targeted scan of changed files found no new active runtime logging, raw export APIs, raw APDU/key diagnostics, or sensitive byte dumps. Remaining hits are expected README/plan privacy wording, synthetic ICAO/test vectors, negative-test fixtures, typed APDU/key internals, and redacted event logging.
+
+Remaining follow-up:
+
+- Real-device interoperability remains required before tagging, especially passports that advertise PACE-IM only, multiple PACE options, ECDH-CAM with EF.CardSecurity trust, and chips using 3DES IM suites.
+- The ECDH IM implementation matches ICAO vectors, but real-chip timing/interoperability behavior still needs validation on device before claiming exhaustive PACE coverage.
+
+### 2026-06-20 PACE IM Edge-Coverage Pass
+
+Completed:
+
+- Added direct test coverage that BER-TLV data-object helpers preserve zero-length values. This covers the PACE-IM `0x82 0x00` chip mapping response shape required by the standard.
+- Added direct negative coverage that PACE Integrated Mapping field derivation rejects malformed passport or terminal nonce lengths before calculating mapped parameters.
+- Cleaned stale plan wording that still described PACE-IM as an unsupported boundary after the later IM implementation pass.
+
+Verification:
+
+- Focused iOS simulator core utility suite passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:NFCPassportReaderTests/NFCPassportReaderTests
+  ```
+
+  Result: 26 tests, 0 failures.
+
+- Focused iOS simulator diagnostics suite passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:NFCPassportReaderTests/PassportReaderLoggingTests
+  ```
+
+  Result: 51 tests, 0 failures.
+
+- Full iOS simulator unit suite passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5'
+  ```
+
+  Result: 120 tests, 0 failures.
+
+- Required iOS package build passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build
+  ```
+
+- `scripts/privacy_scan.sh`, `git diff --check && git diff --cached --check`, and `scripts/release_check.sh` passed.
+- Release-check risky-pattern hits were reviewed as expected documentation, negative-test fixtures, typed APDU/key internals, or redacted event logging.
+
+Remaining follow-up:
+
+- Real-device interoperability remains required before tagging, especially PACE-IM-only chips, chips using 3DES IM suites, and multi-option PACE fallback behavior.
+
+### 2026-06-20 Revocation Metadata Clarity Pass
+
+Completed:
+
+- Added `PassportCertificateRevocationCheck`, `PassportCertificateRevocationStatus`, and `PassportCertificateRevocationReason` as privacy-safe typed metadata on `PassportCertificateTrustMetadata`.
+- Kept the current behavior conservative: revocation is reported as not checked with reason `.notImplemented` after verification attempts, and not checked with reason `.notRequested` before verification runs.
+- Updated README passive-authentication guidance so signer trust and revocation status are separate claims, and callers are told not to infer revocation from master-list trust.
+- Removed the unused legacy `hasCertBeenRevoked` helper because it inferred revocation from successful certificate-chain extraction against a caller-supplied file, could mutate signer verification state, and was explicitly untested. Revocation remains unsupported until a real CRL/PKD workflow is designed and verified.
+- Removed the unused legacy `NotImplementedDG` class. All LDS1 data-group tags known to the parser now route to concrete parsers or opaque typed data-group classes with the correct `DataGroupId`, so maintenance and diagnostics no longer carry a stale "not implemented" parser surface for supported LDS1 file IDs.
+- Corrected privacy-safe PACE protocol display names for DH-IM AES-256 and ECDH-IM 3DES so support diagnostics use standard OID names rather than typoed labels.
+- Implemented DG12 `A0` other-person-details parsing. The parser now preserves plain text and exact nested TLV text values, including multilingual content, while falling back to direct text decoding if the payload is not a clean TLV sequence.
+- Made DG14 Chip Authentication public-key pointer ownership explicit. Public keys parsed from SecurityInfo now have a clear owner and are freed with their wrapper, while borrowed OpenSSL keys used by CAM tests can opt out to avoid double-freeing.
+- Added metadata coverage tests for every supported PACE and Chip Authentication OID so missing mapping, agreement, cipher, digest/key-length, or display-name table entries fail before a passport scan.
+- Added a SecurityInfo regression for multi-byte optional identifiers, covering larger Chip Authentication key IDs and PACE parameter IDs encoded by issuers as multi-byte ASN.1 INTEGER values.
+- Replaced SecurityInfo parsing for EF.CardAccess, DG14, and EF.CardSecurity with direct DER parsing through the structured ASN.1 node parser instead of OpenSSL ASN.1 dump text. This keeps parsing independent of dump formatting, preserves PACE/Chip Authentication/Active Authentication/unknown records, and rejects invalid SecurityInfos roots rather than silently treating them as empty.
+- Preserved each structured ASN.1 node's original encoded bytes and use those bytes when parsing SecurityInfo public keys, avoiding compatibility loss from re-encoding valid long-form lengths or multi-byte tags before handing data to OpenSSL.
+- Replaced SOD CMS field extraction with direct structured ASN.1 parsing instead of OpenSSL ASN.1 dump text. Encapsulated content, digest algorithm, signed attributes, messageDigest, signature bytes, and signature algorithm are now extracted from `SimpleASN1Node`, with signed attributes preserving original encoded bytes except for the required CMS `[0]` to `SET` tag substitution used during verification.
+- Removed the legacy OpenSSL ASN.1 dump parser and raw dump helper entirely. `SecurityInfo` no longer has an `ASN1Item` factory, structured ASN.1 debug descriptions redact values by default, and recognized Chip Authentication public-key SecurityInfos now fail closed if OpenSSL cannot parse the key instead of falling through to an unknown-security-info object.
+- Removed the remaining SOD hash text-dump parser. Passive Authentication now parses LDS Security Object hashes only from structured DER, so malformed data-group-number coverage no longer depends on OpenSSL dump-text formatting.
+- Tightened Active Authentication verification detail semantics. A fresh model now reports Active Authentication as not requested, a COM without DG15 reports it as not supported, and an advertised DG15 skipped by profile/policy reports it as skipped; enforcement behavior remains unchanged.
+- Fixed Active Authentication ECDSA digest selection for `ecdsa-plain-RIPEMD160`. The signature algorithm OID was already parsed, but verification previously fell through to the default SHA-256 digest instead of asking OpenSSL for RIPEMD160.
+- Corrected a stale Active Authentication RSA comment that said ISO9796-2 two-byte trailer hash selection was unimplemented, even though SHA-1/SHA-224/SHA-256/SHA-384/SHA-512 trailer bytes are handled.
+- Added parser coverage for TD1 and TD2 DG1 MRZ layouts in addition to the existing TD3-length passport MRZ test, using synthetic data only.
+- Tightened Chip Authentication verification detail and strict policy semantics. A fresh model now reports Chip Authentication as not requested, DG14-not-advertised reports not supported, and advertised-but-skipped DG14 reports skipped. `chipAuthenticationWhenSupported`, `activeAuthenticationWhenSupported`, and `fullVerificationWhenSupported` now fail when DG14/DG15 was advertised but skipped by profile or policy instead of treating skipped advertised mechanisms as unsupported.
+
+Tests added:
+
+- Default identity results report revocation as not checked and not requested.
+- Verification attempts without a revocation workflow report revocation as not checked and not implemented, using privacy-safe explanation text.
+- PACE protocol OID string tests cover the corrected IM labels.
+- DG12 other-person-details tests cover both plain text and nested multilingual TLV payloads.
+- Supported PACE and Chip Authentication OID metadata tests cover all currently supported standard combinations.
+- SecurityInfo optional-identifier tests cover multi-byte key ID and parameter ID parsing.
+- DG1 parser tests now cover TD1, TD2, and TD3-length MRZ layouts with synthetic MRZ strings.
+- SecurityInfos parser tests cover mixed DER records for PACE, Chip Authentication, Active Authentication, and unknown security info without relying on OpenSSL dump text.
+- Structured ASN.1 node tests cover preservation of original encoded bytes, including long-form length headers.
+- SOD CMS parser tests cover encapsulated content, digest algorithm, signed attributes, messageDigest, signature bytes, signature algorithm, and optional CMS certificate/CRL field positioning without relying on OpenSSL dump text.
+- ASN.1 debug-description tests now cover the structured parser's redacted output directly.
+- SecurityInfo tests now cover multi-byte optional identifiers, unknown OID preservation, and malformed recognized public-key records through DER parser paths without using dump-parser fixtures.
+- Structured SOD hash tests now cover valid hash extraction plus invalid and zero data-group numbers without using text-dump fixtures.
+- Active Authentication detail tests cover default not-requested, COM-not-advertised not-supported, and advertised-but-skipped DG15 cases.
+- Active Authentication signature-algorithm metadata tests cover all supported ECDSA plain OIDs, including RIPEMD160, and the OpenSSL signature digest selector now has focused coverage for those names.
+- Chip Authentication detail and strict-policy tests cover advertised-but-skipped DG14/DG15 failures plus non-advertised mechanisms satisfying the "when supported" policies.
+
+Verification:
+
+- Focused iOS simulator parsing suite passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:NFCPassportReaderTests/DataGroupParsingTests
+  ```
+
+  Result: 49 tests, 0 failures.
+
+- Focused iOS simulator diagnostics suite passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:NFCPassportReaderTests/PassportReaderLoggingTests
+  ```
+
+  Result: 61 tests, 0 failures.
+
+- Full iOS simulator unit suite passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5'
+  ```
+
+  Result: 137 tests, 0 failures.
+
+- Required iOS package build passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build
+  ```
+
+- `scripts/privacy_scan.sh`, `git diff --check && git diff --cached --check`, and `scripts/release_check.sh` passed.
+- Release-check risky-pattern hits were reviewed as expected documentation, negative-test fixtures, typed APDU/key internals, or redacted event logging.
+- Targeted risky-pattern search found no new active raw logging sink. Remaining hits were reviewed as expected README/plan privacy wording, negative-test fixtures, synthetic parser data, internal APDU/key type names, OpenSSL API names, and redacted event logging.
+- Legacy-parser symbol scan found no `ASN1Item`, `SimpleASN1DumpParser`, `ASN1Parse(`, or `ASN1_parse_dump` references left in `Sources` or `Tests`.
+- GitHub Actions run `27880003695` for commit `718c51c` failed in `xcodebuild ... build-for-testing` under Xcode 16.4/iOS 18.5 because the Swift compiler could not type-check the large chained byte-array expression in `iso19794FaceRecord(...)` in reasonable time. The production package build had already succeeded before the test build failed. Rewrote that synthetic test fixture helper to append into a reserved `[UInt8]` buffer step by step; behavior and bytes are unchanged, but older Swift compilers avoid the type-checking timeout.
+- Local verification after the CI compatibility fix passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer scripts/release_check.sh
+  ```
+
+  This local machine only has `/Applications/Xcode.app`, not GitHub's `/Applications/Xcode_16.4.app`; rerun Actions after pushing to verify the exact runner compiler.
+
+Remaining follow-up:
+
+- A real revocation workflow still requires a defined CRL/PKD data source, cache policy, offline behavior, test vectors, and real-device/revoked-certificate validation before `revocationCheckPerformed` can ever be true.
+
+### 2026-06-20 Legacy Low-Level Surface Narrowing
+
+Completed:
+
+- Reviewed the remaining public low-level protocol, parser, certificate, byte-conversion, AES/DES, and OpenSSL helper symbols after the public scan API was moved to `PassportChipReadResult`.
+- Confirmed the app-facing read path still avoids returning raw data groups, APDUs, certificates, secure-messaging keys, Active Authentication challenge/signature bytes, and chip image bytes through `PassportChipReadResult`.
+- Made low-level NFC/session protocol types module-internal: `TagReader`, `ResponseAPDU`, `BACHandler`, `PACEHandler`, `SecureMessaging`, and `SecureMessagingSupportedAlgorithms`.
+- Made low-level byte, hash, MAC, padding, ASN.1-length, OID, AES/DES, OpenSSL, certificate-wrapper, raw data-group parser, SecurityInfo, FaceImageInfo, and internal hash-detail helpers module-internal.
+- Kept `DataGroupId` public because it is part of safe scan profiles, diagnostics, and read reports.
+- Kept safe app-facing types public: `PassportReader`, `PassportChipReadResult`, `PassportIdentityResult`, scan options/profiles/policies, privacy-safe diagnostics, verification summaries, trust metadata, revocation metadata, and non-identifying interoperability records.
+- Made `NFCPassportReaderError` default stringification privacy-safe by conforming to `CustomStringConvertible` and returning `safeDescription`, so accidental `String(describing:)` logging does not include low-level associated values.
+- Made `OpenSSLError` and `PassiveAuthenticationError` module-internal. Their localized descriptions remain privacy-safe for internal wrapping and tests.
+- Updated README wording to clarify that low-level NFC, BAC, PACE, secure-messaging, crypto, certificate-wrapper, and raw data-group parser types are not public app scan APIs.
+- Updated README logging guidance to state that reader error `localizedDescription` and `String(describing:)` output are privacy-safe summaries.
+
+Tests added:
+
+- Reader error default string descriptions reject sensitive status-word, APDU, PACE token, and key-material fragments.
+
+Verification:
+
+- Focused iOS simulator diagnostics suite passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:NFCPassportReaderTests/PassportReaderLoggingTests
+  ```
+
+  Result: 62 tests, 0 failures.
+
+- Required iOS package build passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build
+  ```
+
+- Full iOS simulator unit suite passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5'
+  ```
+
+  Result: 138 tests, 0 failures.
+
+- Whitespace checks passed:
+
+  ```sh
+  git diff --check && git diff --cached --check
+  ```
+
+- `scripts/privacy_scan.sh` passed.
+- Consolidated release check passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer scripts/release_check.sh
+  ```
+
+  This reran the required iOS package build, iOS build-for-testing, privacy scan, whitespace check, and risky-diagnostics search. Risky-pattern hits were reviewed as expected documentation, negative-test fixtures, typed APDU/key internals, OpenSSL API names, or redacted event logging.
+
+Remaining follow-up:
+
+- This is a deliberate public API cleanup for the privacy fork. Downstream integrations that were using original-package internals should migrate to `PassportReader.readPassportIdentity(...)`, `PassportScanOptions`, `PassportChipReadResult`, and `PassportChipReading`.
+- Do not add new app-facing raw cryptographic, NFC, certificate, APDU, SecurityInfo, or raw data-group parser APIs. Ordinary integrations should stay on the privacy-first result surface.
+
+### 2026-06-20 Interoperability Record Privacy Hardening
+
+Completed:
+
+- Tightened `PassportInteroperabilityRecord.containsOnlyNonIdentifyingFields` so private real-device matrix notes reject more sensitive shapes than the previous long-MRZ/long-hex checks.
+- Added rejection for common sensitive labels such as MRZ, passport/document number, date of birth, expiration, names, photo/image, APDU/RAPDU, BAC/PACE/session keys, Kseed/KSenc/KSmac, RND.IFD/RND.ICC, certificate serials, fingerprints, and thumbprints.
+- Added rejection for separated byte/hex samples such as APDU AIDs, key fragments, certificate fingerprints, or colon/dash/space-delimited hex.
+- Updated README compatibility-tracking guidance to make clear that the validation helper is a safeguard, not permission to store scan artifacts.
+
+Tests added:
+
+- Interoperability records now reject sensitive labels and separated hex samples in notes while preserving the existing synthetic safe-note path.
+
+Verification:
+
+- Focused iOS simulator diagnostics suite passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:NFCPassportReaderTests/PassportReaderLoggingTests
+  ```
+
+  Result: 63 tests, 0 failures.
+- Full iOS simulator suite passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5'
+  ```
+
+  Result: 139 tests, 0 failures.
+- Required generic iOS package build passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build
+  ```
+
+- `scripts/privacy_scan.sh` passed.
+- `git diff --check && git diff --cached --check` passed.
+- Consolidated release check passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer scripts/release_check.sh
+  ```
+
+  This reran the required iOS package build, iOS build-for-testing, privacy scan, whitespace check, and risky-diagnostics search. Risky-pattern hits were reviewed as expected documentation, negative-test fixtures, typed APDU/key internals, OpenSSL API names, or redacted event logging.
+
+Remaining follow-up:
+
+- The private interoperability matrix still needs real-device data gathered without identity details before release claims can be broadened.
+
+### 2026-06-20 External Public API Surface Probe
+
+Completed:
+
+- Added `scripts/api_surface_check.sh`, which creates temporary external SwiftPM consumer packages and builds them for generic iOS through Xcode.
+- The safe consumer verifies that an app target can compile against the intended privacy-first public surface, including `PassportReader`, `PassportChipReading`, `PassportScanOptions`, scan profiles, diagnostics, privacy copy, verification summaries, revocation metadata, progress events, and interoperability records.
+- The unsafe consumer intentionally tries to use low-level implementation symbols that should not be app-facing: `NFCPassportModel`, `TagReader`, `ResponseAPDU`, `BACHandler`, `PACEHandler`, `SecureMessaging`, `DataGroup`, `SecurityInfo`, and `OpenSSLUtils`. The check now fails the release gate if those symbols become externally available.
+- Wired the external API surface probe into `scripts/release_check.sh` after iOS build-for-testing and before privacy scanning.
+
+Verification:
+
+- External API surface check passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer scripts/api_surface_check.sh
+  ```
+- Consolidated release check passed with the new external API surface probe included:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer scripts/release_check.sh
+  ```
+
+  This reran the required iOS package build, iOS build-for-testing, external API surface probe, privacy scan, whitespace check, and risky-diagnostics search. Risky-pattern hits were reviewed as expected documentation, negative-test fixtures, typed APDU/key internals, OpenSSL API names, or redacted event logging.
+
+Remaining follow-up:
+
+- Keep this probe aligned with the intended app-facing API if a future release deliberately changes the safe public scan surface.
+
+### 2026-06-20 Face Image Presence Semantics
+
+Completed:
+
+- Tightened `PassportIdentityResult.hasFaceImage` so it checks for an actual parsed DG2 image payload via `DataGroup2.imageDataItems` instead of treating DG2 object presence alone as sufficient.
+- Kept behavior aligned with `hasSignatureImage`, which already requires a non-empty DG7 image payload.
+
+Tests added:
+
+- Identity results report no face image when DG2 was not read.
+- Identity results report a face image when a synthetic DG2 fixture parses with an image payload.
+
+Verification:
+
+- Focused iOS simulator parsing and diagnostics suites passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:NFCPassportReaderTests/PassportReaderLoggingTests -only-testing:NFCPassportReaderTests/DataGroupParsingTests
+  ```
+
+  Result: 114 selected tests, 0 failures.
+- Full iOS simulator suite passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5'
+  ```
+
+  Result: 141 tests, 0 failures.
+- `scripts/privacy_scan.sh` passed.
+- `git diff --check && git diff --cached --check` passed.
+- Consolidated release check passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer scripts/release_check.sh
+  ```
+
+  This reran the required iOS package build, iOS build-for-testing, external API surface probe, privacy scan, whitespace check, and risky-diagnostics search. Risky-pattern hits were reviewed as expected documentation, negative-test fixtures, synthetic parser data, typed APDU/key internals, OpenSSL API names, or redacted event logging.
+
+Remaining follow-up:
+
+- Real-device DG2 interoperability still needs validation across chips with multiple biometric templates and multiple facial records before broadening release claims.
+
+### 2026-06-20 Typed Unsupported-Cipher Error Pass
+
+Completed:
+
+- Replaced remaining unsupported-cipher paths that embedded low-level algorithm/key-length detail strings in `PACEError` or `InvalidDataPassed` with the existing typed `NFCPassportReaderError.UnsupportedCipherAlgorithm`.
+- Covered PACE secure-messaging restart, Chip Authentication public-key send/restart paths, Chip Authentication digest inference, and `SecureMessagingSessionKeyGenerator` unsupported algorithm/key-length branches.
+- Kept public error descriptions privacy-safe and internal retry behavior typed; no supported cipher behavior changed.
+
+Tests added:
+
+- Session-key generation now verifies unsupported algorithm names and unsupported key lengths throw `UnsupportedCipherAlgorithm` and do not include low-level fragments in `value`, `localizedDescription`, or default stringification.
+
+Verification:
+
+- Focused iOS simulator core suite passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:NFCPassportReaderTests/NFCPassportReaderTests
+  ```
+
+  Result: 28 tests, 0 failures.
+- Targeted unsupported-cipher detail scan found no remaining detail-bearing messages in sources or tests; the only remaining hit is the generic safe description.
+- Full iOS simulator suite passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5'
+  ```
+
+  Result: 142 tests, 0 failures.
+- `scripts/privacy_scan.sh` passed.
+- `git diff --check && git diff --cached --check` passed.
+- Consolidated release check passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer scripts/release_check.sh
+  ```
+
+  Result: required iOS package build, iOS build-for-testing, external API surface probe, privacy scan, whitespace check, and risky-diagnostics search all completed successfully. Risky-pattern hits were reviewed as expected documentation, negative tests, synthetic parser fixtures, internal APDU/key identifiers, OpenSSL type names, or redacted diagnostic events.
+
+Remaining follow-up:
+
+- Keep future crypto/PACE/CA error branches on typed error cases rather than detail-bearing strings unless a privacy-reviewed diagnostic mode is deliberately added.
+
+### 2026-06-20 Identity Cache Cleanup Pass
+
+Completed:
+
+- Replaced `NFCPassportModel` lazy cached identity accessors with computed accessors backed by the current parsed data groups, including MRZ-derived fields, DG11 optional personal details, face-image metadata, COM metadata, and data-group presence.
+- Tightened the existing `readPassportIdentity(...)` cleanup behavior so the internal working model no longer keeps returning previously projected identity values after `removeSensitiveDataForPrivacy()` clears raw data groups.
+- Kept the privacy-first `PassportChipReadResult` projection unchanged: callers still receive normalized identity fields and safe verification metadata, while the package drops the working model's raw backing data after projection.
+
+Tests added:
+
+- Added a synthetic TD3 DG1 regression test proving `PassportIdentityResult` preserves projected identity values, then `NFCPassportModel.removeSensitiveDataForPrivacy()` clears the backing group and subsequent model access returns empty/default values instead of stale document number, name, birth date, or expiry date.
+
+Verification:
+
+- Focused iOS simulator diagnostics suite passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:NFCPassportReaderTests/PassportReaderLoggingTests
+  ```
+
+  Result: 65 tests, 0 failures.
+- Full iOS simulator suite passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5'
+  ```
+
+  Result: 143 tests, 0 failures.
+- `scripts/privacy_scan.sh` passed.
+- `git diff --check && git diff --cached --check` passed.
+- Consolidated release check passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer scripts/release_check.sh
+  ```
+
+  Result: required iOS package build, iOS build-for-testing, external API surface probe, privacy scan, whitespace check, and risky-diagnostics search all completed successfully. Risky-pattern hits were reviewed as expected documentation, negative tests, synthetic fixtures, internal APDU/key identifiers, OpenSSL type names, or redacted diagnostic events.
+
+Remaining follow-up:
+
+- Cleanup remains best-effort data minimization, not guaranteed memory zeroization. Real-device interoperability and the private matrix remain required before broad release claims.
+
+### 2026-06-20 Failure Path Cleanup Pass
+
+Completed:
+
+- Added a failure-only cleanup path for `PassportReader` that scrubs the partially populated working `NFCPassportModel`, requested data-group queue, current data-group marker, BAC/PACE/CA handlers, MRZ/PACE credential fields, pending PACE credential, and Active Authentication challenge when a scan fails or is canceled.
+- Wired the cleanup into `failActiveScan(...)` before the continuation guard, so timeout, cancellation, NFC invalidation, connection loss, security-policy failure, and other failure paths clear partial chip data even if the continuation has already been consumed by a race.
+- Preserved the successful `completeActiveScan(...)` path so compatibility callers still receive the completed model, while `readPassportIdentity(...)` continues to project `PassportChipReadResult` and then clean up the returned working model.
+
+Tests added:
+
+- Added a reader lifecycle regression test that seeds the private working model with a synthetic parsed data group and Active Authentication material, invokes the failure cleanup path, and verifies both the old model instance and replacement reader model no longer expose the partial data.
+
+Verification:
+
+- Focused iOS simulator diagnostics suite passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:NFCPassportReaderTests/PassportReaderLoggingTests
+  ```
+
+  Result: 66 tests, 0 failures.
+- Full iOS simulator suite passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5'
+  ```
+
+  Result: 144 tests, 0 failures.
+- `scripts/privacy_scan.sh` passed.
+- `git diff --check && git diff --cached --check` passed.
+- Consolidated release check passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer scripts/release_check.sh
+  ```
+
+  Result: required iOS package build, iOS build-for-testing, external API surface probe, privacy scan, whitespace check, and risky-diagnostics search all completed successfully. Risky-pattern hits were reviewed as expected documentation, negative tests, synthetic fixtures, internal APDU/key identifiers, OpenSSL type names, or redacted diagnostic events.
+
+Remaining follow-up:
+
+- Cleanup remains best-effort data minimization, not guaranteed memory zeroization. On-device scans are still needed to validate failure behavior under real connection loss and chip-removal timing.
+
+### 2026-06-20 Authentication Session Cleanup Pass
+
+Completed:
+
+- Added explicit best-effort cleanup hooks for retained BAC key material and randoms, secure-messaging session keys/counter, PACE transient access-key/mapping fields, and Chip Authentication command/session state.
+- Added deinit cleanup for BAC, PACE, Chip Authentication, and Secure Messaging helper objects so releasing a handler also scrubs its own retained byte buffers where Swift allows.
+- Updated `PassportReader.completeActiveScan(...)` so successful compatibility reads still return the completed `NFCPassportModel`, but the reader object drops authentication handlers, MRZ/PACE credential fields, requested data-group queue, current data-group marker, optional Active Authentication challenge, and display/progress closure references after completion.
+- Updated failure cleanup to reuse the same authentication-state discard path after clearing the partial working model.
+- Preserved PACE-CAM behavior by keeping the CAM mapping result available long enough for the reader to copy it into the working model for DG14 validation, while still clearing the handler's transient PACE key and mapping fields.
+
+Tests added:
+
+- Secure Messaging cleanup now verifies session encryption key, MAC key, and send-sequence counter buffers become empty and cannot be reused to protect another command.
+- BAC cleanup now verifies derived BAC keys, chip/reader randoms, and terminal key material buffers become empty after cleanup.
+
+Verification:
+
+- Focused iOS simulator core suite passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:NFCPassportReaderTests/NFCPassportReaderTests
+  ```
+
+  Result: 30 tests, 0 failures.
+- Full iOS simulator suite passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5'
+  ```
+
+  Result: 146 tests, 0 failures.
+- `scripts/privacy_scan.sh` passed.
+- `git diff --check && git diff --cached --check` passed.
+- Consolidated release check passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer scripts/release_check.sh
+  ```
+
+  Result: required iOS package build, iOS build-for-testing, external API surface probe, privacy scan, whitespace check, and risky-diagnostics search all completed successfully. Risky-pattern hits were reviewed as expected documentation, negative tests, synthetic fixtures, internal APDU/key identifiers, OpenSSL type names, or redacted diagnostic events.
+
+Remaining follow-up:
+
+- Cleanup remains best-effort data minimization, not guaranteed memory zeroization. Real-device validation is still required for BAC/PACE/CA success, fallback, and connection-loss timing.
+
+### 2026-06-20 Data Group Retention Cleanup Pass
+
+Completed:
+
+- Added an internal `DataGroup.removeSensitiveDataForPrivacy()` scrub hook that clears retained raw data-group body/data buffers and parser offsets.
+- Wired `NFCPassportModel.removeSensitiveDataForPrivacy()` to scrub every retained data group before releasing the model dictionary, so externally retained internal data-group references do not keep raw chip payloads alive after cleanup.
+- Added subclass cleanup for MRZ fields in DG1, personal text in DG11/DG12, DG2/DG7/DG12 image byte arrays, DG14 parsed security infos, SOD certificate/ASN.1/public-key state, and DG15 OpenSSL public-key pointers.
+- Kept the cleanup best-effort and internal; no public API migration is required.
+
+Tests added:
+
+- Added a model privacy cleanup regression that retains references to DG1, DG2, DG7, DG11, and DG12, invokes model cleanup, and verifies raw buffers, images, MRZ fields, and personal text fields are cleared before the model releases its data-group dictionary.
+
+Verification:
+
+- Focused model cleanup regression passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:NFCPassportReaderTests/DataGroupParsingTests/testModelPrivacyCleanupScrubsRetainedDataGroupPayloadsBeforeReleasingReferences
+  ```
+
+  Result: 1 test, 0 failures.
+- Full parsing suite passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:NFCPassportReaderTests/DataGroupParsingTests
+  ```
+
+  Result: 51 tests, 0 failures.
+- Full iOS simulator suite passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5'
+  ```
+
+  Result: 147 tests, 0 failures.
+- Consolidated release check passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer scripts/release_check.sh
+  ```
+
+  Result: required iOS package build, iOS build-for-testing, external API surface probe, privacy scan, whitespace check, and risky-diagnostics search all completed successfully. Risky-pattern hits were reviewed as expected documentation, negative tests, synthetic fixtures, internal APDU/key identifiers, OpenSSL type names, or redacted diagnostic events.
+
+Remaining follow-up:
+
+- Cleanup remains best-effort data minimization, not guaranteed memory zeroization. Real-device scanning is still the only remaining validation for hardware timing, chip variability, and NFC transport behavior.
 
 ### Option A: Remote Fork
 

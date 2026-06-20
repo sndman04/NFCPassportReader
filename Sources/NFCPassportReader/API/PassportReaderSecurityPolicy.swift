@@ -86,11 +86,13 @@ public enum PassportVerificationRequirement: Sendable, Equatable {
                 && verification.documentSignerCertificateStatus == .passed
                 && verification.countrySigningCertificateStatus == .passed
         case .chipAuthenticationWhenSupported:
-            return !passport.isChipAuthenticationSupported
-                || verification.chipAuthenticationStatus == .passed
+            return verification.chipAuthenticationStatus == .passed
+                || verification.chipAuthenticationDetail.reason == .notSupported
+                || verification.chipAuthenticationDetail.reason == .notRequested
         case .activeAuthenticationWhenSupported:
-            return !passport.activeAuthenticationSupported
-                || verification.activeAuthenticationStatus == .passed
+            return verification.activeAuthenticationStatus == .passed
+                || verification.activeAuthenticationDetail.reason == .notSupported
+                || verification.activeAuthenticationDetail.reason == .notRequested
         case .fullVerificationWhenSupported:
             return PassportVerificationRequirement.trustedPassiveAuthentication.isSatisfied(by: passport)
                 && PassportVerificationRequirement.chipAuthenticationWhenSupported.isSatisfied(by: passport)

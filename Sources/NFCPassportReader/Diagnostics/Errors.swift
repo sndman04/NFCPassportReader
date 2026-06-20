@@ -132,7 +132,11 @@ public enum NFCPassportReaderError: Error {
 }
 
 @available(iOS 13, macOS 10.15, *)
-extension NFCPassportReaderError: LocalizedError {
+extension NFCPassportReaderError: LocalizedError, CustomStringConvertible {
+    public var description: String {
+        safeDescription
+    }
+
     public var errorDescription: String? {
         return NSLocalizedString(safeDescription, comment: "NFCPassportReaderError")
     }
@@ -141,7 +145,7 @@ extension NFCPassportReaderError: LocalizedError {
 
 // MARK: OpenSSLError
 @available(iOS 13, macOS 10.15, *)
-public enum OpenSSLError: Error {
+enum OpenSSLError: Error {
     case UnableToGetX509CertificateFromPKCS7(String)
     case UnableToVerifyX509CertificateForSOD(String)
     case VerifyAndReturnSODEncapsulatedData(String)
@@ -154,7 +158,7 @@ public enum OpenSSLError: Error {
 
 @available(iOS 13, macOS 10.15, *)
 extension OpenSSLError: LocalizedError {
-    public var errorDescription: String? {
+    var errorDescription: String? {
         switch self {
             case .UnableToGetX509CertificateFromPKCS7:
                 return NSLocalizedString("Unable to read the SOD PKCS7 certificate.", comment: "UnableToGetPKCS7CertificateForSOD")
@@ -178,7 +182,7 @@ extension OpenSSLError: LocalizedError {
 
 
 // MARK: PassiveAuthenticationError
-public enum PassiveAuthenticationError: Error {
+enum PassiveAuthenticationError: Error {
     case UnableToParseSODHashes(String)
     case InvalidDataGroupHash(String)
     case SODMissing(String)
@@ -186,7 +190,7 @@ public enum PassiveAuthenticationError: Error {
 
 
 extension PassiveAuthenticationError: LocalizedError {
-    public var errorDescription: String? {
+    var errorDescription: String? {
         switch self {
             case .UnableToParseSODHashes:
                 return NSLocalizedString("Unable to parse the SOD data group hashes.", comment: "UnableToParseSODHashes")

@@ -7,7 +7,7 @@
 import Foundation
 
 @available(iOS 13, macOS 10.15, *)
-public class DataGroup11 : DataGroup {
+class DataGroup11 : DataGroup {
     
     public private(set) var fullName : String?
     public private(set) var personalNumber : String?
@@ -62,5 +62,21 @@ public class DataGroup11 : DataGroup {
                 custodyInfo = val
             }
         }
+    }
+
+    override func removeSensitiveDataForPrivacy() {
+        fullName = nil
+        personalNumber = nil
+        dateOfBirth = nil
+        placeOfBirth = nil
+        address = nil
+        telephone = nil
+        profession = nil
+        title = nil
+        personalSummary = nil
+        proofOfCitizenship = nil
+        tdNumbers = nil
+        custodyInfo = nil
+        super.removeSensitiveDataForPrivacy()
     }
 }

@@ -58,7 +58,7 @@ extension StringProtocol {
 }
 
 
-public func binToHexRep( _ val : [UInt8], asArray : Bool = false ) -> String {
+func binToHexRep( _ val : [UInt8], asArray : Bool = false ) -> String {
     if asArray {
         var string = "["
         string.reserveCapacity(2 + val.count * 6)
@@ -81,15 +81,15 @@ public func binToHexRep( _ val : [UInt8], asArray : Bool = false ) -> String {
     return string
 }
 
-public func binToHexRep( _ val : UInt8 ) -> String {
+func binToHexRep( _ val : UInt8 ) -> String {
     val.hexString
 }
 
-public func binToHex( _ val: UInt8 ) -> Int {
+func binToHex( _ val: UInt8 ) -> Int {
     Int(val)
 }
 
-public func binToHex( _ val: [UInt8] ) -> UInt64 {
+func binToHex( _ val: [UInt8] ) -> UInt64 {
     guard val.count <= MemoryLayout<UInt64>.size else {
         return 0
     }
@@ -99,7 +99,7 @@ public func binToHex( _ val: [UInt8] ) -> UInt64 {
     }
 }
 
-public func binToHex( _ val: ArraySlice<UInt8> ) -> UInt64 {
+func binToHex( _ val: ArraySlice<UInt8> ) -> UInt64 {
     guard val.count <= MemoryLayout<UInt64>.size else {
         return 0
     }
@@ -110,7 +110,7 @@ public func binToHex( _ val: ArraySlice<UInt8> ) -> UInt64 {
 }
 
 
-public func hexToBin( _ val : UInt64 ) -> [UInt8] {
+func hexToBin( _ val : UInt64 ) -> [UInt8] {
     if val == 0 {
         return [0]
     }
@@ -125,19 +125,19 @@ public func hexToBin( _ val : UInt64 ) -> [UInt8] {
     return Array(bytes.reversed())
 }
 
-public func binToInt( _ val: ArraySlice<UInt8> ) -> Int {
+func binToInt( _ val: ArraySlice<UInt8> ) -> Int {
     val.reduce(0) { partial, byte in
         (partial << 8) | Int(byte)
     }
 }
 
-public func binToInt( _ val: [UInt8] ) -> Int {
+func binToInt( _ val: [UInt8] ) -> Int {
     val.reduce(0) { partial, byte in
         (partial << 8) | Int(byte)
     }
 }
 
-public func intToBin(_ data : Int, pad : Int = 2) -> [UInt8] {
+func intToBin(_ data : Int, pad : Int = 2) -> [UInt8] {
     if pad == 2 {
         guard data > 0xFF else {
             return [UInt8(data & 0xFF)]
@@ -150,7 +150,7 @@ public func intToBin(_ data : Int, pad : Int = 2) -> [UInt8] {
 }
 
 /// 'AABB' --> \xaa\xbb'"""
-public func hexRepToBin(_ val : String) -> [UInt8] {
+func hexRepToBin(_ val : String) -> [UInt8] {
     let bytes = Array(val.utf8)
     var output : [UInt8] = []
     output.reserveCapacity((bytes.count + 1) / 2)
@@ -187,7 +187,7 @@ private func hexNibble(_ byte: UInt8) -> UInt8? {
     }
 }
 
-public func xor(_ kifd : [UInt8], _ response_kicc : [UInt8] ) -> [UInt8] {
+func xor(_ kifd : [UInt8], _ response_kicc : [UInt8] ) -> [UInt8] {
     var kseed = [UInt8]()
     kseed.reserveCapacity(min(kifd.count, response_kicc.count))
     for (left, right) in zip(kifd, response_kicc) {
@@ -196,7 +196,7 @@ public func xor(_ kifd : [UInt8], _ response_kicc : [UInt8] ) -> [UInt8] {
     return kseed
 }
 
-public func generateRandomUInt8Array( _ size: Int ) -> [UInt8] {
+func generateRandomUInt8Array( _ size: Int ) -> [UInt8] {
     
     var ret : [UInt8] = []
     ret.reserveCapacity(size)
@@ -206,7 +206,7 @@ public func generateRandomUInt8Array( _ size: Int ) -> [UInt8] {
     return ret
 }
 
-public func pad(_ toPad : [UInt8], blockSize : Int) -> [UInt8] {
+func pad(_ toPad : [UInt8], blockSize : Int) -> [UInt8] {
     
     var ret = toPad + [0x80]
     ret.reserveCapacity(((ret.count + blockSize - 1) / blockSize) * blockSize)
@@ -216,7 +216,7 @@ public func pad(_ toPad : [UInt8], blockSize : Int) -> [UInt8] {
     return ret
 }
 
-public func unpad( _ tounpad : [UInt8]) -> [UInt8] {
+func unpad( _ tounpad : [UInt8]) -> [UInt8] {
     guard !tounpad.isEmpty else {
         return []
     }
@@ -235,7 +235,7 @@ public func unpad( _ tounpad : [UInt8]) -> [UInt8] {
 }
 
 @available(iOS 13, macOS 10.15, *)
-public func mac(algoName: SecureMessagingSupportedAlgorithms, key : [UInt8], msg : [UInt8]) -> [UInt8] {
+func mac(algoName: SecureMessagingSupportedAlgorithms, key : [UInt8], msg : [UInt8]) -> [UInt8] {
     if algoName == .DES {
         return desMAC(key: key, msg: msg)
     } else {
@@ -244,7 +244,7 @@ public func mac(algoName: SecureMessagingSupportedAlgorithms, key : [UInt8], msg
 }
 
 @available(iOS 13, macOS 10.15, *)
-public func desMAC(key : [UInt8], msg : [UInt8]) -> [UInt8]{
+func desMAC(key : [UInt8], msg : [UInt8]) -> [UInt8]{
     guard key.count >= 16 else {
         return []
     }
@@ -265,13 +265,13 @@ public func desMAC(key : [UInt8], msg : [UInt8]) -> [UInt8]{
 }
 
 @available(iOS 13, macOS 10.15, *)
-public func aesMAC( key: [UInt8], msg : [UInt8] ) -> [UInt8] {
+func aesMAC( key: [UInt8], msg : [UInt8] ) -> [UInt8] {
     let mac = OpenSSLUtils.generateAESCMAC( key: key, message:msg )
     return mac
 }
 
 @available(iOS 13, macOS 10.15, *)
-public func wrapDO( b : UInt8, arr : [UInt8] ) -> [UInt8] {
+func wrapDO( b : UInt8, arr : [UInt8] ) -> [UInt8] {
     let length = asn1LengthBytes(for: arr.count)
     var result: [UInt8] = []
     result.reserveCapacity(1 + length.count + arr.count)
@@ -282,7 +282,7 @@ public func wrapDO( b : UInt8, arr : [UInt8] ) -> [UInt8] {
 }
 
 @available(iOS 13, macOS 10.15, *)
-public func unwrapDO( tag : UInt8, wrappedData : [UInt8]) throws -> [UInt8] {
+func unwrapDO( tag : UInt8, wrappedData : [UInt8]) throws -> [UInt8] {
     guard wrappedData.count >= 2,
           wrappedData[0] == tag else {
         throw NFCPassportReaderError.InvalidASN1Value
@@ -315,7 +315,7 @@ private func asn1LengthBytes(for length: Int) -> [UInt8] {
 }
 
 
-public func intToBytes( val: Int, removePadding:Bool) -> [UInt8] {
+func intToBytes( val: Int, removePadding:Bool) -> [UInt8] {
     if val == 0 {
         return [0]
     }
@@ -334,7 +334,7 @@ public func intToBytes( val: Int, removePadding:Bool) -> [UInt8] {
 }
 
 @available(iOS 13, macOS 10.15, *)
-public func oidToBytes(oid : String, replaceTag : Bool) -> [UInt8] {
+func oidToBytes(oid : String, replaceTag : Bool) -> [UInt8] {
     var encOID = OpenSSLUtils.asn1EncodeOID(oid: oid)
     
     if replaceTag {
@@ -368,7 +368,7 @@ public func oidToBytes(oid : String, replaceTag : Bool) -> [UInt8] {
 /// @raise asn1Exception: If the parameter does not follow the asn.1 notation.
 
 @available(iOS 13, macOS 10.15, *)
-public func asn1Length( _ data: ArraySlice<UInt8> ) throws -> (Int, Int) {
+func asn1Length( _ data: ArraySlice<UInt8> ) throws -> (Int, Int) {
     guard let firstByte = data.first else {
         throw NFCPassportReaderError.CannotDecodeASN1Length
     }
@@ -399,7 +399,7 @@ public func asn1Length( _ data: ArraySlice<UInt8> ) throws -> (Int, Int) {
 }
 
 @available(iOS 13, macOS 10.15, *)
-public func asn1Length(_ data : [UInt8]) throws -> (Int, Int)  {
+func asn1Length(_ data : [UInt8]) throws -> (Int, Int)  {
     guard let firstByte = data.first else {
         throw NFCPassportReaderError.CannotDecodeASN1Length
     }
@@ -435,7 +435,7 @@ public func asn1Length(_ data : [UInt8]) throws -> (Int, Int)  {
 /// @rtype: A binary string
 /// @raise asn1Exception: If the parameter is too big, must be >= 0 and <= FFFF
 @available(iOS 13, macOS 10.15, *)
-public func toAsn1Length(_ data : Int) throws -> [UInt8] {
+func toAsn1Length(_ data : Int) throws -> [UInt8] {
     guard data >= 0 else {
         throw NFCPassportReaderError.InvalidASN1Value
     }
@@ -467,7 +467,7 @@ public func toAsn1Length(_ data : Int) throws -> [UInt8] {
 ///        Currently specifying any others return empty array
 /// @return: A hash of the data
 @available(iOS 13, macOS 10.15, *)
-public func calcHash( data: [UInt8], hashAlgorithm: String ) throws -> [UInt8] {
+func calcHash( data: [UInt8], hashAlgorithm: String ) throws -> [UInt8] {
     var ret : [UInt8] = []
     
     let hashAlgorithm = hashAlgorithm.lowercased()
@@ -493,7 +493,7 @@ public func calcHash( data: [UInt8], hashAlgorithm: String ) throws -> [UInt8] {
 /// @param data: a byte array of data
 /// @return: A SHA1 hash of the data
 @available(iOS 13, macOS 10.15, *)
-public func calcSHA1Hash( _ data: [UInt8] ) -> [UInt8] {
+func calcSHA1Hash( _ data: [UInt8] ) -> [UInt8] {
     #if canImport(CryptoKit)
     var sha1 = Insecure.SHA1()
     sha1.update(data: data)
@@ -513,7 +513,7 @@ public func calcSHA1Hash( _ data: [UInt8] ) -> [UInt8] {
 /// @param data: a byte array of data
 /// @return: A SHA224 hash of the data
 @available(iOS 13, macOS 10.15, *)
-public func calcSHA224Hash( _ data: [UInt8] ) -> [UInt8] {
+func calcSHA224Hash( _ data: [UInt8] ) -> [UInt8] {
     
     var digest = [UInt8](repeating: 0, count:Int(CC_SHA224_DIGEST_LENGTH))
     
@@ -527,7 +527,7 @@ public func calcSHA224Hash( _ data: [UInt8] ) -> [UInt8] {
 /// @param data: a byte array of data
 /// @return: A SHA256 hash of the data
 @available(iOS 13, macOS 10.15, *)
-public func calcSHA256Hash( _ data: [UInt8] ) -> [UInt8] {
+func calcSHA256Hash( _ data: [UInt8] ) -> [UInt8] {
     #if canImport(CryptoKit)
     var sha256 = SHA256()
     sha256.update(data: data)
@@ -547,7 +547,7 @@ public func calcSHA256Hash( _ data: [UInt8] ) -> [UInt8] {
 /// @param data: a byte array of data
 /// @return: A SHA512 hash of the data
 @available(iOS 13, macOS 10.15, *)
-public func calcSHA512Hash( _ data: [UInt8] ) -> [UInt8] {
+func calcSHA512Hash( _ data: [UInt8] ) -> [UInt8] {
     #if canImport(CryptoKit)
     var sha512 = SHA512()
     sha512.update(data: data)
@@ -567,7 +567,7 @@ public func calcSHA512Hash( _ data: [UInt8] ) -> [UInt8] {
 /// @param data: a byte array of data
 /// @return: A SHA384 hash of the data
 @available(iOS 13, macOS 10.15, *)
-public func calcSHA384Hash( _ data: [UInt8] ) -> [UInt8] {
+func calcSHA384Hash( _ data: [UInt8] ) -> [UInt8] {
     #if canImport(CryptoKit)
     var sha384 = SHA384()
     sha384.update(data: data)

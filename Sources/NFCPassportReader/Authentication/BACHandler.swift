@@ -12,7 +12,7 @@ import Foundation
 import CoreNFC
 
 @available(iOS 15, *)
-public class BACHandler {
+class BACHandler {
     let KENC : [UInt8] = [0,0,0,1]
     let KMAC : [UInt8] = [0,0,0,2]
     
@@ -25,15 +25,30 @@ public class BACHandler {
     
     var tagReader : TagReader?
     
-    public init() {
+    init() {
         // For testing only
     }
     
-    public init(tagReader: TagReader) {
+    init(tagReader: TagReader) {
         self.tagReader = tagReader
     }
 
-    public func performBACAndGetSessionKeys( mrzKey : String ) async throws {
+    deinit {
+        removeSensitiveData()
+    }
+
+    func removeSensitiveData() {
+        ksenc.removeAll(keepingCapacity: false)
+        ksmac.removeAll(keepingCapacity: false)
+        rnd_icc.removeAll(keepingCapacity: false)
+        rnd_ifd.removeAll(keepingCapacity: false)
+        kifd.removeAll(keepingCapacity: false)
+        tagReader?.secureMessaging?.removeSensitiveData()
+        tagReader?.secureMessaging = nil
+        tagReader = nil
+    }
+
+    func performBACAndGetSessionKeys( mrzKey : String ) async throws {
         guard let tagReader = self.tagReader else {
             throw NFCPassportReaderError.NoConnectedTag
         }

@@ -630,6 +630,7 @@ extension PassportReader : NFCTagReaderSessionDelegate {
         guard let continuation = takeActiveScanContinuation() else { return }
         cancelTimeoutTask()
         progressHandler = nil
+        discardSensitiveAuthenticationState()
         continuation.resume(returning: passportModel)
     }
 
@@ -640,10 +641,34 @@ extension PassportReader : NFCTagReaderSessionDelegate {
         cancelTimeoutTask()
         self.readerSession?.invalidate()
         self.readerSession = nil
+        discardSensitiveScanStateAfterFailure()
         guard let continuation = takeActiveScanContinuation() else { return }
         progressHandler = nil
         eventLogger.log(.readFailed(error.privacySafeFailureReason))
         continuation.resume(throwing: error)
+    }
+
+    func discardSensitiveScanStateAfterFailure() {
+        passport.removeSensitiveDataForPrivacy()
+        passport = NFCPassportModel()
+        discardSensitiveAuthenticationState()
+    }
+
+    func discardSensitiveAuthenticationState() {
+        bacHandler?.removeSensitiveData()
+        caHandler?.removeSensitiveData()
+        paceHandler?.removeSensitiveData()
+        dataGroupsToRead.removeAll(keepingCapacity: false)
+        currentlyReadingDataGroup = nil
+        bacHandler = nil
+        caHandler = nil
+        paceHandler = nil
+        mrzKey.removeAll(keepingCapacity: false)
+        paceKey = nil
+        pendingPACECredential = nil
+        aaChallenge?.removeAll(keepingCapacity: false)
+        aaChallenge = nil
+        nfcViewDisplayMessageHandler = nil
     }
 }
 
@@ -664,6 +689,10 @@ extension PassportReader {
                 passport.cardAccess = cardAccess
 
                 trackingDelegate?.readCardAccess(cardAccess: cardAccess)
+
+                if let cardSecurityData = try? await tagReader.readCardSecurity() {
+                    passport.cardSecurity = try? makeCardSecurity(from: cardSecurityData)
+                }
                  
                 let paceInfos = cardAccess.paceInfos
                 let implementedPACEInfos = paceInfos.filter { $0.isImplementedForReading }
@@ -680,6 +709,7 @@ extension PassportReader {
                     do {
                         let paceHandler = PACEHandler(paceInfo: paceInfo, tagReader: tagReader)
                         try await paceHandler.doPACE(accessKey: paceKey ?? mrzKey, keyReference: paceKeyReference)
+                        passport.paceChipAuthenticationMappingResult = paceHandler.chipAuthenticationMappingResult
                         didPACE = true
                         break
                     } catch {
@@ -692,6 +722,7 @@ extension PassportReader {
                 }
 
                 passport.PACEStatus = .success
+                verifyTrustedCardSecurityCAMIfPossible()
                 eventLogger.log(.paceSucceeded)
                 emitProgress(.paceSucceeded)
 
@@ -790,6 +821,30 @@ extension PassportReader {
             return true
         }
     }
+
+    private func makeCardSecurity(from data: [UInt8]) throws -> CardSecurity {
+        let cardSecurity = try CardSecurity(data)
+        if let masterListURL {
+            try? cardSecurity.verifySignature(trustedCertificatesURL: masterListURL)
+        } else {
+            try? cardSecurity.verifySignature(trustedCertificatesURL: nil)
+        }
+        return cardSecurity
+    }
+
+    private func verifyTrustedCardSecurityCAMIfPossible() {
+        guard let camResult = passport.paceChipAuthenticationMappingResult,
+              let cardSecurity = passport.cardSecurity,
+              cardSecurity.signerTrusted else {
+            return
+        }
+
+        let publicKeyInfos = cardSecurity.securityInfos.compactMap { $0 as? ChipAuthenticationPublicKeyInfo }
+        if camResult.verifies(using: publicKeyInfos) {
+            passport.chipAuthenticationStatus = .success
+            passport.paceChipAuthenticationMappingResult = nil
+        }
+    }
     
     
     func doActiveAuthenticationIfNeccessary( tagReader : TagReader) async throws {
@@ -849,10 +904,20 @@ extension PassportReader {
                 // Do Chip Authentication
                 if let dg14 = try await readDataGroup(tagReader:tagReader, dgId:.DG14) as? DataGroup14 {
                     self.passport.addDataGroup( .DG14, dataGroup:dg14 )
+                    if let camResult = passport.paceChipAuthenticationMappingResult {
+                        let publicKeyInfos = dg14.securityInfos.compactMap { $0 as? ChipAuthenticationPublicKeyInfo }
+                        self.passport.paceChipAuthenticationMappingResult = nil
+                        if camResult.verifies(using: publicKeyInfos) {
+                            self.passport.chipAuthenticationStatus = .success
+                        } else {
+                            self.passport.chipAuthenticationStatus = .failed
+                        }
+                    }
+
                     let caHandler = ChipAuthenticationHandler(dg14: dg14, tagReader: tagReader)
                     self.caHandler = caHandler
                      
-                    if caHandler.isChipAuthenticationSupported {
+                    if caHandler.isChipAuthenticationSupported && self.passport.chipAuthenticationStatus != .success {
                         eventLogger.log(.chipAuthenticationStarted)
                         emitProgress(.chipAuthenticationStarted)
                         do {

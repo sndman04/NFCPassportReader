@@ -7,8 +7,8 @@
 import Foundation
 
 @available(iOS 13, macOS 10.15, *)
-public class DataGroup {
-    public var datagroupType : DataGroupId { .Unknown }
+class DataGroup {
+    var datagroupType : DataGroupId { .Unknown }
     
     /// Body contains the actual data
     public private(set) var body : [UInt8] = []
@@ -41,6 +41,13 @@ public class DataGroup {
     }
     
     func parse( _ data:[UInt8] ) throws {
+    }
+
+    func removeSensitiveDataForPrivacy() {
+        body.removeAll(keepingCapacity: false)
+        data.removeAll(keepingCapacity: false)
+        pos = 0
+        bodyEnd = 0
     }
     
     func getNextTag() throws -> Int {
@@ -89,7 +96,7 @@ public class DataGroup {
         return value
     }
     
-    public func hash( _ hashAlgorythm: String ) -> [UInt8]  {
+    func hash( _ hashAlgorythm: String ) -> [UInt8]  {
         var ret : [UInt8] = []
         if hashAlgorythm == "SHA1" {
             ret = calcSHA1Hash(self.data)
@@ -106,7 +113,7 @@ public class DataGroup {
         return ret
     }
 
-    public func verifyTag(_ tag: Int, equals expectedTag: Int) throws {
+    func verifyTag(_ tag: Int, equals expectedTag: Int) throws {
         if tag != expectedTag  {
             throw NFCPassportReaderError.InvalidResponse(
                 dataGroupId: datagroupType,
@@ -116,7 +123,7 @@ public class DataGroup {
         }
     }
 
-    public func verifyTag(_ tag: Int, oneOf expectedTags: [Int]) throws {
+    func verifyTag(_ tag: Int, oneOf expectedTags: [Int]) throws {
         guard let firstExpectedTag = expectedTags.first else {
             throw NFCPassportReaderError.InvalidResponse(
                 dataGroupId: datagroupType,

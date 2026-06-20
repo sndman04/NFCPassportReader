@@ -6,12 +6,14 @@
 //
 
 import Foundation
+import OpenSSL
 
 @available(iOS 13, macOS 10.15, *)
-public class ChipAuthenticationPublicKeyInfo : SecurityInfo {
+class ChipAuthenticationPublicKeyInfo : SecurityInfo {
     var oid : String
     var pubKey : OpaquePointer
     var keyId : Int?
+    private let ownsPublicKey: Bool
     
     
     static func checkRequiredIdentifier(_ oid : String) -> Bool {
@@ -19,10 +21,17 @@ public class ChipAuthenticationPublicKeyInfo : SecurityInfo {
             || ID_PK_ECDH_OID == oid
     }
     
-    init(oid:String, pubKey:OpaquePointer, keyId: Int? = nil) {
+    init(oid:String, pubKey:OpaquePointer, keyId: Int? = nil, ownsPublicKey: Bool = true) {
         self.oid = oid
         self.pubKey = pubKey
         self.keyId = keyId
+        self.ownsPublicKey = ownsPublicKey
+    }
+
+    deinit {
+        if ownsPublicKey {
+            EVP_PKEY_free(pubKey)
+        }
     }
     
     public override func getObjectIdentifier() -> String {
@@ -34,7 +43,7 @@ public class ChipAuthenticationPublicKeyInfo : SecurityInfo {
     }
 
     // The keyid refers to a specific key if there are multiple otherwise if not set, only one key is present so set to 0
-    public func getKeyId() -> Int {
+    func getKeyId() -> Int {
         return keyId ?? 0
     }
     

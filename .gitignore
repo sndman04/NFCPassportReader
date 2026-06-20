@@ -67,10 +67,12 @@ tmp/
 old/
 working/
 
-# Keep the privacy scanner tracked, but ignore ad hoc script outputs.
+# Keep release/verification scripts tracked, but ignore ad hoc script outputs.
 scripts/*
 !scripts/
+!scripts/api_surface_check.sh
 !scripts/privacy_scan.sh
+!scripts/release_check.sh
 
 # Sensitive local passport/NFC fixtures and downloaded certificate material
 test_sod.der

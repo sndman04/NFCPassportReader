@@ -12,7 +12,7 @@ import Foundation
 import CoreNFC
 
 @available(iOS 15, *)
-public class TagReader {
+class TagReader {
     var tag : NFCISO7816Tag
     var secureMessaging : SecureMessaging?
     var maxDataLengthToRead : Int = 0xA0  // Should be able to use 256 to read arbitrary amounts of data at full speed BUT this isn't supported across all passports so for reliability just use the smaller amount.
@@ -246,6 +246,21 @@ public class TagReader {
         // Now read EC.CardAccess
         let data = try await self.selectFileAndRead(tag: [0x01,0x1C])
         return data
+    }
+
+    func readCardSecurity() async throws -> [UInt8] {
+        let cmd = NFCISO7816APDU(
+            instructionClass: 0x00,
+            instructionCode: 0xA4,
+            p1Parameter: 0x00,
+            p2Parameter: 0x0C,
+            data: Data([0x3f, 0x00]),
+            expectedResponseLength: -1
+        )
+
+        _ = try await send(cmd: cmd)
+
+        return try await self.selectFileAndRead(tag: [0x01, 0x1D])
     }
     
     func selectPassportApplication() async throws -> ResponseAPDU {

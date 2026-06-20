@@ -8,7 +8,7 @@
 
 import Foundation
 
-public enum SecureMessagingSupportedAlgorithms {
+enum SecureMessagingSupportedAlgorithms {
     case DES
     case AES
 }
@@ -23,19 +23,29 @@ import CoreNFC
 /// ciphers it following the doc9303 specification, sends the ciphered APDU to the reader
 /// layer and returns the unciphered APDU.
 @available(iOS 13, *)
-public class SecureMessaging {
+class SecureMessaging {
     private var ksenc : [UInt8]
     private var ksmac : [UInt8]
     private var ssc : [UInt8]
     private let algoName : SecureMessagingSupportedAlgorithms
     private let padLength : Int
         
-    public init( encryptionAlgorithm : SecureMessagingSupportedAlgorithms = .DES, ksenc : [UInt8], ksmac : [UInt8], ssc : [UInt8]) {
+    init( encryptionAlgorithm : SecureMessagingSupportedAlgorithms = .DES, ksenc : [UInt8], ksmac : [UInt8], ssc : [UInt8]) {
         self.ksenc = ksenc
         self.ksmac = ksmac
         self.ssc = ssc
         self.algoName = encryptionAlgorithm
         self.padLength = algoName == .DES ? 8 : 16
+    }
+
+    deinit {
+        removeSensitiveData()
+    }
+
+    func removeSensitiveData() {
+        ksenc.removeAll(keepingCapacity: false)
+        ksmac.removeAll(keepingCapacity: false)
+        ssc.removeAll(keepingCapacity: false)
     }
 
     /// Protect the apdu following the doc9303 specification

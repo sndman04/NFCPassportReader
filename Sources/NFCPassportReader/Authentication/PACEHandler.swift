@@ -30,13 +30,13 @@ private enum PACEHandlerError {
 
 @available(iOS 15, *)
 extension PACEHandlerError: LocalizedError {
-    public var errorDescription: String? {
+    var errorDescription: String? {
         return NSLocalizedString(value, comment: "PACEHandlerError")
     }
 }
 
 @available(iOS 15, *)
-public class PACEHandler {
+class PACEHandler {
     
     
     var tagReader : TagReader
@@ -55,8 +55,11 @@ public class PACEHandler {
     private var cipherAlg : String = ""
     private var digestAlg : String = ""
     private var keyLength : Int = -1
+    private var chipMappingPublicKey: [UInt8] = []
+
+    var chipAuthenticationMappingResult: PACEChipAuthenticationMappingResult?
     
-    public init(cardAccess : CardAccess, tagReader: TagReader) throws {
+    init(cardAccess : CardAccess, tagReader: TagReader) throws {
         self.tagReader = tagReader
         
         guard let pi = cardAccess.preferredPACEInfo else {
@@ -67,17 +70,43 @@ public class PACEHandler {
         isPACESupported = true
     }
 
-    public init(paceInfo: PACEInfo, tagReader: TagReader) {
+    init(paceInfo: PACEInfo, tagReader: TagReader) {
         self.tagReader = tagReader
         self.paceInfo = paceInfo
         isPACESupported = true
     }
+
+    deinit {
+        removeSensitiveData()
+    }
+
+    func removeSensitiveData() {
+        removeSensitiveData(clearMappingResult: true)
+    }
+
+    private func removeSensitiveData(clearMappingResult: Bool) {
+        paceKey.removeAll(keepingCapacity: false)
+        paceKeyType = 0
+        paceOID.removeAll(keepingCapacity: false)
+        parameterSpec = -1
+        mappingType = nil
+        agreementAlg.removeAll(keepingCapacity: false)
+        cipherAlg.removeAll(keepingCapacity: false)
+        digestAlg.removeAll(keepingCapacity: false)
+        keyLength = -1
+        chipMappingPublicKey.removeAll(keepingCapacity: false)
+        if clearMappingResult {
+            chipAuthenticationMappingResult = nil
+        }
+    }
     
-    public func doPACE(mrzKey: String) async throws {
+    func doPACE(mrzKey: String) async throws {
         try await doPACE(accessKey: mrzKey, keyReference: .mrz)
     }
 
-    public func doPACE(accessKey: String, keyReference: PassportPACEKeyReference) async throws {
+    func doPACE(accessKey: String, keyReference: PassportPACEKeyReference) async throws {
+        defer { removeSensitiveData(clearMappingResult: false) }
+
         guard isPACESupported else {
             throw NFCPassportReaderError.NotYetSupported( "PACE not supported" )
         }
@@ -171,7 +200,7 @@ public class PACEHandler {
             case .GM:
                 return try await doPACEStep2GM(passportNonce: passportNonce)
             case .CAM:
-                throw NFCPassportReaderError.PACEError("Step2CAM", "PACE Chip Authentication Mapping is not implemented")
+                return try await doPACEStep2GM(passportNonce: passportNonce)
             case .IM:
                 return try await doPACEStep2IM(passportNonce: passportNonce)
         }
@@ -196,6 +225,9 @@ public class PACEHandler {
         let response = try await tagReader.sendGeneralAuthenticate(data:step2Data, isLast:false)
 
         let piccMappingEncodedPublicKey = try unwrapDO(tag: 0x82, wrappedData: response.data)
+        if mappingType == .CAM {
+            chipMappingPublicKey = piccMappingEncodedPublicKey
+        }
 
         // Do mapping agreement
 
@@ -219,7 +251,32 @@ public class PACEHandler {
     }
     
     func doPACEStep2IM( passportNonce: [UInt8] ) async throws -> OpaquePointer {
-        throw NFCPassportReaderError.PACEError("Step2IM", "PACE Integrated Mapping is not implemented")
+        let terminalNonce = generateRandomUInt8Array(integratedMappingNonceLength())
+        let step2Data = wrapDO(b: 0x81, arr: terminalNonce)
+        let response = try await tagReader.sendGeneralAuthenticate(data: step2Data, isLast: false)
+        let chipMappingData = try unwrapDO(tag: 0x82, wrappedData: response.data)
+        guard chipMappingData.isEmpty else {
+            throw NFCPassportReaderError.PACEError("Step2IM", "Unexpected chip mapping data")
+        }
+
+        let mappedField = try integratedMappingField(passportNonce: passportNonce, terminalNonce: terminalNonce)
+        let domainKey = try self.paceInfo.createMappingKey()
+        defer { EVP_PKEY_free(domainKey) }
+
+        var field = mappedField
+        if self.agreementAlg == "DH" {
+            guard let ephemeralParams = NFCPRCreateDHIntegratedMappedParameters(domainKey, &field, field.count) else {
+                throw NFCPassportReaderError.PACEError("Step2IM", "Unable to configure DH mapped parameters")
+            }
+            return ephemeralParams
+        } else if self.agreementAlg == "ECDH" {
+            guard let ephemeralParams = NFCPRCreateECDHIntegratedMappedParameters(domainKey, &field, field.count) else {
+                throw NFCPassportReaderError.PACEError("Step2IM", "Unable to configure ECDH mapped parameters")
+            }
+            return ephemeralParams
+        } else {
+            throw NFCPassportReaderError.PACEError("Step2IM", "Unsupported agreement algorithm")
+        }
     }
     
     /// Generates an ephemeral public/private key pair based on mapping parameters from step 2, and then sends
@@ -293,14 +350,19 @@ public class PACEHandler {
         guard receivedAuthenticationToken == expectedAuthenticationToken else {
             throw NFCPassportReaderError.PACEError("Step3 KeyAgreement", "Passport authentication token mismatch")
         }
-        
-        // This will be added for CAM when supported
-        // var encryptedChipAuthenticationData : [UInt8]? = nil
-        // if (sself.mappingType == PACEMappingType.CAM) {
-        //    if tvlResp[1].tag != 0x8A {
-        //    }
-        //    encryptedChipAuthenticationData = [UInt8](tvlResp[1].value)
-        // }
+
+        if mappingType == .CAM {
+            guard let encryptedCAMData = tvlResp.first(where: { $0.tag == 0x8A })?.value,
+                  !encryptedCAMData.isEmpty else {
+                throw NFCPassportReaderError.PACEError("Step3 KeyAgreement", "PACE CAM data missing")
+            }
+
+            chipAuthenticationMappingResult = try PACEChipAuthenticationMappingResult(
+                mappingPublicKey: chipMappingPublicKey,
+                encryptedChipAuthenticationData: [UInt8](encryptedCAMData),
+                encryptionKey: encKey
+            )
+        }
         
         // We're done!
         return (encKey, macKey)
@@ -320,7 +382,7 @@ public class PACEHandler {
             let sm = SecureMessaging(encryptionAlgorithm: .AES, ksenc: ksEnc, ksmac: ksMac, ssc: ssc)
             tagReader.secureMessaging = sm
         } else {
-            throw NFCPassportReaderError.PACEError( "PACECompleted", "Not restarting secure messaging as unsupported cipher algorithm requested - \(cipherAlg)" )
+            throw NFCPassportReaderError.UnsupportedCipherAlgorithm
         }
     }
 }
@@ -419,6 +481,144 @@ extension PACEHandler {
         let smskg = SecureMessagingSessionKeyGenerator()
         let key = try smskg.deriveKey(keySeed: hash, cipherAlgName: cipherAlg, keyLength: keyLength, nonce: nil, mode: .PACE_MODE, paceKeyReference: keyReference.rawValue)
         return key
+    }
+
+    func integratedMappingNonceLength() -> Int {
+        if cipherAlg == "DESede" {
+            return 16
+        }
+        return max(keyLength / 8, 16)
+    }
+
+    func integratedMappingField(passportNonce: [UInt8], terminalNonce: [UInt8]) throws -> [UInt8] {
+        try PACEHandler.integratedMappingField(
+            passportNonce: passportNonce,
+            terminalNonce: terminalNonce,
+            cipherAlg: cipherAlg,
+            keyLength: keyLength,
+            primeBitLength: integratedMappingPrimeBitLength()
+        )
+    }
+
+    static func integratedMappingField(
+        passportNonce: [UInt8],
+        terminalNonce: [UInt8],
+        cipherAlg: String,
+        keyLength: Int,
+        primeBitLength: Int
+    ) throws -> [UInt8] {
+        let nonceLength = integratedMappingNonceLength(cipherAlg: cipherAlg, keyLength: keyLength)
+        let blockLength = integratedMappingInputBlockLength(cipherAlg: cipherAlg, keyLength: keyLength)
+        guard passportNonce.count == blockLength,
+              terminalNonce.count == nonceLength else {
+            throw NFCPassportReaderError.PACEError("Step2IM", "Invalid Integrated Mapping nonce length")
+        }
+
+        let blockBitLength = blockLength * 8
+        let blocksRequired = (primeBitLength + 64 + blockBitLength - 1) / blockBitLength
+        let c0: [UInt8]
+        let c1: [UInt8]
+        if blockLength == 16 {
+            c0 = hexRepToBin("A668892A7C41E3CA739F40B057D85904")
+            c1 = hexRepToBin("A4E136AC725F738B01C1F60217C188AD")
+        } else {
+            c0 = hexRepToBin("D463D65234124EF7897054986DCA0A174E28DF758CBAA03F240616414D5A1676")
+            c1 = hexRepToBin("54BD7255F0AAF831BEC3423FCF39D69B6CBF066677D0FAAE5AADD99DF8E53517")
+        }
+
+        var currentKey = try integratedMappingEncrypt(
+            key: terminalNonce,
+            message: passportNonce,
+            cipherAlg: cipherAlg
+        )
+        currentKey = integratedMappingTruncatedKey(currentKey, cipherAlg: cipherAlg, keyLength: keyLength)
+
+        var output: [UInt8] = []
+        output.reserveCapacity(blocksRequired * blockLength)
+        for _ in 0..<blocksRequired {
+            let block = try integratedMappingEncrypt(key: currentKey, message: c1, cipherAlg: cipherAlg)
+            output.append(contentsOf: block)
+            currentKey = try integratedMappingEncrypt(key: currentKey, message: c0, cipherAlg: cipherAlg)
+            currentKey = integratedMappingTruncatedKey(currentKey, cipherAlg: cipherAlg, keyLength: keyLength)
+        }
+
+        return output
+    }
+
+    private func integratedMappingInputBlockLength() -> Int {
+        PACEHandler.integratedMappingInputBlockLength(cipherAlg: cipherAlg, keyLength: keyLength)
+    }
+
+    private static func integratedMappingInputBlockLength(cipherAlg: String, keyLength: Int) -> Int {
+        if cipherAlg == "AES", keyLength > 128 {
+            return 32
+        }
+        return 16
+    }
+
+    private func integratedMappingTruncatedKey(_ key: [UInt8]) -> [UInt8] {
+        PACEHandler.integratedMappingTruncatedKey(key, cipherAlg: cipherAlg, keyLength: keyLength)
+    }
+
+    private static func integratedMappingNonceLength(cipherAlg: String, keyLength: Int) -> Int {
+        if cipherAlg == "DESede" {
+            return 16
+        }
+        return max(keyLength / 8, 16)
+    }
+
+    private static func integratedMappingTruncatedKey(_ key: [UInt8], cipherAlg: String, keyLength: Int) -> [UInt8] {
+        let requiredLength = integratedMappingNonceLength(cipherAlg: cipherAlg, keyLength: keyLength)
+        guard key.count > requiredLength else {
+            return key
+        }
+        return Array(key.prefix(requiredLength))
+    }
+
+    private func integratedMappingEncrypt(key: [UInt8], message: [UInt8]) throws -> [UInt8] {
+        try PACEHandler.integratedMappingEncrypt(key: key, message: message, cipherAlg: cipherAlg)
+    }
+
+    private static func integratedMappingEncrypt(key: [UInt8], message: [UInt8], cipherAlg: String) throws -> [UInt8] {
+        let ivLength = cipherAlg == "DESede" ? 8 : 16
+        let iv = [UInt8](repeating: 0, count: ivLength)
+        let encrypted: [UInt8]
+        if cipherAlg == "DESede" {
+            encrypted = tripleDESEncrypt(key: key, message: message, iv: iv)
+        } else if cipherAlg == "AES" {
+            encrypted = AESEncrypt(key: key, message: message, iv: iv)
+        } else {
+            throw NFCPassportReaderError.UnsupportedCipherAlgorithm
+        }
+        guard encrypted.count == message.count else {
+            throw NFCPassportReaderError.PACEError("Step2IM", "Unable to calculate Integrated Mapping field")
+        }
+        return encrypted
+    }
+
+    private func integratedMappingPrimeBitLength() throws -> Int {
+        switch paceInfo.getParameterId() {
+        case PACEInfo.PARAM_ID_GFP_1024_160:
+            return 1024
+        case PACEInfo.PARAM_ID_GFP_2048_224, PACEInfo.PARAM_ID_GFP_2048_256:
+            return 2048
+        case PACEInfo.PARAM_ID_ECP_NIST_P192_R1, PACEInfo.PARAM_ID_ECP_BRAINPOOL_P192_R1:
+            return 192
+        case PACEInfo.PARAM_ID_ECP_NIST_P224_R1, PACEInfo.PARAM_ID_ECP_BRAINPOOL_P224_R1:
+            return 224
+        case PACEInfo.PARAM_ID_ECP_NIST_P256_R1, PACEInfo.PARAM_ID_ECP_BRAINPOOL_P256_R1:
+            return 256
+        case PACEInfo.PARAM_ID_ECP_BRAINPOOL_P320_R1:
+            return 320
+        case PACEInfo.PARAM_ID_ECP_NIST_P384_R1, PACEInfo.PARAM_ID_ECP_BRAINPOOL_P384_R1:
+            return 384
+        case PACEInfo.PARAM_ID_ECP_BRAINPOOL_P512_R1:
+            return 512
+        case PACEInfo.PARAM_ID_ECP_NIST_P521_R1:
+            return 521
+        default:
+            throw NFCPassportReaderError.PACEError("Step2IM", "Unknown Integrated Mapping parameter size")
+        }
     }
     
 }

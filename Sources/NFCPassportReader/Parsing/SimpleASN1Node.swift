@@ -8,11 +8,17 @@
 import Foundation
 
 @available(iOS 13, macOS 10.15, *)
-struct SimpleASN1Node {
+struct SimpleASN1Node: CustomDebugStringConvertible {
     let tag: Int
     let headerLength: Int
+    let encodedBytes: [UInt8]
     let value: [UInt8]
     let children: [SimpleASN1Node]
+
+    var debugDescription: String {
+        let childDescriptions = children.map(\.debugDescription).joined(separator: "")
+        return "tag:\(tag), hl=\(headerLength), l=\(value.count): <redacted>\n" + childDescriptions
+    }
 
     var integerValue: Int? {
         guard tag == 0x02,
@@ -95,7 +101,17 @@ struct SimpleASN1Node {
             }
         }
 
-        return (SimpleASN1Node(tag: tag, headerLength: headerLength, value: value, children: children), valueEnd)
+        let encodedBytes = [UInt8](bytes[offset ..< valueEnd])
+        return (
+            SimpleASN1Node(
+                tag: tag,
+                headerLength: headerLength,
+                encodedBytes: encodedBytes,
+                value: value,
+                children: children
+            ),
+            valueEnd
+        )
     }
 
     private static func readTag(_ bytes: [UInt8], cursor: inout Int, limit: Int) throws -> Int {

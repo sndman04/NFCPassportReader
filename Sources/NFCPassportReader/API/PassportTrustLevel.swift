@@ -80,6 +80,7 @@ public struct PassportCertificateTrustMetadata: Sendable, Equatable {
     public let countrySigningCertificatePresent: Bool
     public let signerTrustEstablished: Bool
     public let revocationCheckPerformed: Bool
+    public let revocationCheck: PassportCertificateRevocationCheck
 
     init(passport: NFCPassportModel) {
         self.verificationAttempted = passport.passportVerificationAttempted
@@ -90,5 +91,58 @@ public struct PassportCertificateTrustMetadata: Sendable, Equatable {
         self.signerTrustEstablished = passport.verificationResult.documentSignerCertificateStatus == .passed
             && passport.verificationResult.countrySigningCertificateStatus == .passed
         self.revocationCheckPerformed = passport.revocationCheckPerformed
+        self.revocationCheck = PassportCertificateRevocationCheck(passport: passport)
+    }
+}
+
+@available(iOS 13, macOS 10.15, *)
+public enum PassportCertificateRevocationStatus: Sendable, Equatable {
+    case notChecked
+    case notRevoked
+    case revoked
+}
+
+@available(iOS 13, macOS 10.15, *)
+public enum PassportCertificateRevocationReason: Sendable, Equatable {
+    case notImplemented
+    case notRequested
+    case passed
+    case revoked
+}
+
+@available(iOS 13, macOS 10.15, *)
+public struct PassportCertificateRevocationCheck: Sendable, Equatable {
+    public let status: PassportCertificateRevocationStatus
+    public let reason: PassportCertificateRevocationReason
+
+    init(passport: NFCPassportModel) {
+        if passport.revocationCheckPerformed {
+            self.status = .notRevoked
+            self.reason = .passed
+        } else if passport.passportVerificationAttempted {
+            self.status = .notChecked
+            self.reason = .notImplemented
+        } else {
+            self.status = .notChecked
+            self.reason = .notRequested
+        }
+    }
+
+    public init(status: PassportCertificateRevocationStatus, reason: PassportCertificateRevocationReason) {
+        self.status = status
+        self.reason = reason
+    }
+
+    public var privacySafeExplanation: String {
+        switch reason {
+        case .notImplemented:
+            return "Certificate revocation was not checked because this package has no configured revocation workflow."
+        case .notRequested:
+            return "Certificate revocation was not checked because certificate verification was not requested."
+        case .passed:
+            return "Certificate revocation was checked and no revocation was found."
+        case .revoked:
+            return "Certificate revocation was checked and the signing certificate was revoked."
+        }
     }
 }

@@ -7,7 +7,7 @@
 import Foundation
 
 @available(iOS 13, macOS 10.15, *)
-public class COM : DataGroup {
+class COM : DataGroup {
     public private(set) var version : String = "Unknown"
     public private(set) var unicodeVersion : String = "Unknown"
     public private(set) var dataGroupsPresent : [String] = []

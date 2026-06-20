@@ -11,7 +11,7 @@ import UIKit
 #endif
 
 @available(iOS 13, macOS 10.15, *)
-public class DataGroup7 : DataGroup {
+class DataGroup7 : DataGroup {
     private static let maxImageDataLength = 10 * 1024 * 1024
     private static let maxTotalImageDataLength = 20 * 1024 * 1024
     
@@ -56,5 +56,11 @@ public class DataGroup7 : DataGroup {
         }
 
         imageData = imageDataItems.first ?? []
+    }
+
+    override func removeSensitiveDataForPrivacy() {
+        imageData.removeAll(keepingCapacity: false)
+        imageDataItems.removeAll(keepingCapacity: false)
+        super.removeSensitiveDataForPrivacy()
     }
 }

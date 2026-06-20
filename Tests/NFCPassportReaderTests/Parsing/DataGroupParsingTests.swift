@@ -28,6 +28,43 @@ final class DataGroupParsingTests: XCTestCase {
         }
     }
 
+    func testDatagroup1ParsesTD1MRZ() throws {
+        let line1 = "I<" + "UTO" + "ABC123456" + "7" + String(repeating: "<", count: 15)
+        let line2 = "700101" + "1" + "F" + "300101" + "2" + "UTO" + "OPTIONAL<<<" + "3"
+        let line3 = mrzPadded("DOE<<JANE", length: 30)
+        let dg1 = try dataGroup1Fixture(mrz: line1 + line2 + line3)
+
+        let parsed = try XCTUnwrap(try DataGroupParser().parseDG(data: dg1) as? DataGroup1)
+
+        XCTAssertEqual(parsed.elements["5F03"], "I<")
+        XCTAssertEqual(parsed.elements["5F28"], "UTO")
+        XCTAssertEqual(parsed.elements["5A"], "ABC123456")
+        XCTAssertEqual(parsed.elements["5F57"], "700101")
+        XCTAssertEqual(parsed.elements["5F35"], "F")
+        XCTAssertEqual(parsed.elements["59"], "300101")
+        XCTAssertEqual(parsed.elements["5F2C"], "UTO")
+        XCTAssertEqual(parsed.elements["53"], String(repeating: "<", count: 15) + "OPTIONAL<<<")
+        XCTAssertEqual(parsed.elements["5B"], line3)
+    }
+
+    func testDatagroup1ParsesTD2MRZ() throws {
+        let line1 = "I<" + "UTO" + mrzPadded("DOE<<JOHN", length: 31)
+        let line2 = "ABC123456" + "7" + "UTO" + "700101" + "1" + "M" + "300101" + "2" + "OPT<<<<" + "3"
+        let dg1 = try dataGroup1Fixture(mrz: line1 + line2)
+
+        let parsed = try XCTUnwrap(try DataGroupParser().parseDG(data: dg1) as? DataGroup1)
+
+        XCTAssertEqual(parsed.elements["5F03"], "I<")
+        XCTAssertEqual(parsed.elements["5F28"], "UTO")
+        XCTAssertEqual(parsed.elements["5B"], line1.dropFirst(5).description)
+        XCTAssertEqual(parsed.elements["5A"], "ABC123456")
+        XCTAssertEqual(parsed.elements["5F57"], "700101")
+        XCTAssertEqual(parsed.elements["5F35"], "M")
+        XCTAssertEqual(parsed.elements["59"], "300101")
+        XCTAssertEqual(parsed.elements["5F2C"], "UTO")
+        XCTAssertEqual(parsed.elements["53"], "OPT<<<<")
+    }
+
     func testDatagroup1RejectsNonStandardMRZLength() throws {
         let invalidMRZ = [UInt8](repeating: 0x50, count: 89)
         let tag = try [0x5F, 0x1F] + toAsn1Length(invalidMRZ.count) + invalidMRZ
@@ -66,6 +103,102 @@ final class DataGroupParsingTests: XCTestCase {
             XCTAssertNotNil(dg)
             XCTAssertTrue( dg is DataGroup2 )
         }
+    }
+
+    func testDatagroup2ParsingJPEGWithExifMarker() throws {
+        let dg2 = try dataGroup2Fixture(imageBytes: [0xFF, 0xD8, 0xFF, 0xE1, 0x00, 0x10])
+        let parsed = try XCTUnwrap(try DataGroupParser().parseDG(data: dg2) as? DataGroup2)
+
+        XCTAssertEqual(parsed.imageData, [0xFF, 0xD8, 0xFF, 0xE1, 0x00, 0x10])
+        XCTAssertEqual(parsed.imageDataItems, [[0xFF, 0xD8, 0xFF, 0xE1, 0x00, 0x10]])
+    }
+
+    func testIdentityResultReportsFaceImageOnlyWhenDG2ContainsImagePayload() throws {
+        let dg2 = try dataGroup2Fixture(imageBytes: [0xFF, 0xD8, 0xFF, 0xE1, 0x00, 0x10])
+        let parsed = try XCTUnwrap(try DataGroupParser().parseDG(data: dg2) as? DataGroup2)
+        let model = NFCPassportModel()
+        model.addDataGroup(.DG2, dataGroup: parsed)
+
+        XCTAssertTrue(model.identityResult.hasFaceImage)
+    }
+
+    func testModelPrivacyCleanupScrubsRetainedDataGroupPayloadsBeforeReleasingReferences() throws {
+        let dg1 = try XCTUnwrap(try DataGroupParser().parseDG(
+            data: dataGroup1Fixture(mrz: mrzPadded("P<UTODOE<<JANE", length: 88))
+        ) as? DataGroup1)
+        let dg2 = try XCTUnwrap(try DataGroupParser().parseDG(
+            data: dataGroup2Fixture(imageBytes: [0xFF, 0xD8, 0xFF, 0xE1, 0x00, 0x10])
+        ) as? DataGroup2)
+        let dg7Body = try [0x02] + toAsn1Length(1) + [0x01] +
+            tlv(tag: [0x5F, 0x43], value: [0xAA, 0xBB, 0xCC])
+        let dg7 = try XCTUnwrap(try DataGroupParser().parseDG(
+            data: [UInt8]([0x67]) + toAsn1Length(dg7Body.count) + dg7Body
+        ) as? DataGroup7)
+        let dg11 = try XCTUnwrap(try DataGroupParser().parseDG(
+            data: try dataGroup11Fixture(fullName: "DOE<<JANE", placeOfBirth: "Zürich")
+        ) as? DataGroup11)
+        let dg12 = try XCTUnwrap(try DataGroupParser().parseDG(
+            data: try dataGroup12Fixture(frontImage: [0x01, 0x02], rearImage: [0x03, 0x04])
+        ) as? DataGroup12)
+        let model = NFCPassportModel()
+        model.addDataGroup(.DG1, dataGroup: dg1)
+        model.addDataGroup(.DG2, dataGroup: dg2)
+        model.addDataGroup(.DG7, dataGroup: dg7)
+        model.addDataGroup(.DG11, dataGroup: dg11)
+        model.addDataGroup(.DG12, dataGroup: dg12)
+
+        XCTAssertFalse(dg1.elements.isEmpty)
+        XCTAssertFalse(dg2.imageData.isEmpty)
+        XCTAssertFalse(dg7.imageDataItems.isEmpty)
+        XCTAssertEqual(dg11.fullName, "DOE<<JANE")
+        XCTAssertEqual(dg12.frontImage, [0x01, 0x02])
+
+        model.removeSensitiveDataForPrivacy()
+
+        XCTAssertNil(model.getDataGroup(.DG2))
+        XCTAssertTrue(model.dataGroupsAvailable.isEmpty)
+        XCTAssertTrue(dg1.elements.isEmpty)
+        XCTAssertTrue(dg1.data.isEmpty)
+        XCTAssertTrue(dg1.body.isEmpty)
+        XCTAssertTrue(dg2.imageData.isEmpty)
+        XCTAssertTrue(dg2.imageDataItems.isEmpty)
+        XCTAssertTrue(dg2.data.isEmpty)
+        XCTAssertTrue(dg2.body.isEmpty)
+        XCTAssertTrue(dg7.imageData.isEmpty)
+        XCTAssertTrue(dg7.imageDataItems.isEmpty)
+        XCTAssertTrue(dg7.data.isEmpty)
+        XCTAssertTrue(dg7.body.isEmpty)
+        XCTAssertNil(dg11.fullName)
+        XCTAssertNil(dg11.placeOfBirth)
+        XCTAssertTrue(dg11.data.isEmpty)
+        XCTAssertTrue(dg11.body.isEmpty)
+        XCTAssertNil(dg12.frontImage)
+        XCTAssertNil(dg12.rearImage)
+        XCTAssertTrue(dg12.data.isEmpty)
+        XCTAssertTrue(dg12.body.isEmpty)
+    }
+
+    func testDatagroup2PreservesMultipleBiometricTemplates() throws {
+        let first = [UInt8]([0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10])
+        let second = [UInt8]([0xFF, 0xD8, 0xFF, 0xDB, 0x00, 0x43])
+        let dg2 = try dataGroup2Fixture(imageBytesItems: [first, second])
+        let parsed = try XCTUnwrap(try DataGroupParser().parseDG(data: dg2) as? DataGroup2)
+
+        XCTAssertEqual(parsed.nrImages, 2)
+        XCTAssertEqual(parsed.imageData, first)
+        XCTAssertEqual(parsed.imageDataItems, [first, second])
+    }
+
+    func testDatagroup2PreservesMultipleFacialRecordsInOneTemplate() throws {
+        let first = [UInt8]([0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10])
+        let second = [UInt8]([0xFF, 0xD8, 0xFF, 0xE1, 0x00, 0x12])
+        let dg2 = try dataGroup2Fixture(singleTemplateFacialRecordImageBytesItems: [first, second])
+        let parsed = try XCTUnwrap(try DataGroupParser().parseDG(data: dg2) as? DataGroup2)
+
+        XCTAssertEqual(parsed.nrImages, 1)
+        XCTAssertEqual(parsed.numberOfFacialImages, 2)
+        XCTAssertEqual(parsed.imageData, first)
+        XCTAssertEqual(parsed.imageDataItems, [first, second])
     }
 
     func testDataGroup2RejectsMissingImagePayloadWithoutTrapping() throws {
@@ -235,6 +368,19 @@ final class DataGroupParsingTests: XCTestCase {
         XCTAssertEqual(dg11.placeOfBirth, birthplace)
     }
 
+    func testDataGroup11ParsesUTF16BigEndianText() throws {
+        let name = "TEST<<東京"
+        let encodedName = try XCTUnwrap(name.data(using: .utf16BigEndian)).map { $0 }
+        let tagList: [UInt8] = [0x5F, 0x0E]
+        let body = try tlv(tag: [0x5C], value: tagList) +
+            tlv(tag: [0x5F, 0x0E], value: [0xFE, 0xFF] + encodedName)
+        let data = try [UInt8]([0x6B]) + toAsn1Length(body.count) + body
+
+        let dg11 = try XCTUnwrap(try DataGroupParser().parseDG(data: data) as? DataGroup11)
+
+        XCTAssertEqual(dg11.fullName, name)
+    }
+
     func testDatagroup12Parsing() {
         
         // This is a cut down version of the DG7 record. It contains everything up to the end of the image header - no actuall image data as its way too big to include here
@@ -269,6 +415,45 @@ final class DataGroupParsingTests: XCTestCase {
 
         XCTAssertEqual(dg12.issuingAuthority, issuingAuthority)
         XCTAssertEqual(dg12.endorsementsOrObservations, observations)
+    }
+
+    func testDataGroup12ParsesLatin1Text() throws {
+        let latin1Authority = [UInt8]([0x50, 0x72, 0xE9, 0x66, 0x65, 0x63, 0x74, 0x75, 0x72, 0x65])
+        let tagList: [UInt8] = [0x5F, 0x19]
+        let body = try tlv(tag: [0x5C], value: tagList) +
+            tlv(tag: [0x5F, 0x19], value: latin1Authority)
+        let data = try [UInt8]([0x6C]) + toAsn1Length(body.count) + body
+
+        let dg12 = try XCTUnwrap(try DataGroupParser().parseDG(data: data) as? DataGroup12)
+
+        XCTAssertEqual(dg12.issuingAuthority, "Préfecture")
+    }
+
+    func testDataGroup12ParsesOtherPersonsDetailsAsPlainText() throws {
+        let details = "CHILD<<山田"
+        let tagList: [UInt8] = [0xA0]
+        let body = try tlv(tag: [0x5C], value: tagList) +
+            tlv(tag: [0xA0], value: Array(details.utf8))
+        let data = try [UInt8]([0x6C]) + toAsn1Length(body.count) + body
+
+        let dg12 = try XCTUnwrap(try DataGroupParser().parseDG(data: data) as? DataGroup12)
+
+        XCTAssertEqual(dg12.otherPersonsDetails, details)
+    }
+
+    func testDataGroup12ParsesOtherPersonsDetailsNestedText() throws {
+        let firstPerson = "PARENT<<MULLER"
+        let secondPerson = "وصي القاهرة"
+        let nested = try tlv(tag: [0x5F, 0x0E], value: Array(firstPerson.utf8)) +
+            tlv(tag: [0x5F, 0x11], value: Array(secondPerson.utf8))
+        let tagList: [UInt8] = [0xA0]
+        let body = try tlv(tag: [0x5C], value: tagList) +
+            tlv(tag: [0xA0], value: nested)
+        let data = try [UInt8]([0x6C]) + toAsn1Length(body.count) + body
+
+        let dg12 = try XCTUnwrap(try DataGroupParser().parseDG(data: data) as? DataGroup12)
+
+        XCTAssertEqual(dg12.otherPersonsDetails, [firstPerson, secondPerson].joined(separator: "\n"))
     }
 
     func testOptionalDG11FieldsCanBeAbsentAfterTagList() {
@@ -325,47 +510,6 @@ final class DataGroupParsingTests: XCTestCase {
         }
     }
 
-    func testSODSignatureContentRejectsOutOfRangeDataGroupIdWithoutTrapping() {
-        let content = """
-        0:d=2  hl=2 l=   9 prim: OBJECT            :sha256
-        0:d=3  hl=2 l=   1 prim: INTEGER           :20
-        0:d=3  hl=2 l=  32 prim: OCTET STRING      [HEX DUMP]:00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF
-        """
-
-        XCTAssertThrowsError(try NFCPassportModel().parseSODSignatureContent(content)) { error in
-            guard case PassiveAuthenticationError.UnableToParseSODHashes = error else {
-                return XCTFail("Expected UnableToParseSODHashes, got \(error)")
-            }
-        }
-    }
-
-    func testSODSignatureContentRejectsZeroDataGroupId() {
-        let content = """
-        0:d=2  hl=2 l=   9 prim: OBJECT            :sha256
-        0:d=3  hl=2 l=   1 prim: INTEGER           :00
-        0:d=3  hl=2 l=  32 prim: OCTET STRING      [HEX DUMP]:00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF
-        """
-
-        XCTAssertThrowsError(try NFCPassportModel().parseSODSignatureContent(content)) { error in
-            guard case PassiveAuthenticationError.UnableToParseSODHashes = error else {
-                return XCTFail("Expected UnableToParseSODHashes, got \(error)")
-            }
-        }
-    }
-
-    func testSODSignatureContentParsesWhitespacePaddedDataGroupId() throws {
-        let content = """
-        0:d=2  hl=2 l=   9 prim: OBJECT            :sha256
-        0:d=3  hl=2 l=   1 prim: INTEGER           : 01
-        0:d=3  hl=2 l=  32 prim: OCTET STRING      [HEX DUMP]:00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF
-        """
-
-        let (algorithm, hashes) = try NFCPassportModel().parseSODSignatureContent(content)
-
-        XCTAssertEqual(algorithm, "SHA256")
-        XCTAssertEqual(hashes[.DG1], "00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF")
-    }
-
     func testStructuredSODSignatureContentParsesDataGroupHashes() throws {
         let hash = [UInt8](repeating: 0xA5, count: 32)
         let digestAlgorithm = try sequence(
@@ -406,6 +550,24 @@ final class DataGroupParsingTests: XCTestCase {
         XCTAssertThrowsError(try NFCPassportModel().parseSODSignatureContent(data: Data(content)))
     }
 
+    func testStructuredSODSignatureContentRejectsZeroDataGroupNumber() throws {
+        let digestAlgorithm = try sequence(
+            asn1OID([0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01]) +
+            [0x05, 0x00]
+        )
+        let dataGroupHash = try sequence(
+            asn1Integer([0x00]) +
+            tlv(tag: [0x04], value: [UInt8](repeating: 0xA5, count: 32))
+        )
+        let content = try sequence(
+            asn1Integer([0x00]) +
+            digestAlgorithm +
+            sequence(dataGroupHash)
+        )
+
+        XCTAssertThrowsError(try NFCPassportModel().parseSODSignatureContent(data: Data(content)))
+    }
+
     func testSimpleASN1NodeRejectsNegativeIntegerAndParsesLargeOIDSecondArc() throws {
         let negativeInteger = try SimpleASN1Node.parse(asn1Integer([0x80]))
         XCTAssertNil(negativeInteger.integerValue)
@@ -420,6 +582,138 @@ final class DataGroupParsingTests: XCTestCase {
 
         let overflowingOID = try SimpleASN1Node.parse(asn1OID([UInt8](repeating: 0xFF, count: 10) + [0x7F]))
         XCTAssertNil(overflowingOID.objectIdentifier)
+    }
+
+    func testSimpleASN1NodePreservesOriginalEncodedBytes() throws {
+        let integerWithLongFormLength: [UInt8] = [0x02, 0x81, 0x01, 0x01]
+        let sequenceWithLongFormLength: [UInt8] = [0x30, 0x81, UInt8(integerWithLongFormLength.count)] + integerWithLongFormLength
+
+        let sequence = try SimpleASN1Node.parse(sequenceWithLongFormLength)
+
+        XCTAssertEqual(sequence.encodedBytes, sequenceWithLongFormLength)
+        XCTAssertEqual(sequence.headerLength, 3)
+        XCTAssertEqual(sequence.children.first?.encodedBytes, integerWithLongFormLength)
+        XCTAssertEqual(sequence.children.first?.headerLength, 3)
+        XCTAssertEqual(sequence.children.first?.integerValue, 1)
+    }
+
+    func testSODParsesCMSFieldsWithoutASN1DumpText() throws {
+        let encapsulatedContent: [UInt8] = [0x30, 0x03, 0x02, 0x01, 0x01]
+        let messageDigest = calcSHA256Hash(encapsulatedContent)
+        let signature: [UInt8] = [0xAA, 0xBB, 0xCC, 0xDD]
+        let signedAttributesValue = try syntheticSODSignedAttributesValue(messageDigest: messageDigest)
+        let sod = try SOD(syntheticSODData(
+            encapsulatedContent: encapsulatedContent,
+            messageDigest: messageDigest,
+            signature: signature,
+            includeOptionalCertificateAndCRLFields: true
+        ))
+
+        XCTAssertEqual(try sod.getEncapsulatedContent(), Data(encapsulatedContent))
+        XCTAssertEqual(try sod.getEncapsulatedContentDigestAlgorithm(), "SHA256")
+        XCTAssertEqual(try sod.getMessageDigestFromSignedAttributes(), Data(messageDigest))
+        XCTAssertEqual(try sod.getSignature(), Data(signature))
+        XCTAssertEqual(try sod.getSignatureAlgorithm(), "sha256WithRSAEncryption")
+        XCTAssertEqual(try sod.getSignedAttributes(), Data(try asn1Set(signedAttributesValue)))
+    }
+
+    func testCardSecurityParsesSignedSecurityInfosEncapsulatedContent() throws {
+        let cardSecurity = try CardSecurity(syntheticCardSecurityData())
+        let parsedPACEInfo = try XCTUnwrap(cardSecurity.securityInfos.first as? PACEInfo)
+
+        XCTAssertEqual(parsedPACEInfo.getObjectIdentifier(), SecurityInfo.ID_PACE_ECDH_CAM_AES_CBC_CMAC_128)
+        XCTAssertEqual(parsedPACEInfo.version, 2)
+        XCTAssertEqual(parsedPACEInfo.parameterId, PACEInfo.PARAM_ID_ECP_NIST_P256_R1)
+    }
+
+    func testSecurityInfosParserParsesMixedDERInfosWithoutASN1DumpText() throws {
+        let paceInfo = try sequence(
+            asn1ObjectIdentifier(SecurityInfo.ID_PACE_ECDH_GM_AES_CBC_CMAC_128) +
+            asn1Integer([0x02]) +
+            asn1Integer([UInt8(PACEInfo.PARAM_ID_ECP_NIST_P256_R1)])
+        )
+        let chipAuthenticationInfo = try sequence(
+            asn1ObjectIdentifier(SecurityInfo.ID_CA_ECDH_AES_CBC_CMAC_256_OID) +
+            asn1Integer([0x01]) +
+            asn1Integer([0x01, 0x00])
+        )
+        let activeAuthenticationInfo = try sequence(
+            asn1ObjectIdentifier(SecurityInfo.ID_AA_OID) +
+            asn1Integer([0x01]) +
+            asn1ObjectIdentifier(SecurityInfo.ECDSA_PLAIN_SHA256_OID)
+        )
+        let unknownInfo = try sequence(
+            asn1ObjectIdentifier("1.2.3.4.5") +
+            asn1Integer([0x01])
+        )
+
+        let securityInfos = try SecurityInfosParser.parse(asn1Set(
+            paceInfo +
+            chipAuthenticationInfo +
+            activeAuthenticationInfo +
+            unknownInfo
+        ))
+
+        XCTAssertEqual(securityInfos.count, 4)
+
+        let parsedPACEInfo = try XCTUnwrap(securityInfos.compactMap { $0 as? PACEInfo }.first)
+        XCTAssertEqual(parsedPACEInfo.getObjectIdentifier(), SecurityInfo.ID_PACE_ECDH_GM_AES_CBC_CMAC_128)
+        XCTAssertEqual(parsedPACEInfo.getVersion(), 2)
+        XCTAssertEqual(parsedPACEInfo.getParameterId(), PACEInfo.PARAM_ID_ECP_NIST_P256_R1)
+
+        let parsedChipAuthenticationInfo = try XCTUnwrap(securityInfos.compactMap { $0 as? ChipAuthenticationInfo }.first)
+        XCTAssertEqual(parsedChipAuthenticationInfo.getObjectIdentifier(), SecurityInfo.ID_CA_ECDH_AES_CBC_CMAC_256_OID)
+        XCTAssertEqual(parsedChipAuthenticationInfo.getKeyId(), 256)
+
+        let parsedActiveAuthenticationInfo = try XCTUnwrap(securityInfos.compactMap { $0 as? ActiveAuthenticationInfo }.first)
+        XCTAssertEqual(parsedActiveAuthenticationInfo.getProtocolOIDString(), "id-AA")
+        XCTAssertEqual(parsedActiveAuthenticationInfo.getSignatureAlgorithmOIDString(), "ecdsa-plain-SHA256")
+
+        let parsedUnknownInfo = try XCTUnwrap(securityInfos.first { !$0.isRecognized })
+        XCTAssertEqual(parsedUnknownInfo.getProtocolOIDString(), "Unknown security info")
+    }
+
+    func testActiveAuthenticationSignatureOIDMetadataCoversSupportedECDSAPlainAlgorithms() {
+        let expectedNames = [
+            SecurityInfo.ECDSA_PLAIN_SHA1_OID: "ecdsa-plain-SHA1",
+            SecurityInfo.ECDSA_PLAIN_SHA224_OID: "ecdsa-plain-SHA224",
+            SecurityInfo.ECDSA_PLAIN_SHA256_OID: "ecdsa-plain-SHA256",
+            SecurityInfo.ECDSA_PLAIN_SHA384_OID: "ecdsa-plain-SHA384",
+            SecurityInfo.ECDSA_PLAIN_SHA512_OID: "ecdsa-plain-SHA512",
+            SecurityInfo.ECDSA_PLAIN_RIPEMD160_OID: "ecdsa-plain-RIPEMD160"
+        ]
+
+        for (oid, expectedName) in expectedNames {
+            let info = ActiveAuthenticationInfo(
+                oid: SecurityInfo.ID_AA_OID,
+                version: 1,
+                signatureAlgorithmOID: oid
+            )
+
+            XCTAssertEqual(info.getProtocolOIDString(), "id-AA")
+            XCTAssertEqual(info.getSignatureAlgorithmOIDString(), expectedName)
+        }
+
+        let unsupportedInfo = ActiveAuthenticationInfo(
+            oid: SecurityInfo.ID_AA_OID,
+            version: 1,
+            signatureAlgorithmOID: "1.2.3.4"
+        )
+        XCTAssertNil(unsupportedInfo.getSignatureAlgorithmOIDString())
+
+        let missingSignatureAlgorithmInfo = ActiveAuthenticationInfo(
+            oid: SecurityInfo.ID_AA_OID,
+            version: 1
+        )
+        XCTAssertNil(missingSignatureAlgorithmInfo.getSignatureAlgorithmOIDString())
+    }
+
+    func testCardSecurityVerificationFailureDoesNotTrustUnsignedContent() throws {
+        let cardSecurity = try CardSecurity(syntheticCardSecurityData())
+
+        XCTAssertThrowsError(try cardSecurity.verifySignature(trustedCertificatesURL: nil))
+        XCTAssertFalse(cardSecurity.signatureVerified)
+        XCTAssertFalse(cardSecurity.signerTrusted)
     }
 
     func testSyntheticParserFuzzCorpusRejectsMalformedInputsWithoutTrapping() {
@@ -526,6 +820,121 @@ private func sequence(_ value: [UInt8]) throws -> [UInt8] {
     try tlv(tag: [0x30], value: value)
 }
 
+private func asn1Set(_ value: [UInt8]) throws -> [UInt8] {
+    try tlv(tag: [0x31], value: value)
+}
+
+private func context0(_ value: [UInt8]) throws -> [UInt8] {
+    try tlv(tag: [0xA0], value: value)
+}
+
+private func context1(_ value: [UInt8]) throws -> [UInt8] {
+    try tlv(tag: [0xA1], value: value)
+}
+
+private func asn1Null() -> [UInt8] {
+    [0x05, 0x00]
+}
+
+private func algorithmIdentifier(_ oid: String) throws -> [UInt8] {
+    try sequence(asn1ObjectIdentifier(oid) + asn1Null())
+}
+
+private func syntheticSODSignedAttributesValue(messageDigest: [UInt8]) throws -> [UInt8] {
+    let contentTypeAttribute = try sequence(
+        asn1ObjectIdentifier("1.2.840.113549.1.9.3") +
+        asn1Set(asn1ObjectIdentifier("2.23.136.1.1.1"))
+    )
+    let messageDigestAttribute = try sequence(
+        asn1ObjectIdentifier("1.2.840.113549.1.9.4") +
+        asn1Set(try tlv(tag: [0x04], value: messageDigest))
+    )
+    return contentTypeAttribute + messageDigestAttribute
+}
+
+private func syntheticSODData(
+    encapsulatedContent: [UInt8],
+    messageDigest: [UInt8],
+    signature: [UInt8],
+    includeOptionalCertificateAndCRLFields: Bool
+) throws -> [UInt8] {
+    let digestAlgorithm = try algorithmIdentifier("2.16.840.1.101.3.4.2.1")
+    let digestAlgorithms = try asn1Set(digestAlgorithm)
+    let encapContentInfo = try sequence(
+        asn1ObjectIdentifier("2.23.136.1.1.1") +
+        context0(try tlv(tag: [0x04], value: encapsulatedContent))
+    )
+    let signedAttributes = try context0(syntheticSODSignedAttributesValue(messageDigest: messageDigest))
+    let signatureAlgorithm = try algorithmIdentifier("1.2.840.113549.1.1.11")
+    let signerInfo = try sequence(
+        asn1Integer([0x01]) +
+        sequence([]) +
+        digestAlgorithm +
+        signedAttributes +
+        signatureAlgorithm +
+        tlv(tag: [0x04], value: signature)
+    )
+    var signedDataBody = try asn1Integer([0x03]) + digestAlgorithms + encapContentInfo
+    if includeOptionalCertificateAndCRLFields {
+        signedDataBody += try context0([])
+        signedDataBody += try context1([])
+    }
+    signedDataBody += try asn1Set(signerInfo)
+
+    let cmsContent = try sequence(
+        asn1ObjectIdentifier("1.2.840.113549.1.7.2") +
+        context0(try sequence(signedDataBody))
+    )
+    return try [0x77] + toAsn1Length(cmsContent.count) + cmsContent
+}
+
+private func syntheticCardSecurityData() throws -> [UInt8] {
+    let paceInfo = try sequence(
+        asn1ObjectIdentifier(SecurityInfo.ID_PACE_ECDH_CAM_AES_CBC_CMAC_128) +
+        asn1Integer([0x02]) +
+        asn1Integer([UInt8(PACEInfo.PARAM_ID_ECP_NIST_P256_R1)])
+    )
+    let securityInfos = try asn1Set(paceInfo)
+    let encapContentInfo = try sequence(
+        asn1ObjectIdentifier("2.23.136.1.1.1") +
+        context0(try tlv(tag: [0x04], value: securityInfos))
+    )
+    let signedData = try sequence(
+        asn1Integer([0x03]) +
+        asn1Set([]) +
+        encapContentInfo +
+        asn1Set([])
+    )
+    return try sequence(
+        asn1ObjectIdentifier("1.2.840.113549.1.7.2") +
+        context0(signedData)
+    )
+}
+
+private func dataGroup1Fixture(mrz: String) throws -> [UInt8] {
+    let mrzBytes = [UInt8](mrz.utf8)
+    let tag = try [0x5F, 0x1F] + toAsn1Length(mrzBytes.count) + mrzBytes
+    return try [UInt8]([0x61]) + toAsn1Length(tag.count) + tag
+}
+
+private func dataGroup11Fixture(fullName: String, placeOfBirth: String) throws -> [UInt8] {
+    let body = try tlv(tag: [0x5C], value: [0x5F, 0x0E, 0x5F, 0x11]) +
+        tlv(tag: [0x5F, 0x0E], value: Array(fullName.utf8)) +
+        tlv(tag: [0x5F, 0x11], value: Array(placeOfBirth.utf8))
+    return try [UInt8]([0x6B]) + toAsn1Length(body.count) + body
+}
+
+private func dataGroup12Fixture(frontImage: [UInt8], rearImage: [UInt8]) throws -> [UInt8] {
+    let body = try tlv(tag: [0x5C], value: [0x5F, 0x1D, 0x5F, 0x1E]) +
+        tlv(tag: [0x5F, 0x1D], value: frontImage) +
+        tlv(tag: [0x5F, 0x1E], value: rearImage)
+    return try [UInt8]([0x6C]) + toAsn1Length(body.count) + body
+}
+
+private func mrzPadded(_ value: String, length: Int) -> String {
+    String((value + String(repeating: "<", count: length)).prefix(length))
+}
+
 private func asn1Integer(_ value: [UInt8]) throws -> [UInt8] {
     try tlv(tag: [0x02], value: value)
 }
@@ -534,31 +943,87 @@ private func asn1OID(_ value: [UInt8]) throws -> [UInt8] {
     try tlv(tag: [0x06], value: value)
 }
 
+private func asn1ObjectIdentifier(_ oid: String) -> [UInt8] {
+    OpenSSLUtils.asn1EncodeOID(oid: oid)
+}
+
+private func dataGroup2Fixture(imageBytes: [UInt8]) throws -> [UInt8] {
+    try dataGroup2Fixture(imageBytesItems: [imageBytes])
+}
+
+private func dataGroup2Fixture(imageBytesItems: [[UInt8]]) throws -> [UInt8] {
+    let count = imageBytesItems.count
+    let templates = try imageBytesItems.map { imageBytes in
+        let biometricHeader = try tlv(tag: [0xA1], value: [0x80, 0x01, 0x01])
+        let biometricData = try tlv(tag: [0x5F, 0x2E], value: iso19794FaceRecord(imageBytes: imageBytes))
+        return try tlv(tag: [0x7F, 0x60], value: biometricHeader + biometricData)
+    }.flatMap { $0 }
+    let body = try tlv(tag: [0x7F, 0x61], value: tlv(tag: [0x02], value: [UInt8(count)]) + templates)
+    return try [UInt8]([0x75]) + toAsn1Length(body.count) + body
+}
+
+private func dataGroup2Fixture(singleTemplateFacialRecordImageBytesItems imageBytesItems: [[UInt8]]) throws -> [UInt8] {
+    let biometricHeader = try tlv(tag: [0xA1], value: [0x80, 0x01, 0x01])
+    let biometricData = try tlv(tag: [0x5F, 0x2E], value: iso19794FaceRecordPayload(imageBytesItems: imageBytesItems))
+    let template = try tlv(tag: [0x7F, 0x60], value: biometricHeader + biometricData)
+    let body = try tlv(tag: [0x7F, 0x61], value: tlv(tag: [0x02], value: [0x01]) + template)
+    return try [UInt8]([0x75]) + toAsn1Length(body.count) + body
+}
+
 private func iso19794FaceRecord(
     featurePoints: Int = 0,
     width: Int = 1,
     height: Int = 1,
     imageBytes: [UInt8] = [0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46]
 ) -> [UInt8] {
-    [0x46, 0x41, 0x43, 0x00] +
-    [0x30, 0x31, 0x30, 0x00] +
-    fixedWidthBytes(46 + imageBytes.count, count: 4) +
-    fixedWidthBytes(1, count: 2) +
-    fixedWidthBytes(46 + imageBytes.count - 14, count: 4) +
-    fixedWidthBytes(featurePoints, count: 2) +
-    [0x00, 0x00, 0x00] +
-    [0x00, 0x00, 0x00] +
-    [0x00, 0x00] +
-    [0x00, 0x00, 0x00] +
-    [0x00, 0x00, 0x00] +
-    Array(repeating: 0x00, count: max(featurePoints, 0) * 8) +
-    [0x00, 0x00] +
-    fixedWidthBytes(width, count: 2) +
-    fixedWidthBytes(height, count: 2) +
-    [0x00, 0x00] +
-    [0x00, 0x00] +
-    [0x00, 0x00] +
-    imageBytes
+    var record: [UInt8] = []
+    record.reserveCapacity(46 + imageBytes.count + max(featurePoints, 0) * 8)
+    record += [0x46, 0x41, 0x43, 0x00]
+    record += [0x30, 0x31, 0x30, 0x00]
+    record += fixedWidthBytes(46 + imageBytes.count, count: 4)
+    record += fixedWidthBytes(1, count: 2)
+    record += fixedWidthBytes(46 + imageBytes.count - 14, count: 4)
+    record += fixedWidthBytes(featurePoints, count: 2)
+    record += [0x00, 0x00, 0x00]
+    record += [0x00, 0x00, 0x00]
+    record += [0x00, 0x00]
+    record += [0x00, 0x00, 0x00]
+    record += [0x00, 0x00, 0x00]
+    record += Array(repeating: 0x00, count: max(featurePoints, 0) * 8)
+    record += [0x00, 0x00]
+    record += fixedWidthBytes(width, count: 2)
+    record += fixedWidthBytes(height, count: 2)
+    record += [0x00, 0x00]
+    record += [0x00, 0x00]
+    record += [0x00, 0x00]
+    record += imageBytes
+    return record
+}
+
+private func iso19794FaceRecordPayload(imageBytesItems: [[UInt8]]) -> [UInt8] {
+    let records = imageBytesItems.flatMap { iso19794FacialRecord(imageBytes: $0) }
+    return [0x46, 0x41, 0x43, 0x00] +
+        [0x30, 0x31, 0x30, 0x00] +
+        fixedWidthBytes(14 + records.count, count: 4) +
+        fixedWidthBytes(imageBytesItems.count, count: 2) +
+        records
+}
+
+private func iso19794FacialRecord(imageBytes: [UInt8]) -> [UInt8] {
+    let recordTail = fixedWidthBytes(0, count: 2) +
+        [0x00, 0x00, 0x00] +
+        [0x00, 0x00, 0x00] +
+        [0x00, 0x00] +
+        [0x00, 0x00, 0x00] +
+        [0x00, 0x00, 0x00] +
+        [0x00, 0x00] +
+        fixedWidthBytes(1, count: 2) +
+        fixedWidthBytes(1, count: 2) +
+        [0x00, 0x00] +
+        [0x00, 0x00] +
+        [0x00, 0x00] +
+        imageBytes
+    return fixedWidthBytes(4 + recordTail.count, count: 4) + recordTail
 }
 
 private func fixedWidthBytes(_ value: Int, count: Int) -> [UInt8] {

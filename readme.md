@@ -10,9 +10,9 @@ Supported features:
 * Reads and verifies LDS data groups without exposing raw chip data through public app APIs. COM, DG1, DG2, DG7, DG11, DG12, DG14, DG15, and SOD have typed parsers; DG3, DG4, DG5, DG6, DG8, DG9, DG10, DG13, and DG16 are retained internally as opaque typed data groups for hashing.
 * Passive Authentication with structured LDS Security Object hash parsing and CMS verification fallback.
 * Active Authentication with RSA and ECDSA DG15 public-key detection.
-* Chip Authentication (ECDH DES and AES keys tested, DH DES AES keys implemented ad should work but currently not tested)
-* PACE with MRZ, CAN, PIN, or PUK password references. When a chip advertises multiple PACE options, implemented Generic Mapping (GM) options are used when available. Integrated Mapping (IM) and Chip Authentication Mapping (CAM) remain explicit unsupported paths.
-* Ability to dump passport stream and read it back in
+* Chip Authentication (ECDH DES/AES paths have focused coverage; DH DES/AES metadata and implementation paths are present, with real-chip validation still required)
+* PACE with MRZ, CAN, PIN, or PUK password references. When a chip advertises multiple PACE options, implemented Generic Mapping (GM), Integrated Mapping (IM), and ECDH Chip Authentication Mapping (CAM) options are eligible. CAM can establish PACE secure messaging and validates the CAM proof against trusted EF.CardSecurity chip-authentication keys or DG14 chip-authentication public keys when available.
+* Privacy-first public API returning `PassportChipReadResult` instead of raw passport data.
 * Uses Async/Await
 
 This is still very early days - the code is by no means perfect and there are still some rough edges  - there ARE most definitely bugs and I'm sure I'm not doing things perfectly. 
@@ -103,13 +103,13 @@ Security policies can disallow passport photo reads even when a broader scan pro
 
 PACE policy defaults to `.allowBACFallback` for current passport interoperability. Use `.requirePACEWhenAdvertised` only after validating the target passport population with real devices, and use `.requireExplicitCredential(.can)`, `.pin`, or `.puk` when the workflow has collected that credential and should fail rather than fall back to MRZ-derived PACE/BAC.
 
-If passive authentication runs without a CSCA master list, SOD signature and data-group hash checks can still report that the data groups actually read are internally consistent, but country signer trust is reported as not checked. A trusted signer result requires a master list from the issuing country or ICAO PKD.
+If passive authentication runs without a CSCA master list, SOD signature and data-group hash checks can still report that the data groups actually read are internally consistent, but country signer trust is reported as not checked. A trusted signer result requires a master list from the issuing country or ICAO PKD. Certificate revocation is reported separately in `certificateTrustMetadata.revocationCheck`; it remains not checked until a tested CRL/PKD revocation workflow is configured and implemented.
 
 `PassportVerificationResult` keeps the original simple status properties and also includes safe detail fields such as `sodSignatureDetail`, `dataGroupHashDetail`, `countrySigningCertificateDetail`, `activeAuthenticationDetail`, and `chipAuthenticationDetail`. These distinguish cases such as not requested, not supported, skipped, missing SOD, missing master list, signer untrusted, hash mismatch, malformed SOD, unsupported algorithm, attempted failed, and passed without exposing raw hashes or certificate contents. `dataGroupCoverage` summarizes whether read groups were covered by SOD hashes.
 
 For support diagnostics, use `PassportReaderDiagnosticsSummary`. It records the scan profile, photo policy, security policy, safe failure reason, verification summary, trust level, data-group names read, and privacy-safe data-group read reports such as requested, advertised, read, skipped, blocked, unsupported, or failed. It does not include identity fields, MRZ text, APDUs, certificates, keys, raw data groups, or images.
 
-For private real-device compatibility tracking, use `PassportInteroperabilityRecord` and keep notes non-identifying. It is designed for country/feature-class outcomes, not passport numbers, MRZ text, image bytes, APDUs, keys, certificate dumps, or long hex samples.
+For private real-device compatibility tracking, use `PassportInteroperabilityRecord` and keep notes non-identifying. It is designed for country/feature-class outcomes, not passport numbers, MRZ text, names, dates of birth, expiration dates, image bytes, APDUs, keys, certificate details, or hex samples. `containsOnlyNonIdentifyingFields` rejects common sensitive labels and byte-pattern notes, but it is a safeguard rather than permission to store detailed scan artifacts.
 
 `PassportReaderPrivacyCopy` provides short suggested consent and diagnostics copy for host apps that want package-owned wording.
 
@@ -131,9 +131,11 @@ For UI tests or simulator flows, depend on `PassportChipReading` and inject `Pas
 let fixture = PassportReaderFixture(result: .success(syntheticResult))
 ```
 
-The reader can read every LDS data-group file id. COM, DG1, DG2, DG7, DG11, DG12, DG14, DG15, and SOD have typed parsers used by the safe app-facing result. DG7 preserves multiple displayed signature/mark image items when present. DG3, DG4, DG5, DG6, DG8, DG9, DG10, DG13, and DG16 are represented as opaque typed groups internally so they can be read and hashed for passive authentication without public raw export.
+The reader is scoped to the LDS1 eMRTD application and can read every LDS1 data-group file id. COM, DG1, DG2, DG7, DG11, DG12, DG14, DG15, and SOD have typed parsers used by the safe app-facing result. DG2 preserves multiple biometric templates when present and keeps the first image through the compatibility `imageData` path. DG7 preserves multiple displayed signature/mark image items when present. DG3, DG4, DG5, DG6, DG8, DG9, DG10, DG13, and DG16 are represented as opaque typed groups internally so they can be read and hashed for passive authentication without public raw export. Optional LDS2 applications, such as travel records, visa records, and additional biometrics, are not implemented by this package.
 
-DG2 and DG7 image parsing has explicit byte and structural bounds. Malformed payloads with excessive image bytes, excessive dimensions, or impossible feature-point skips are rejected before unbounded retention or image decoding.
+DG2 and DG7 image parsing has explicit byte and structural bounds. DG2 accepts JPEG and JPEG 2000 image payloads with standard headers, including JPEG streams that do not use the JFIF APP0 marker. Malformed payloads with excessive image bytes, excessive dimensions, or impossible feature-point skips are rejected before unbounded retention or image decoding.
+
+DG11 and DG12 optional text fields are decoded with BOM-aware UTF-8/UTF-16 handling, UTF-16 heuristics, and common Latin fallback encodings before using replacement UTF-8. DG12 other-person details are preserved from plain text or nested text TLVs. This preserves more multilingual issuer fields while still avoiding raw byte exposure in public diagnostics.
 
 PACE defaults to the MRZ-derived key:
 
@@ -155,18 +157,20 @@ let result = try await passportReader.readPassportIdentity(
 )
 ```
 
-Integrated Mapping (IM) and Chip Authentication Mapping (CAM) are not silently treated as supported. They fail with a privacy-safe PACE failure until implemented and validated against real chips. Unknown DG14/CardAccess `SecurityInfo` records are preserved as redacted `UnknownSecurityInfo` values so callers can detect unrecognized security capabilities without exposing raw chip data.
+Integrated Mapping (IM) is implemented for standardized DH and ECDH domain parameters, with synthetic ICAO Appendix H vector coverage for the IM pseudorandom field mapping and mapped DH/ECDH generators. ECDH Chip Authentication Mapping (CAM) is handled for PACE secure messaging and requires the chip's final CAM data object to be present. EF.CardSecurity is read and parsed when present. If a master list is supplied and EF.CardSecurity CMS verification succeeds against that trust store, trusted EF.CardSecurity chip-authentication public keys can satisfy the CAM proof before DG14 is read. When DG14 is read, the CAM proof is also checked against DG14 chip-authentication public keys and can satisfy chip-authentication status; otherwise the reader falls back to the separate Chip Authentication flow when available. Unknown DG14/CardAccess/CardSecurity `SecurityInfo` records are preserved as redacted `UnknownSecurityInfo` values so callers can detect unrecognized security capabilities without exposing raw chip data.
 
 Extended mode reads (not supported by all passports) can be enabled through `PassportScanOptions.useExtendedMode`.
 This will increase the number of bytes that can be read in a call and may be required for some passports that use long AA keys (some Australian passports for example).
 
 A custom Active Authentication challenge can be provided to `PassportReader` to ensure that the challenge/response was specifically executed in the session and not replayed. Treat the challenge and signature as sensitive. Do not send active-authentication data, raw chip data, or passport images to a backend unless the host app has explicit user consent, retention rules, transport controls, and a privacy-reviewed validation workflow.
 
-Raw passport dump import/export APIs are not part of this fork's public surface. Low-level BAC internals such as `KSenc`, `KSmac`, and `KIFD` are not public API. Apps should use `PassportReader.readPassportIdentity(...)` or the safe `PassportChipReading` abstraction rather than constructing NFC, BAC, session-key, or raw data-group flows directly.
+Raw passport dump import/export APIs are not part of this fork's public surface. Low-level NFC, BAC, PACE, secure-messaging, AES/DES/OpenSSL, certificate-wrapper, and raw data-group parser types are module-internal implementation details, not app-level scan APIs. They may process sensitive keys, IVs, APDU payloads, secure-messaging bytes, certificates, hashes, or decrypted chip data. Apps should use `PassportReader.readPassportIdentity(...)` or the safe `PassportChipReading` abstraction rather than constructing NFC, BAC, session-key, cryptographic, certificate, or raw data-group flows directly.
 
 
 ## Logging
 Logging is off by default. This fork only exposes privacy-safe, typed reader events; it does not log MRZ values, access keys, APDUs, secure messaging keys, random challenges, decrypted data groups, certificate contents, or passport image bytes.
+
+Reader error `localizedDescription` and default `String(describing:)` output are privacy-safe summaries. Host apps should still prefer `PassportReaderFailure`, `PassportReaderDiagnosticsSummary`, and typed progress/log events for support flows instead of logging raw thrown error values.
 
 You can opt in to redacted high-level events:
 
@@ -242,7 +246,7 @@ e.g. 12345678<870052332507237 would be the key used.
 
 ## To do
 There are a number of things I'd like to implement in no particular order:
- * Finish off PACE authentication for Integrated Mapping (IM) and Chip Authentication Mapping (CAM), with real-chip interoperability validation.
+ * Complete real-chip interoperability validation for PACE-GM, PACE-IM, PACE-CAM, EF.CardSecurity trust, DG14 CAM fallback, and multilingual optional fields before broadening release claims.
  
 
 ## Thanks

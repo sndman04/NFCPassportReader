@@ -15,7 +15,7 @@ import Foundation
 
  Integration based on [JMRTD](https://sourceforge.net/p/jmrtd/code/HEAD/tree/trunk/jmrtd/src/main/java/org/jmrtd/lds/iso19794/FaceImageInfo.java#l59)
  */
-public struct FaceImageInfo: Equatable {
+struct FaceImageInfo: Equatable {
     let expression: Expression?
     let eyeColor: EyeColor?
     let faceImageType: FaceImageType?
@@ -39,7 +39,7 @@ public struct FaceImageInfo: Equatable {
     }
     
     /// Expression code based on Section 5.5.7 of ISO 19794-5.
-    public enum Expression: Int {
+    enum Expression: Int {
         case unspecified = 0x0000
         case neutral = 0x0001
         case smileClosed = 0x0002
@@ -55,7 +55,7 @@ public struct FaceImageInfo: Equatable {
     }
 
     /// Eye color code based on Section 5.5.4 of ISO 19794-5.
-    public enum EyeColor: Int {
+    enum EyeColor: Int {
         case unspecified = 0x00
         case black = 0x01
         case blue = 0x02
@@ -72,7 +72,7 @@ public struct FaceImageInfo: Equatable {
     }
     
     /// Face image type code based on Section 5.7.1 of ISO 19794-5.
-    public enum FaceImageType: Int {
+    enum FaceImageType: Int {
         case basic = 0x00
         case fullFrontal = 0x01
         case tokenFrontal = 0x02
@@ -83,7 +83,7 @@ public struct FaceImageInfo: Equatable {
     }
     
     /// Feature flags meaning based on Section 5.5.6 of ISO 19794-5.
-    public enum Features: Int {
+    enum Features: Int {
         case featuresAreSpecified = 0x000001
         case glasses = 0x000002
         case moustache = 0x000004
@@ -102,7 +102,7 @@ public struct FaceImageInfo: Equatable {
     }
     
     /// Hair color code based on Section 5.5.5 of ISO 19794-5.
-    public enum HairColor: Int {
+    enum HairColor: Int {
         case unspecified = 0x00
         case bald = 0x01
         case black = 0x02
@@ -121,7 +121,7 @@ public struct FaceImageInfo: Equatable {
     }
     
     /// Color space code based on Section 5.7.4 of ISO 19794-5.
-    public enum ImageColorSpace: Int {
+    enum ImageColorSpace: Int {
         case unspecified = 0x00
         case rgb24 = 0x01
         case yuv422 = 0x02
@@ -134,7 +134,7 @@ public struct FaceImageInfo: Equatable {
     }
     
     /// Image data type code based on Section 5.7.2 of ISO 19794-5.
-    public enum ImageDataType: Int {
+    enum ImageDataType: Int {
         case jpeg = 0x00
         case jpeg2000 = 0x01
         
@@ -144,7 +144,7 @@ public struct FaceImageInfo: Equatable {
     }
     
     /// Source type based on Section 5.7.6 of ISO 19794-5.
-    public enum SourceType: Int {
+    enum SourceType: Int {
         case unspecified = 0x00
         case staticPhotoUnknownSource = 0x01
         case staticPhotoDigitalCam = 0x02

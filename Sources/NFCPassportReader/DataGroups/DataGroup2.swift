@@ -11,7 +11,7 @@ import UIKit
 #endif
 
 @available(iOS 13, macOS 10.15, *)
-public class DataGroup2 : DataGroup {
+class DataGroup2 : DataGroup {
     private static let maxImageDataLength = 10 * 1024 * 1024
     private static let maxImageDimension = 20_000
     private static let maxFeaturePoints = 10_000
@@ -38,6 +38,7 @@ public class DataGroup2 : DataGroup {
     public private(set) var deviceType : Int = 0
     public private(set) var quality : Int = 0
     public private(set) var imageData : [UInt8] = []
+    public private(set) var imageDataItems : [[UInt8]] = []
 
     public override var datagroupType: DataGroupId { .DG2 }
 
@@ -70,22 +71,43 @@ func getImage() -> UIImage? {
         }
         nrImages = Int(firstImageCountByte)
         
-        // Next tag is 0x7F60
-        tag = try getNextTag()
+        guard nrImages > 0 else {
+            throw NFCPassportReaderError.InvalidASN1Structure
+        }
+
+        var parsedTemplateCount = 0
+        while hasUnreadBody {
+            try parseBiometricInformationTemplate()
+            parsedTemplateCount += 1
+        }
+
+        guard parsedTemplateCount == nrImages else {
+            throw NFCPassportReaderError.InvalidASN1Structure
+        }
+    }
+
+    override func removeSensitiveDataForPrivacy() {
+        imageData.removeAll(keepingCapacity: false)
+        imageDataItems.removeAll(keepingCapacity: false)
+        super.removeSensitiveDataForPrivacy()
+    }
+
+    private func parseBiometricInformationTemplate() throws {
+        var tag = try getNextTag()
         try verifyTag(tag, equals: 0x7F60)
         _ = try getNextLength()
-        
+
         // Next tag is 0xA1 (Biometric Header Template) - don't care about this
         tag = try getNextTag()
         try verifyTag(tag, equals: 0xA1)
         _ = try getNextValue()
-        
+
         // Now we get to the good stuff - next tag is either 5F2E or 7F2E
         tag = try getNextTag()
         try verifyTag(tag, oneOf: [0x5F2E, 0x7F2E])
         let value = try getNextValue()
-        
-        try parseISO19794_5( data:value )
+
+        try parseISO19794_5(data: value)
     }
     
     func parseISO19794_5( data : [UInt8] ) throws {
@@ -103,44 +125,114 @@ func getImage() -> UIImage? {
         }
         
         var offset = 4
-        versionNumber = try readInteger(from: data, offset: &offset, byteCount: 4)
-        lengthOfRecord = try readInteger(from: data, offset: &offset, byteCount: 4)
-        numberOfFacialImages = try readInteger(from: data, offset: &offset, byteCount: 2)
+        let parsedVersionNumber = try readInteger(from: data, offset: &offset, byteCount: 4)
+        let parsedLengthOfRecord = try readInteger(from: data, offset: &offset, byteCount: 4)
+        let parsedNumberOfFacialImages = try readInteger(from: data, offset: &offset, byteCount: 2)
 
-        facialRecordDataLength = try readInteger(from: data, offset: &offset, byteCount: 4)
-        nrFeaturePoints = try readInteger(from: data, offset: &offset, byteCount: 2)
-        gender = try readInteger(from: data, offset: &offset, byteCount: 1)
-        eyeColor = try readInteger(from: data, offset: &offset, byteCount: 1)
-        hairColor = try readInteger(from: data, offset: &offset, byteCount: 1)
-        featureMask = try readInteger(from: data, offset: &offset, byteCount: 3)
-        expression = try readInteger(from: data, offset: &offset, byteCount: 2)
-        poseAngle = try readInteger(from: data, offset: &offset, byteCount: 3)
-        poseAngleUncertainty = try readInteger(from: data, offset: &offset, byteCount: 3)
+        if parsedNumberOfFacialImages > 1,
+           parsedNumberOfFacialImages <= 32,
+           try parseMultipleFacialRecordsIfPossible(
+            data: data,
+            offset: offset,
+            versionNumber: parsedVersionNumber,
+            lengthOfRecord: parsedLengthOfRecord,
+            numberOfFacialImages: parsedNumberOfFacialImages
+           ) {
+            return
+        }
+
+        let record = try parseFacialRecord(
+            data: data,
+            offset: &offset,
+            recordEnd: data.count,
+            versionNumber: parsedVersionNumber,
+            lengthOfRecord: parsedLengthOfRecord,
+            numberOfFacialImages: parsedNumberOfFacialImages
+        )
+        append(record)
+    }
+
+    private func parseMultipleFacialRecordsIfPossible(
+        data: [UInt8],
+        offset startingOffset: Int,
+        versionNumber: Int,
+        lengthOfRecord: Int,
+        numberOfFacialImages: Int
+    ) throws -> Bool {
+        var parsedRecords: [ParsedFacialRecord] = []
+        parsedRecords.reserveCapacity(numberOfFacialImages)
+        var offset = startingOffset
+
+        for _ in 0..<numberOfFacialImages {
+            let recordStart = offset
+            var lengthOffset = offset
+            let facialRecordDataLength = try readInteger(from: data, offset: &lengthOffset, byteCount: 4)
+            guard facialRecordDataLength >= 32,
+                  recordStart + facialRecordDataLength <= data.count else {
+                return false
+            }
+
+            let record = try parseFacialRecord(
+                data: data,
+                offset: &offset,
+                recordEnd: recordStart + facialRecordDataLength,
+                versionNumber: versionNumber,
+                lengthOfRecord: lengthOfRecord,
+                numberOfFacialImages: numberOfFacialImages
+            )
+            parsedRecords.append(record)
+        }
+
+        guard offset == data.count else {
+            return false
+        }
+
+        parsedRecords.forEach { append($0) }
+        return true
+    }
+
+    private func parseFacialRecord(
+        data: [UInt8],
+        offset: inout Int,
+        recordEnd: Int,
+        versionNumber: Int,
+        lengthOfRecord: Int,
+        numberOfFacialImages: Int
+    ) throws -> ParsedFacialRecord {
+        let parsedFacialRecordDataLength = try readInteger(from: data, offset: &offset, byteCount: 4)
+        let parsedFeaturePoints = try readInteger(from: data, offset: &offset, byteCount: 2)
+        let parsedGender = try readInteger(from: data, offset: &offset, byteCount: 1)
+        let parsedEyeColor = try readInteger(from: data, offset: &offset, byteCount: 1)
+        let parsedHairColor = try readInteger(from: data, offset: &offset, byteCount: 1)
+        let parsedFeatureMask = try readInteger(from: data, offset: &offset, byteCount: 3)
+        let parsedExpression = try readInteger(from: data, offset: &offset, byteCount: 2)
+        let parsedPoseAngle = try readInteger(from: data, offset: &offset, byteCount: 3)
+        let parsedPoseAngleUncertainty = try readInteger(from: data, offset: &offset, byteCount: 3)
         
         // Features (not handled). There shouldn't be any but if for some reason there were,
         // then we are going to skip over them
         // The Feature block is 8 bytes
-        guard nrFeaturePoints <= Self.maxFeaturePoints,
-              nrFeaturePoints <= (data.count - offset) / 8 else {
+        guard parsedFeaturePoints <= Self.maxFeaturePoints,
+              parsedFeaturePoints <= (recordEnd - offset) / 8 else {
             throw NFCPassportReaderError.InvalidASN1Structure
         }
-        offset += nrFeaturePoints * 8
+        offset += parsedFeaturePoints * 8
 
-        guard data.count >= offset + 12 else {
+        guard recordEnd >= offset + 12 else {
             throw NFCPassportReaderError.InvalidASN1Structure
         }
         
-        faceImageType = try readInteger(from: data, offset: &offset, byteCount: 1)
-        imageDataType = try readInteger(from: data, offset: &offset, byteCount: 1)
-        imageWidth = try readInteger(from: data, offset: &offset, byteCount: 2)
-        imageHeight = try readInteger(from: data, offset: &offset, byteCount: 2)
-        imageColorSpace = try readInteger(from: data, offset: &offset, byteCount: 1)
-        sourceType = try readInteger(from: data, offset: &offset, byteCount: 1)
-        deviceType = try readInteger(from: data, offset: &offset, byteCount: 2)
-        quality = try readInteger(from: data, offset: &offset, byteCount: 2)
+        let parsedFaceImageType = try readInteger(from: data, offset: &offset, byteCount: 1)
+        let parsedImageDataType = try readInteger(from: data, offset: &offset, byteCount: 1)
+        let parsedImageWidth = try readInteger(from: data, offset: &offset, byteCount: 2)
+        let parsedImageHeight = try readInteger(from: data, offset: &offset, byteCount: 2)
+        let parsedImageColorSpace = try readInteger(from: data, offset: &offset, byteCount: 1)
+        let parsedSourceType = try readInteger(from: data, offset: &offset, byteCount: 1)
+        let parsedDeviceType = try readInteger(from: data, offset: &offset, byteCount: 2)
+        let parsedQuality = try readInteger(from: data, offset: &offset, byteCount: 2)
 
-        guard imageWidth <= Self.maxImageDimension,
-              imageHeight <= Self.maxImageDimension else {
+        guard parsedImageWidth <= Self.maxImageDimension,
+              parsedImageHeight <= Self.maxImageDimension else {
             throw NFCPassportReaderError.UnknownImageFormat
         }
         
@@ -148,15 +240,15 @@ func getImage() -> UIImage? {
         // Make sure that the image data at least has a valid header
         // Either JPG or JPEG2000
         
-        let jpegHeader : [UInt8] = [0xff,0xd8,0xff,0xe0,0x00,0x10,0x4a,0x46,0x49,0x46]
+        let jpegHeader : [UInt8] = [0xff,0xd8,0xff]
         let jpeg2000BitmapHeader : [UInt8] = [0x00,0x00,0x00,0x0c,0x6a,0x50,0x20,0x20,0x0d,0x0a]
         let jpeg2000CodestreamBitmapHeader : [UInt8] = [0xff,0x4f,0xff,0x51]
         
-        guard data.count > offset else {
+        guard recordEnd > offset else {
             throw NFCPassportReaderError.UnknownImageFormat
         }
 
-        let imageBytes = data[offset...]
+        let imageBytes = data[offset..<recordEnd]
         guard imageBytes.count <= Self.maxImageDataLength else {
             throw NFCPassportReaderError.UnknownImageFormat
         }
@@ -167,7 +259,57 @@ func getImage() -> UIImage? {
             throw NFCPassportReaderError.UnknownImageFormat
         }
         
-        imageData = Array(imageBytes)
+        offset = recordEnd
+        return ParsedFacialRecord(
+            versionNumber: versionNumber,
+            lengthOfRecord: lengthOfRecord,
+            numberOfFacialImages: numberOfFacialImages,
+            facialRecordDataLength: parsedFacialRecordDataLength,
+            nrFeaturePoints: parsedFeaturePoints,
+            gender: parsedGender,
+            eyeColor: parsedEyeColor,
+            hairColor: parsedHairColor,
+            featureMask: parsedFeatureMask,
+            expression: parsedExpression,
+            poseAngle: parsedPoseAngle,
+            poseAngleUncertainty: parsedPoseAngleUncertainty,
+            faceImageType: parsedFaceImageType,
+            imageDataType: parsedImageDataType,
+            imageWidth: parsedImageWidth,
+            imageHeight: parsedImageHeight,
+            imageColorSpace: parsedImageColorSpace,
+            sourceType: parsedSourceType,
+            deviceType: parsedDeviceType,
+            quality: parsedQuality,
+            imageData: Array(imageBytes)
+        )
+    }
+
+    private func append(_ record: ParsedFacialRecord) {
+        if imageDataItems.isEmpty {
+            versionNumber = record.versionNumber
+            lengthOfRecord = record.lengthOfRecord
+            numberOfFacialImages = record.numberOfFacialImages
+            facialRecordDataLength = record.facialRecordDataLength
+            nrFeaturePoints = record.nrFeaturePoints
+            gender = record.gender
+            eyeColor = record.eyeColor
+            hairColor = record.hairColor
+            featureMask = record.featureMask
+            expression = record.expression
+            poseAngle = record.poseAngle
+            poseAngleUncertainty = record.poseAngleUncertainty
+            faceImageType = record.faceImageType
+            imageDataType = record.imageDataType
+            imageWidth = record.imageWidth
+            imageHeight = record.imageHeight
+            imageColorSpace = record.imageColorSpace
+            sourceType = record.sourceType
+            deviceType = record.deviceType
+            quality = record.quality
+            imageData = record.imageData
+        }
+        imageDataItems.append(record.imageData)
     }
 
     private func readInteger(from data: [UInt8], offset: inout Int, byteCount: Int) throws -> Int {
@@ -182,5 +324,29 @@ func getImage() -> UIImage? {
         }
         offset += byteCount
         return value
+    }
+
+    private struct ParsedFacialRecord {
+        let versionNumber: Int
+        let lengthOfRecord: Int
+        let numberOfFacialImages: Int
+        let facialRecordDataLength: Int
+        let nrFeaturePoints: Int
+        let gender: Int
+        let eyeColor: Int
+        let hairColor: Int
+        let featureMask: Int
+        let expression: Int
+        let poseAngle: Int
+        let poseAngleUncertainty: Int
+        let faceImageType: Int
+        let imageDataType: Int
+        let imageWidth: Int
+        let imageHeight: Int
+        let imageColorSpace: Int
+        let sourceType: Int
+        let deviceType: Int
+        let quality: Int
+        let imageData: [UInt8]
     }
 }

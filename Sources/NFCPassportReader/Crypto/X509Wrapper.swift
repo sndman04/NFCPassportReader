@@ -8,13 +8,13 @@
 import OpenSSL
 
 @available(iOS 13, macOS 10.15, *)
-public enum CertificateType {
+enum CertificateType {
     case documentSigningCertificate
     case issuerSigningCertificate
 }
 
 @available(iOS 13, macOS 10.15, *)
-public enum CertificateItem : String {
+enum CertificateItem : String {
     case fingerprint = "Certificate fingerprint"
     case issuerName = "Issuer"
     case subjectName = "Subject"
@@ -26,8 +26,8 @@ public enum CertificateItem : String {
 }
 
 @available(iOS 13, macOS 10.15, *)
-public class X509Wrapper {
-    public let cert : OpaquePointer
+class X509Wrapper {
+    let cert : OpaquePointer
     
     public init?( with cert: OpaquePointer? ) {
         guard let cert = cert,
@@ -40,7 +40,7 @@ public class X509Wrapper {
         X509_free(cert)
     }
     
-    public func getItemsAsDict() -> [CertificateItem:String] {
+    func getItemsAsDict() -> [CertificateItem:String] {
         var item = [CertificateItem:String]()
         if let fingerprint = self.getFingerprint() {
             item[.fingerprint] = fingerprint
@@ -70,11 +70,11 @@ public class X509Wrapper {
         
         return item
     }
-    public func certToPEM() -> String {
+    func certToPEM() -> String {
         return OpenSSLUtils.X509ToPEM( x509:cert )
     }
     
-    public func getFingerprint( ) -> String? {
+    func getFingerprint( ) -> String? {
         let fdig = EVP_sha1();
         
         var n : UInt32 = 0
@@ -86,7 +86,7 @@ public class X509Wrapper {
         return arr
     }
     
-    public func getNotBeforeDate() -> String? {
+    func getNotBeforeDate() -> String? {
         var notBefore : String?
         if let val = X509_get0_notBefore(cert) {
             notBefore = ASN1TimeToString( val )
@@ -95,7 +95,7 @@ public class X509Wrapper {
         
     }
     
-    public func getNotAfterDate() -> String? {
+    func getNotAfterDate() -> String? {
         var notAfter : String?
         if let val = X509_get0_notAfter(cert) {
             notAfter = ASN1TimeToString( val )
@@ -103,18 +103,18 @@ public class X509Wrapper {
         return notAfter
     }
     
-    public func getSerialNumber() -> String? {
+    func getSerialNumber() -> String? {
         let serialNr = String( ASN1_INTEGER_get(X509_get_serialNumber(cert)), radix:16, uppercase: true )
         return serialNr
     }
     
-    public func getSignatureAlgorithm() -> String? {
+    func getSignatureAlgorithm() -> String? {
         let algor = X509_get0_tbs_sigalg(cert);
         let algo = getAlgorithm( algor?.pointee.algorithm )
         return algo
     }
     
-    public func getPublicKeyAlgorithm() -> String? {
+    func getPublicKeyAlgorithm() -> String? {
         guard let pubKey = X509_get_X509_PUBKEY(cert) else { return nil }
         var ptr : OpaquePointer?
         X509_PUBKEY_get0_param(&ptr, nil, nil, nil, pubKey)
@@ -122,11 +122,11 @@ public class X509Wrapper {
         return algo
     }
     
-    public func getIssuerName() -> String? {
+    func getIssuerName() -> String? {
         return getName(for: X509_get_issuer_name(cert))
     }
     
-    public func getSubjectName() -> String? {
+    func getSubjectName() -> String? {
         return getName(for: X509_get_subject_name(cert))
     }
     

@@ -1,4 +1,6 @@
 import XCTest
+import OpenSSL
+import OpenSSLCompat
 
 @testable import NFCPassportReader
 
@@ -143,8 +145,8 @@ final class PassportReaderLoggingTests: XCTestCase {
         XCTAssertEqual(message, "Sorry, there was a problem reading the passport. Please try again.")
     }
 
-    func testASN1DebugDescriptionRedactsParsedValues() {
-        let item = ASN1Item(line: "0:d=1  hl=2 l=  16 prim: OCTET STRING      :00112233445566778899AABBCCDDEEFF")
+    func testASN1DebugDescriptionRedactsParsedValues() throws {
+        let item = try SimpleASN1Node.parse([0x04, 0x10] + hexRepToBin("00112233445566778899AABBCCDDEEFF"))
         let description = item.debugDescription
 
         XCTAssertTrue(description.contains("<redacted>"))
@@ -173,6 +175,22 @@ final class PassportReaderLoggingTests: XCTestCase {
         ]
 
         let descriptions = errors.map(\.localizedDescription).joined(separator: "\n")
+        for fragment in ["Wrong length", "SW2", "0x6C", "expected", "received", "Kseed", "APDU", "RAPDU", "00112233445566778899AABBCCDDEEFF"] {
+            XCTAssertFalse(descriptions.localizedCaseInsensitiveContains(fragment))
+        }
+        XCTAssertNil(descriptions.range(of: #"[0-9A-Fa-f]{16,}"#, options: .regularExpression))
+    }
+
+    func testReaderErrorDefaultStringDescriptionsArePrivacySafe() {
+        let errors: [NFCPassportReaderError] = [
+            .ResponseError("Wrong length Le: SW2 indicates exact length", 0x6C, 0x20),
+            .PACEError("Step3", "Expected [01, 02], received [03, 04]"),
+            .InvalidDataPassed("Kseed 00112233445566778899AABBCCDDEEFF"),
+            .NotYetSupported("APDU A0000002471001"),
+            .Unknown(NFCPassportReaderError.ResponseError("RAPDU 9000", 0x90, 0x00))
+        ]
+
+        let descriptions = errors.map { String(describing: $0) }.joined(separator: "\n")
         for fragment in ["Wrong length", "SW2", "0x6C", "expected", "received", "Kseed", "APDU", "RAPDU", "00112233445566778899AABBCCDDEEFF"] {
             XCTAssertFalse(descriptions.localizedCaseInsensitiveContains(fragment))
         }
@@ -240,7 +258,23 @@ final class PassportReaderLoggingTests: XCTestCase {
         }
     }
 
-    func testPACEInfoSelectionPrefersImplementedGMOverEarlierUnsupportedMapping() {
+    func testPACEProtocolOIDStringsMatchStandardNames() {
+        let dhIM = PACEInfo(
+            oid: SecurityInfo.ID_PACE_DH_IM_AES_CBC_CMAC_256,
+            version: 2,
+            parameterId: PACEInfo.PARAM_ID_GFP_2048_256
+        )
+        let ecdhIM3DES = PACEInfo(
+            oid: SecurityInfo.ID_PACE_ECDH_IM_3DES_CBC_CBC,
+            version: 2,
+            parameterId: PACEInfo.PARAM_ID_ECP_NIST_P256_R1
+        )
+
+        XCTAssertEqual(dhIM.getProtocolOIDString(), "id-PACE-DH-IM-AES-CBC-CMAC-256")
+        XCTAssertEqual(ecdhIM3DES.getProtocolOIDString(), "id-PACE-ECDH-IM-3DES-CBC-CBC")
+    }
+
+    func testPACEInfoSelectionPreservesImplementedIMBeforeGM() {
         let im = PACEInfo(
             oid: SecurityInfo.ID_PACE_ECDH_IM_AES_CBC_CMAC_128,
             version: 2,
@@ -252,33 +286,233 @@ final class PassportReaderLoggingTests: XCTestCase {
             parameterId: PACEInfo.PARAM_ID_ECP_NIST_P256_R1
         )
 
-        XCTAssertFalse(im.isImplementedForReading)
+        XCTAssertTrue(im.isImplementedForReading)
         XCTAssertTrue(gm.isImplementedForReading)
 
         let infos = [im, gm]
         let ordered = infos.filter { $0.isImplementedForReading } + infos.filter { !$0.isImplementedForReading }
 
-        XCTAssertTrue(ordered.first === gm)
+        XCTAssertTrue(ordered.first === im)
+    }
+
+    func testPACEInfoSelectionTreatsECDHCAMAsReadableMapping() {
+        let cam = PACEInfo(
+            oid: SecurityInfo.ID_PACE_ECDH_CAM_AES_CBC_CMAC_128,
+            version: 2,
+            parameterId: PACEInfo.PARAM_ID_ECP_NIST_P256_R1
+        )
+
+        XCTAssertTrue(cam.isImplementedForReading)
+    }
+
+    @available(iOS 15, *)
+    func testPACEIntegratedMappingFieldMatchesICAOAppendixHECDHVector() throws {
+        let field = try PACEHandler.integratedMappingField(
+            passportNonce: hexRepToBin("2923BE84E16CD6AE529049F1F1BBE9EB"),
+            terminalNonce: hexRepToBin("5DD4CBFC96F5453B130D890A1CDBAE32"),
+            cipherAlg: "AES",
+            keyLength: 128,
+            primeBitLength: 256
+        )
+
+        XCTAssertEqual(
+            binToHexRep(field),
+            "E4447E2DFB3586BAC05DDB00156B57FBB2179A3949294C97254189800C517BAA8DA0FF397ED8C445D3E421E4FEB57322"
+        )
+    }
+
+    @available(iOS 15, *)
+    func testPACEIntegratedMappingRejectsInvalidNonceLengths() {
+        XCTAssertThrowsError(try PACEHandler.integratedMappingField(
+            passportNonce: [0x01, 0x02],
+            terminalNonce: hexRepToBin("5DD4CBFC96F5453B130D890A1CDBAE32"),
+            cipherAlg: "AES",
+            keyLength: 128,
+            primeBitLength: 256
+        ))
+
+        XCTAssertThrowsError(try PACEHandler.integratedMappingField(
+            passportNonce: hexRepToBin("2923BE84E16CD6AE529049F1F1BBE9EB"),
+            terminalNonce: [0x01, 0x02],
+            cipherAlg: "AES",
+            keyLength: 128,
+            primeBitLength: 256
+        ))
+    }
+
+    @available(iOS 15, *)
+    func testPACEIntegratedMappingCreatesExpectedECDHGeneratorFromICAOAppendixHVector() throws {
+        let paceInfo = PACEInfo(
+            oid: SecurityInfo.ID_PACE_ECDH_IM_AES_CBC_CMAC_128,
+            version: 2,
+            parameterId: PACEInfo.PARAM_ID_ECP_BRAINPOOL_P256_R1
+        )
+        let domainKey = try paceInfo.createMappingKey()
+        defer { EVP_PKEY_free(domainKey) }
+
+        var field = hexRepToBin(
+            "E4447E2DFB3586BAC05DDB00156B57FB" +
+            "B2179A3949294C97254189800C517BAA" +
+            "8DA0FF397ED8C445D3E421E4FEB57322"
+        )
+        let mappedParameters = try XCTUnwrap(NFCPRCreateECDHIntegratedMappedParameters(domainKey, &field, field.count))
+        defer { EVP_PKEY_free(mappedParameters) }
+
+        var expectedGenerator = hexRepToBin(
+            "04" +
+            "8E82D31559ED0FDE92A4D0498ADD3C23BABA94FB77691E31E90AEA77FB17D427" +
+            "4C1AE14BD0C3DBAC0C871B7F3608169364437CA30AC243A089D3F266C1E60FAD"
+        )
+        XCTAssertEqual(NFCPRVerifyECGenerator(mappedParameters, &expectedGenerator, expectedGenerator.count), 1)
+    }
+
+    @available(iOS 15, *)
+    func testPACEIntegratedMappingCreatesExpectedDHGeneratorFromICAOAppendixHVector() throws {
+        let paceInfo = PACEInfo(
+            oid: SecurityInfo.ID_PACE_DH_IM_AES_CBC_CMAC_128,
+            version: 2,
+            parameterId: PACEInfo.PARAM_ID_GFP_1024_160
+        )
+        let domainKey = try paceInfo.createMappingKey()
+        defer { EVP_PKEY_free(domainKey) }
+
+        var field = hexRepToBin(
+            "EAB98D13E09052952AA729907C3C9461" +
+            "84DEA0FE74AD2B3AF506F0A83018459C" +
+            "38099CD1F7FF4EA0A078DB1FAC136550" +
+            "5E3DC85500EF95E20B4EEF2E88489233" +
+            "BEE0546B472F994B618D168702406791" +
+            "DEEF3CB4810932EC278F3533FDB860EB" +
+            "4835C36FA4F1BF3FA0B828A718C96BDE" +
+            "88FBA38A3E6C35AAA10959251EB5FC71" +
+            "0FC187258995944C0F926E249373F485"
+        )
+        let mappedParameters = try XCTUnwrap(NFCPRCreateDHIntegratedMappedParameters(domainKey, &field, field.count))
+        defer { EVP_PKEY_free(mappedParameters) }
+
+        var expectedGenerator = hexRepToBin(
+            "1D7D767F11E333BCD6DBAEF40E799E7A" +
+            "926B96973550656FF3C830726D118D61" +
+            "C276CDCC61D475CF03A98E0C0E79CAEB" +
+            "A5BE25578BD4551D0B10903236F0B0F9" +
+            "76852FA78EEA14EA0ACA87D1E91F688F" +
+            "E0DFF897BBE35A472621D343564B262F" +
+            "34223AE8FC59B664BFEDFA2BFE7516CA" +
+            "5510A6BBB633D517EC25D4E0BBAA16C2"
+        )
+        XCTAssertEqual(NFCPRVerifyDHGenerator(mappedParameters, &expectedGenerator, expectedGenerator.count), 1)
+    }
+
+    func testPACECAMVerifierChecksDecryptedChipAuthenticationDataAgainstPublicKey() throws {
+        let staticKey = try OpenSSLUtils.generateECKeyPair(curveNID: PACEInfo.getParameterSpec(stdDomainParam: PACEInfo.PARAM_ID_ECP_NIST_P256_R1))
+        defer { EVP_PKEY_free(staticKey) }
+        let wrongStaticKey = try OpenSSLUtils.generateECKeyPair(curveNID: PACEInfo.getParameterSpec(stdDomainParam: PACEInfo.PARAM_ID_ECP_NIST_P256_R1))
+        defer { EVP_PKEY_free(wrongStaticKey) }
+
+        var chipAuthenticationData = [UInt8](repeating: 0x00, count: 32)
+        chipAuthenticationData[31] = 0x02
+
+        var mappingPublicKeyLength = 0
+        XCTAssertEqual(
+            NFCPRCalculateECDHCAMPublicKey(staticKey, &chipAuthenticationData, chipAuthenticationData.count, nil, &mappingPublicKeyLength),
+            1
+        )
+        var mappingPublicKey = [UInt8](repeating: 0x00, count: mappingPublicKeyLength)
+        XCTAssertEqual(
+            NFCPRCalculateECDHCAMPublicKey(staticKey, &chipAuthenticationData, chipAuthenticationData.count, &mappingPublicKey, &mappingPublicKeyLength),
+            1
+        )
+
+        let encryptionKey = [UInt8](0x01...0x10)
+        let iv = AESEncrypt(key: encryptionKey, message: [UInt8](repeating: 0xFF, count: 16), iv: [UInt8](repeating: 0x00, count: 16))
+        let encryptedCAMData = AESEncrypt(key: encryptionKey, message: pad(chipAuthenticationData, blockSize: 16), iv: iv)
+
+        let result = try PACEChipAuthenticationMappingResult(
+            mappingPublicKey: mappingPublicKey,
+            encryptedChipAuthenticationData: encryptedCAMData,
+            encryptionKey: encryptionKey
+        )
+
+        XCTAssertTrue(result.verifies(using: [
+            ChipAuthenticationPublicKeyInfo(oid: SecurityInfo.ID_PK_ECDH_OID, pubKey: staticKey, ownsPublicKey: false)
+        ]))
+        XCTAssertFalse(result.verifies(using: [
+            ChipAuthenticationPublicKeyInfo(oid: SecurityInfo.ID_PK_ECDH_OID, pubKey: wrongStaticKey, ownsPublicKey: false)
+        ]))
+    }
+
+    func testSupportedPACEIdentifiersHaveCompleteMetadata() throws {
+        XCTAssertEqual(PACEInfo.allowedIdentifiers.count, 19)
+
+        for oid in PACEInfo.allowedIdentifiers {
+            let info = PACEInfo(oid: oid, version: 2, parameterId: PACEInfo.PARAM_ID_ECP_NIST_P256_R1)
+            XCTAssertNoThrow(try info.getMappingType(), oid)
+            XCTAssertNoThrow(try info.getKeyAgreementAlgorithm(), oid)
+            XCTAssertNoThrow(try info.getCipherAlgorithm(), oid)
+            XCTAssertNoThrow(try info.getDigestAlgorithm(), oid)
+            XCTAssertNoThrow(try info.getKeyLength(), oid)
+            XCTAssertNotEqual(info.getProtocolOIDString(), oid)
+        }
+    }
+
+    func testSupportedChipAuthenticationIdentifiersHaveCompleteMetadata() throws {
+        let supportedOIDs = [
+            SecurityInfo.ID_CA_DH_3DES_CBC_CBC_OID,
+            SecurityInfo.ID_CA_ECDH_3DES_CBC_CBC_OID,
+            SecurityInfo.ID_CA_DH_AES_CBC_CMAC_128_OID,
+            SecurityInfo.ID_CA_DH_AES_CBC_CMAC_192_OID,
+            SecurityInfo.ID_CA_DH_AES_CBC_CMAC_256_OID,
+            SecurityInfo.ID_CA_ECDH_AES_CBC_CMAC_128_OID,
+            SecurityInfo.ID_CA_ECDH_AES_CBC_CMAC_192_OID,
+            SecurityInfo.ID_CA_ECDH_AES_CBC_CMAC_256_OID
+        ]
+
+        for oid in supportedOIDs {
+            XCTAssertTrue(ChipAuthenticationInfo.checkRequiredIdentifier(oid), oid)
+            XCTAssertNoThrow(try ChipAuthenticationInfo.toKeyAgreementAlgorithm(oid: oid), oid)
+            XCTAssertNoThrow(try ChipAuthenticationInfo.toCipherAlgorithm(oid: oid), oid)
+            XCTAssertNoThrow(try ChipAuthenticationInfo.toKeyLength(oid: oid), oid)
+            XCTAssertNotEqual(ChipAuthenticationInfo(oid: oid, version: 1).getProtocolOIDString(), oid)
+        }
+    }
+
+    func testSecurityInfoParsesMultiByteOptionalIdentifiers() throws {
+        let chipAuthentication = try securityInfo(
+            oid: SecurityInfo.ID_CA_ECDH_AES_CBC_CMAC_256_OID,
+            requiredData: diagnosticASN1Integer([0x01]),
+            optionalData: diagnosticASN1Integer([0x01, 0x00])
+        )
+        let chipInfo = try XCTUnwrap(SecurityInfosParser.parse(diagnosticASN1Set(chipAuthentication)).first as? ChipAuthenticationInfo)
+        XCTAssertEqual(chipInfo.getKeyId(), 256)
+
+        let pace = try securityInfo(
+            oid: SecurityInfo.ID_PACE_ECDH_GM_AES_CBC_CMAC_128,
+            requiredData: diagnosticASN1Integer([0x02]),
+            optionalData: diagnosticASN1Integer([0x01, 0x00])
+        )
+        let paceInfo = try XCTUnwrap(SecurityInfosParser.parse(diagnosticASN1Set(pace)).first as? PACEInfo)
+        XCTAssertEqual(paceInfo.getParameterId(), 256)
     }
 
     func testUnknownSecurityInfoIsPreservedAsRedactedObject() throws {
-        let sequenceItem = ASN1Item(line: "0:d=1  hl=2 l=  10 cons: SEQUENCE")
-        sequenceItem.addChild(ASN1Item(line: "0:d=2  hl=2 l=   4 prim: OBJECT            :1.2.3.4"))
-        sequenceItem.addChild(ASN1Item(line: "0:d=2  hl=2 l=   1 prim: INTEGER           :02"))
-
-        let info = try XCTUnwrap(SecurityInfo.getInstance(object: sequenceItem, body: []))
+        let sequenceItem = try securityInfo(
+            oid: "1.2.3.4",
+            requiredData: diagnosticASN1Integer([0x02])
+        )
+        let info = try XCTUnwrap(SecurityInfosParser.parse(diagnosticASN1Set(sequenceItem)).first)
 
         XCTAssertFalse(info.isRecognized)
         XCTAssertTrue(info is UnknownSecurityInfo)
         XCTAssertEqual(info.getProtocolOIDString(), "Unknown security info")
     }
 
-    func testSecurityInfoRejectsInvalidPublicKeyOffsetsWithoutTrapping() {
-        let sequenceItem = ASN1Item(line: "0:d=1  hl=2 l=  10 cons: SEQUENCE")
-        sequenceItem.addChild(ASN1Item(line: "0:d=2  hl=2 l=   4 prim: OBJECT            :0.4.0.127.0.7.2.2.1.2"))
-        sequenceItem.addChild(ASN1Item(line: "0:d=2  hl=-1 l=   1 prim: SEQUENCE"))
+    func testSecurityInfoRejectsInvalidPublicKeyWithoutTrapping() throws {
+        let malformedPublicKeyInfo = try securityInfo(
+            oid: SecurityInfo.ID_PK_ECDH_OID,
+            requiredData: diagnosticASN1Integer([0x01])
+        )
 
-        XCTAssertNil(SecurityInfo.getInstance(object: sequenceItem, body: [0x30, 0x00]))
+        XCTAssertTrue(try SecurityInfosParser.parse(diagnosticASN1Set(malformedPublicKeyInfo)).isEmpty)
     }
 
     func testCustomScanProfileDeduplicatesWithoutReordering() {
@@ -355,8 +589,70 @@ final class PassportReaderLoggingTests: XCTestCase {
         XCTAssertEqual(result.chipAuthenticationStatus, .notChecked)
         XCTAssertEqual(result.overallStatus, .notChecked)
         XCTAssertEqual(result.sodSignatureDetail.reason, .notRequested)
-        XCTAssertEqual(result.activeAuthenticationDetail.reason, .notSupported)
-        XCTAssertEqual(result.chipAuthenticationDetail.reason, .notSupported)
+        XCTAssertEqual(result.activeAuthenticationDetail.reason, .notRequested)
+        XCTAssertEqual(result.chipAuthenticationDetail.reason, .notRequested)
+    }
+
+    func testActiveAuthenticationStatusDistinguishesNotAdvertisedFromNotRequested() throws {
+        let model = NFCPassportModel()
+        let comWithoutDG15 = hexRepToBin("60185F0104303130375F36063034303030305C066175676B6C6E")
+        guard let com = try DataGroupParser().parseDG(data: comWithoutDG15) as? COM else {
+            XCTFail("Expected COM")
+            return
+        }
+
+        model.addDataGroup(.COM, dataGroup: com)
+
+        XCTAssertEqual(model.verificationResult.activeAuthenticationStatus, .notChecked)
+        XCTAssertEqual(model.verificationResult.activeAuthenticationDetail.reason, .notSupported)
+    }
+
+    func testActiveAuthenticationStatusIsSkippedWhenDG15WasAdvertisedButNotRead() {
+        let model = NFCPassportModel()
+
+        model.recordDataGroupReadStatus(.advertised, for: .DG15)
+        model.recordDataGroupReadStatus(.skippedByProfile, for: .DG15)
+
+        XCTAssertEqual(model.verificationResult.activeAuthenticationStatus, .notChecked)
+        XCTAssertEqual(model.verificationResult.activeAuthenticationDetail.reason, .skipped)
+    }
+
+    func testChipAuthenticationStatusIsSkippedWhenDG14WasAdvertisedButNotRead() {
+        let model = NFCPassportModel()
+
+        model.recordDataGroupReadStatus(.advertised, for: .DG14)
+        model.recordDataGroupReadStatus(.skippedByProfile, for: .DG14)
+
+        XCTAssertEqual(model.verificationResult.chipAuthenticationStatus, .notChecked)
+        XCTAssertEqual(model.verificationResult.chipAuthenticationDetail.reason, .skipped)
+    }
+
+    func testWhenSupportedPoliciesFailIfAdvertisedMechanismWasSkipped() {
+        let activeModel = NFCPassportModel()
+        activeModel.recordDataGroupReadStatus(.advertised, for: .DG15)
+        activeModel.recordDataGroupReadStatus(.skippedByProfile, for: .DG15)
+
+        XCTAssertFalse(PassportVerificationRequirement.activeAuthenticationWhenSupported.isSatisfied(by: activeModel))
+
+        let chipModel = NFCPassportModel()
+        chipModel.recordDataGroupReadStatus(.advertised, for: .DG14)
+        chipModel.recordDataGroupReadStatus(.skippedByProfile, for: .DG14)
+
+        XCTAssertFalse(PassportVerificationRequirement.chipAuthenticationWhenSupported.isSatisfied(by: chipModel))
+    }
+
+    func testWhenSupportedPoliciesPassWhenMechanismWasNotAdvertised() throws {
+        let model = NFCPassportModel()
+        let comWithoutDG14OrDG15 = hexRepToBin("60175F0104303130375F36063034303030305C056175676B6C")
+        guard let com = try DataGroupParser().parseDG(data: comWithoutDG14OrDG15) as? COM else {
+            XCTFail("Expected COM")
+            return
+        }
+
+        model.addDataGroup(.COM, dataGroup: com)
+
+        XCTAssertTrue(PassportVerificationRequirement.activeAuthenticationWhenSupported.isSatisfied(by: model))
+        XCTAssertTrue(PassportVerificationRequirement.chipAuthenticationWhenSupported.isSatisfied(by: model))
     }
 
     func testCountrySigningCertificateStatusIsNotCheckedWithoutMasterList() {
@@ -452,8 +748,23 @@ final class PassportReaderLoggingTests: XCTestCase {
         XCTAssertEqual(result.trustLevel, .inconclusive)
         XCTAssertEqual(result.certificateTrustMetadata.verificationAttempted, false)
         XCTAssertEqual(result.certificateTrustMetadata.masterListProvided, false)
+        XCTAssertEqual(result.certificateTrustMetadata.revocationCheck.status, .notChecked)
+        XCTAssertEqual(result.certificateTrustMetadata.revocationCheck.reason, .notRequested)
         XCTAssertEqual(result.verificationResult.overallStatus, .notChecked)
         XCTAssertFalse(Mirror(reflecting: result).children.contains { $0.label == "passportMRZ" })
+    }
+
+    func testCertificateTrustMetadataMakesRevocationNotCheckedExplicit() {
+        let model = NFCPassportModel()
+
+        model.verifyPassport(masterListURL: nil)
+
+        let metadata = PassportCertificateTrustMetadata(passport: model)
+        XCTAssertFalse(metadata.revocationCheckPerformed)
+        XCTAssertEqual(metadata.revocationCheck.status, .notChecked)
+        XCTAssertEqual(metadata.revocationCheck.reason, .notImplemented)
+        XCTAssertFalse(metadata.revocationCheck.privacySafeExplanation.localizedCaseInsensitiveContains("certificate dump"))
+        XCTAssertFalse(metadata.revocationCheck.privacySafeExplanation.localizedCaseInsensitiveContains("APDU"))
     }
 
     func testChipReadResultOmitsRawModelSurfaces() {
@@ -483,6 +794,57 @@ final class PassportReaderLoggingTests: XCTestCase {
         XCTAssertTrue(model.dataGroupHashes.isEmpty)
         XCTAssertTrue(model.activeAuthenticationChallenge.isEmpty)
         XCTAssertTrue(model.activeAuthenticationSignature.isEmpty)
+    }
+
+    func testModelSensitiveCleanupDoesNotKeepProjectedIdentityCaches() throws {
+        let mrzLine1 = "P<UTO" + diagnosticMRZPadded("DOE<<JANE", length: 39)
+        let mrzLine2 = "ABC123456" + "7" + "UTO" + "700101" + "1" + "F" + "300101" + "2" + String(repeating: "<", count: 14) + "0" + "8"
+        let dg1 = try DataGroupParser().parseDG(data: diagnosticDataGroup1Fixture(mrz: mrzLine1 + mrzLine2))
+        let model = NFCPassportModel()
+        model.addDataGroup(.DG1, dataGroup: dg1)
+
+        let projected = model.identityResult
+
+        XCTAssertEqual(projected.documentNumber, "ABC123456")
+        XCTAssertEqual(projected.lastName, "DOE")
+        XCTAssertEqual(projected.firstName, "JANE")
+        XCTAssertEqual(model.documentNumber, "ABC123456")
+
+        model.removeSensitiveDataForPrivacy()
+
+        XCTAssertNil(model.getDataGroup(.DG1))
+        XCTAssertEqual(model.documentNumber, "?")
+        XCTAssertEqual(model.lastName, "?")
+        XCTAssertEqual(model.firstName, "")
+        XCTAssertEqual(model.dateOfBirth, "?")
+        XCTAssertEqual(model.documentExpiryDate, "?")
+    }
+
+    @available(iOS 15, *)
+    func testReaderFailureCleanupScrubsPartiallyReadWorkingModel() throws {
+        let reader = PassportReader()
+        let workingModel = try XCTUnwrap(
+            Mirror(reflecting: reader).descendant("passport") as? NFCPassportModel
+        )
+        let dataGroup = try DataGroup([0x61, 0x00])
+        workingModel.addDataGroup(.DG1, dataGroup: dataGroup)
+        workingModel.verifyActiveAuthentication(challenge: [0x01, 0x02], signature: [0x03, 0x04])
+
+        XCTAssertNotNil(workingModel.getDataGroup(.DG1))
+        XCTAssertFalse(workingModel.activeAuthenticationChallenge.isEmpty)
+
+        reader.discardSensitiveScanStateAfterFailure()
+
+        XCTAssertNil(workingModel.getDataGroup(.DG1))
+        XCTAssertTrue(workingModel.activeAuthenticationChallenge.isEmpty)
+        XCTAssertTrue(workingModel.activeAuthenticationSignature.isEmpty)
+
+        let replacementModel = try XCTUnwrap(
+            Mirror(reflecting: reader).descendant("passport") as? NFCPassportModel
+        )
+        XCTAssertFalse(replacementModel === workingModel)
+        XCTAssertTrue(replacementModel.dataGroupsAvailable.isEmpty)
+        XCTAssertNil(replacementModel.getDataGroup(.DG1))
     }
 
     func testScanOptionsPresetsBindReviewedPolicyCombinations() {
@@ -551,12 +913,41 @@ final class PassportReaderLoggingTests: XCTestCase {
         XCTAssertFalse(unsafe.containsOnlyNonIdentifyingFields)
     }
 
+    func testInteroperabilityRecordRejectsSensitiveLabelsAndSeparatedHex() {
+        let sensitiveNotes = [
+            "Passport number L898902C3",
+            "DOB 740812, expiry 120415",
+            "APDU A0 00 00 02 47 10 01",
+            "KSenc 8F:DC:FE:75:9E:40:A4:DF",
+            "Certificate fingerprint 11-22-33-44-55-66-77-88",
+            "Face image was retained"
+        ]
+
+        for note in sensitiveNotes {
+            let record = PassportInteroperabilityRecord(
+                issuingRegionCode: "USA",
+                chipFeatureClass: "PACE+DG2",
+                scanOptions: .notaryStrict,
+                verificationResult: nil,
+                trustLevel: nil,
+                notes: note
+            )
+
+            XCTAssertFalse(record.containsOnlyNonIdentifyingFields, note)
+        }
+    }
+
     func testIdentityResultRequiresActualDG7ImagePayloadForSignaturePresence() throws {
         let model = NFCPassportModel()
         let dg7WithoutImages = try XCTUnwrap(try DataGroupParser().parseDG(data: [0x67, 0x03, 0x02, 0x01, 0x00]) as? DataGroup7)
         model.addDataGroup(.DG7, dataGroup: dg7WithoutImages)
 
         XCTAssertFalse(model.identityResult.hasSignatureImage)
+    }
+
+    func testIdentityResultReportsNoFaceImageWhenDG2WasNotRead() {
+        let modelWithoutDG2 = NFCPassportModel()
+        XCTAssertFalse(modelWithoutDG2.identityResult.hasFaceImage)
     }
 
     func testDiagnosticsSummaryContainsOnlySafeScanMetadata() {
@@ -648,4 +1039,49 @@ final class PassportReaderLoggingTests: XCTestCase {
 
         XCTAssertEqual(scannedResult, result)
     }
+}
+
+private func diagnosticTLV(tag: [UInt8], value: [UInt8]) throws -> [UInt8] {
+    try tag + toAsn1Length(value.count) + value
+}
+
+private func diagnosticDataGroup1Fixture(mrz: String) throws -> [UInt8] {
+    let mrzBytes = [UInt8](mrz.utf8)
+    let mrzDataObject = try diagnosticTLV(tag: [0x5F, 0x1F], value: mrzBytes)
+    return try [0x61] + toAsn1Length(mrzDataObject.count) + mrzDataObject
+}
+
+private func diagnosticMRZPadded(_ value: String, length: Int) -> String {
+    if value.count >= length {
+        return String(value.prefix(length))
+    }
+    return value + String(repeating: "<", count: length - value.count)
+}
+
+private func diagnosticSequence(_ value: [UInt8]) throws -> [UInt8] {
+    try diagnosticTLV(tag: [0x30], value: value)
+}
+
+private func diagnosticASN1Set(_ value: [UInt8]) throws -> [UInt8] {
+    try diagnosticTLV(tag: [0x31], value: value)
+}
+
+private func diagnosticASN1Integer(_ value: [UInt8]) throws -> [UInt8] {
+    try diagnosticTLV(tag: [0x02], value: value)
+}
+
+private func diagnosticASN1ObjectIdentifier(_ oid: String) -> [UInt8] {
+    OpenSSLUtils.asn1EncodeOID(oid: oid)
+}
+
+private func securityInfo(
+    oid: String,
+    requiredData: [UInt8],
+    optionalData: [UInt8]? = nil
+) throws -> [UInt8] {
+    try diagnosticSequence(
+        diagnosticASN1ObjectIdentifier(oid) +
+        requiredData +
+        (optionalData ?? [])
+    )
 }

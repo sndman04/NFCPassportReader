@@ -7,7 +7,7 @@
 import Foundation
 
 @available(iOS 13, macOS 10.15, *)
-public enum DocTypeEnum: String {
+enum DocTypeEnum: String {
     case TD1
     case TD2
     case OTHER
@@ -20,7 +20,7 @@ public enum DocTypeEnum: String {
 }
 
 @available(iOS 13, macOS 10.15, *)
-public class DataGroup1 : DataGroup {
+class DataGroup1 : DataGroup {
     public private(set) var elements : [String:String] = [:]
 
     public override var datagroupType: DataGroupId { .DG1 }
@@ -46,6 +46,11 @@ public class DataGroup1 : DataGroup {
         
         // Store MRZ data
         elements["5F1F"] = String(bytes: body, encoding:.utf8)
+    }
+
+    override func removeSensitiveDataForPrivacy() {
+        elements.removeAll(keepingCapacity: false)
+        super.removeSensitiveDataForPrivacy()
     }
     
     func parseTd1(_ data : [UInt8]) throws {

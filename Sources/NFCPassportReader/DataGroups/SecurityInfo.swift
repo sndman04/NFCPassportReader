@@ -9,7 +9,7 @@ import Foundation
 import OpenSSL
 
 @available(iOS 13, macOS 10.15,*)
-public class SecurityInfo {
+class SecurityInfo {
     // Active Authentication OID
     static let ID_AA_OID = "2.23.136.1.1.5"
 
@@ -70,89 +70,73 @@ public class SecurityInfo {
     static let ID_PACE_ECDH_CAM_AES_CBC_CMAC_192 = ID_PACE_ECDH_CAM + ".3"; // 0.4.0.127.0.7.2.2.4.6.3, id-PACE-ECDH-CAM-AES-CBC-CMAC-192
     static let ID_PACE_ECDH_CAM_AES_CBC_CMAC_256 = ID_PACE_ECDH_CAM + ".4"; // 0.4.0.127.0.7.2.2.4.6.4, id-PACE-ECDH-CAM-AES-CBC-CMAC-256
 
-    public func getObjectIdentifier() -> String {
+    func getObjectIdentifier() -> String {
         ""
     }
     
-    public func getProtocolOIDString() -> String {
+    func getProtocolOIDString() -> String {
         ""
     }
 
-    public var isRecognized: Bool {
+    var isRecognized: Bool {
         true
     }
-    
-    static func getInstance( object : ASN1Item, body: [UInt8] ) -> SecurityInfo? {
-        guard let oid = object.getChild(0)?.value,
-              let requiredData = object.getChild(1) else {
-            return nil
-        }
 
-        var optionalData : ASN1Item? = nil
-        if (object.getNumberOfChildren() == 3) {
-            optionalData = object.getChild(2)
-        }
-        
+    static func getInstance(
+        oid: String,
+        requiredData: SimpleASN1Node,
+        requiredDataDER: [UInt8],
+        optionalData: SimpleASN1Node?
+    ) -> SecurityInfo? {
         if ChipAuthenticationPublicKeyInfo.checkRequiredIdentifier(oid) {
-            guard requiredData.pos >= 0,
-                  requiredData.headerLen >= 0,
-                  requiredData.length >= 0,
-                  requiredData.pos <= body.count,
-                  requiredData.headerLen <= body.count - requiredData.pos,
-                  requiredData.length <= body.count - requiredData.pos - requiredData.headerLen else {
-                return nil
+            var subjectPublicKeyInfo: OpaquePointer?
+            let _ = requiredDataDER.withUnsafeBytes { ptr in
+                var newPtr = ptr.baseAddress?.assumingMemoryBound(to: UInt8.self)
+                subjectPublicKeyInfo = d2i_PUBKEY(nil, &newPtr, requiredDataDER.count)
             }
 
-            let keyDataEnd = requiredData.pos + requiredData.headerLen + requiredData.length
-            let keyData : [UInt8] = [UInt8](body[requiredData.pos ..< keyDataEnd])
-            
-            var subjectPublicKeyInfo : OpaquePointer? = nil
-            let _ = keyData.withUnsafeBytes { (ptr) in
-                var newPtr = ptr.baseAddress?.assumingMemoryBound(to: UInt8.self)
-                
-                subjectPublicKeyInfo = d2i_PUBKEY(nil, &newPtr, keyData.count)
+            if let subjectPublicKeyInfo {
+                return ChipAuthenticationPublicKeyInfo(
+                    oid: oid,
+                    pubKey: subjectPublicKeyInfo,
+                    keyId: optionalData?.integerValue
+                )
             }
-            
-            if let subjectPublicKeyInfo = subjectPublicKeyInfo {
-                                
-                if let optionalData {
-                    let keyId = Int(optionalData.value, radix: 16)
-                    return ChipAuthenticationPublicKeyInfo(oid:oid, pubKey:subjectPublicKeyInfo, keyId: keyId);
-                } else {
-                    return ChipAuthenticationPublicKeyInfo(oid:oid, pubKey:subjectPublicKeyInfo);
-                }
-                
-            }
+
+            return nil
         } else if ChipAuthenticationInfo.checkRequiredIdentifier(oid) {
-            let version = Int(requiredData.value) ?? -1
-            if let optionalData = optionalData {
-                let keyId = Int(optionalData.value, radix: 16)
-                return ChipAuthenticationInfo(oid: oid, version: version, keyId: keyId);
-            } else {
-                return ChipAuthenticationInfo(oid: oid, version: version);
-            }
+            return ChipAuthenticationInfo(
+                oid: oid,
+                version: requiredData.integerValue ?? -1,
+                keyId: optionalData?.integerValue
+            )
         } else if PACEInfo.checkRequiredIdentifier(oid) {
-            let version = Int(requiredData.value) ?? -1
-            var parameterId : Int? = nil
-            
-            if let optionalData = optionalData {
-                parameterId = Int(optionalData.value, radix:16)
-            }
-            return PACEInfo(oid: oid, version: version, parameterId: parameterId);
+            return PACEInfo(
+                oid: oid,
+                version: requiredData.integerValue ?? -1,
+                parameterId: optionalData?.integerValue
+            )
         } else if ActiveAuthenticationInfo.checkRequiredIdentifier(oid) {
-            let version = Int(requiredData.value) ?? -1
-            if let optionalData = optionalData {
-                return ActiveAuthenticationInfo(oid: oid, version: version, signatureAlgorithmOID: optionalData.value)
+            if let signatureAlgorithmOID = optionalData?.objectIdentifier {
+                return ActiveAuthenticationInfo(
+                    oid: oid,
+                    version: requiredData.integerValue ?? -1,
+                    signatureAlgorithmOID: signatureAlgorithmOID
+                )
             } else {
-                return ActiveAuthenticationInfo(oid: oid, version: version)
+                return ActiveAuthenticationInfo(
+                    oid: oid,
+                    version: requiredData.integerValue ?? -1
+                )
             }
         }
+
         return UnknownSecurityInfo(oid: oid)
     }
 }
 
 @available(iOS 13, macOS 10.15,*)
-public final class UnknownSecurityInfo: SecurityInfo {
+final class UnknownSecurityInfo: SecurityInfo {
     private let oid: String
 
     init(oid: String) {

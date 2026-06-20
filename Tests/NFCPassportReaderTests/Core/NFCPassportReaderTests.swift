@@ -156,6 +156,13 @@ final class NFCPassportReaderTests: XCTestCase {
         XCTAssertThrowsError(try toAsn1Length(Int(Int32.max) + 1))
     }
 
+    func testDataObjectHelpersPreserveEmptyValues() throws {
+        let wrapped = wrapDO(b: 0x82, arr: [])
+
+        XCTAssertEqual(wrapped, [0x82, 0x00])
+        XCTAssertEqual(try unwrapDO(tag: 0x82, wrappedData: wrapped), [])
+    }
+
     func testHexRepToBinRejectsInvalidInputWithoutTrapping() {
         XCTAssertEqual(hexRepToBin("not hex"), [])
         XCTAssertEqual(hexRepToBin("AAZ1"), [])
@@ -187,6 +194,54 @@ final class NFCPassportReaderTests: XCTestCase {
         XCTAssertEqual(sm.incSSC(), [0x00, 0x01, 0x00])
     }
 
+    func testSecureMessagingCleanupClearsSessionKeysAndCounter() throws {
+        let sm = SecureMessaging(
+            ksenc: [UInt8](repeating: 0x11, count: 16),
+            ksmac: [UInt8](repeating: 0x22, count: 16),
+            ssc: [UInt8](repeating: 0x33, count: 8)
+        )
+
+        XCTAssertFalse(mirroredByteArray(from: sm, named: "ksenc").isEmpty)
+        XCTAssertFalse(mirroredByteArray(from: sm, named: "ksmac").isEmpty)
+        XCTAssertFalse(mirroredByteArray(from: sm, named: "ssc").isEmpty)
+
+        sm.removeSensitiveData()
+
+        XCTAssertTrue(mirroredByteArray(from: sm, named: "ksenc").isEmpty)
+        XCTAssertTrue(mirroredByteArray(from: sm, named: "ksmac").isEmpty)
+        XCTAssertTrue(mirroredByteArray(from: sm, named: "ssc").isEmpty)
+
+        let apduData: [UInt8] = [0x00, 0xA4, 0x02, 0x0C, 0x02, 0x01, 0x01, 0x00]
+        let apdu = try XCTUnwrap(NFCISO7816APDU(data: Data(apduData)))
+        XCTAssertThrowsError(try sm.protect(apdu: apdu)) { error in
+            guard case NFCPassportReaderError.UnableToProtectAPDU = error else {
+                XCTFail("Expected UnableToProtectAPDU, got \(error)")
+                return
+            }
+        }
+    }
+
+    @available(iOS 15, *)
+    func testBACHandlerCleanupClearsDerivedKeysAndRandoms() throws {
+        let bac = BACHandler()
+        _ = try bac.deriveDocumentBasicAccessKeys(mrz: "ABC1234567001012300101")
+        _ = try bac.authentication(rnd_icc: [UInt8](repeating: 0x44, count: 8))
+
+        XCTAssertFalse(mirroredByteArray(from: bac, named: "ksenc").isEmpty)
+        XCTAssertFalse(mirroredByteArray(from: bac, named: "ksmac").isEmpty)
+        XCTAssertFalse(mirroredByteArray(from: bac, named: "rnd_icc").isEmpty)
+        XCTAssertFalse(mirroredByteArray(from: bac, named: "rnd_ifd").isEmpty)
+        XCTAssertFalse(mirroredByteArray(from: bac, named: "kifd").isEmpty)
+
+        bac.removeSensitiveData()
+
+        XCTAssertTrue(mirroredByteArray(from: bac, named: "ksenc").isEmpty)
+        XCTAssertTrue(mirroredByteArray(from: bac, named: "ksmac").isEmpty)
+        XCTAssertTrue(mirroredByteArray(from: bac, named: "rnd_icc").isEmpty)
+        XCTAssertTrue(mirroredByteArray(from: bac, named: "rnd_ifd").isEmpty)
+        XCTAssertTrue(mirroredByteArray(from: bac, named: "kifd").isEmpty)
+    }
+
     func testUnpadHandlesEmptyAndZeroOnlyInputWithoutTrapping() {
         XCTAssertEqual(unpad([]), [])
         XCTAssertEqual(unpad([0x00, 0x00]), [0x00, 0x00])
@@ -206,6 +261,55 @@ final class NFCPassportReaderTests: XCTestCase {
         XCTAssertEqual(tripleDESDecrypt(key: [UInt8](repeating: 0, count: 16), message: [0x00], iv: []), [])
         XCTAssertEqual(DESEncrypt(key: [0x00], message: [0x00], iv: [UInt8](repeating: 0, count: 8)), [])
         XCTAssertEqual(DESDecrypt(key: [UInt8](repeating: 0, count: 8), message: [0x00], iv: []), [])
+    }
+
+    func testSessionKeyGeneratorUsesTypedUnsupportedCipherErrors() {
+        let generator = SecureMessagingSessionKeyGenerator()
+        let lowLevelFragments = ["Blowfish-448", "AES-512", "DESede", "key length"]
+
+        let attempts: [() throws -> [UInt8]] = [
+            {
+                try generator.deriveKey(
+                    keySeed: [UInt8](repeating: 0x01, count: 32),
+                    cipherAlgName: "Blowfish-448",
+                    keyLength: 448,
+                    mode: .ENC_MODE
+                )
+            },
+            {
+                try generator.deriveKey(
+                    keySeed: [UInt8](repeating: 0x02, count: 32),
+                    cipherAlgName: "AES",
+                    keyLength: 512,
+                    mode: .MAC_MODE
+                )
+            },
+            {
+                try generator.deriveKey(
+                    keySeed: [UInt8](repeating: 0x03, count: 32),
+                    cipherAlgName: "DESede",
+                    keyLength: 64,
+                    mode: .ENC_MODE
+                )
+            }
+        ]
+
+        for attempt in attempts {
+            XCTAssertThrowsError(try attempt()) { error in
+                guard let readerError = error as? NFCPassportReaderError else {
+                    return XCTFail("Expected NFCPassportReaderError")
+                }
+                guard case .UnsupportedCipherAlgorithm = readerError else {
+                    return XCTFail("Expected UnsupportedCipherAlgorithm, got \(readerError)")
+                }
+
+                for fragment in lowLevelFragments {
+                    XCTAssertFalse(readerError.value.localizedCaseInsensitiveContains(fragment))
+                    XCTAssertFalse(readerError.localizedDescription.localizedCaseInsensitiveContains(fragment))
+                    XCTAssertFalse(String(describing: readerError).localizedCaseInsensitiveContains(fragment))
+                }
+            }
+        }
     }
 
     func testDESDecryptUsesCBCInitializationVector() {
@@ -410,7 +514,7 @@ final class NFCPassportReaderTests: XCTestCase {
             _ = i2d_ECDSA_SIG(ecsig, &pointer)
         }
 
-        XCTAssertNoThrow(try OpenSSLUtils.ASN1Parse(data: Data(derBytes)), "Successfully parsed" )
+        XCTAssertNoThrow(try SimpleASN1Node.parse(derBytes), "Successfully parsed")
     }
 
     func testVerifyECDSASignatureRejectsMalformedSignature() {
@@ -422,6 +526,17 @@ final class NFCPassportReaderTests: XCTestCase {
 
         XCTAssertFalse(OpenSSLUtils.verifyECDSASignature(publicKey: key, signature: [], data: []))
         XCTAssertFalse(OpenSSLUtils.verifyECDSASignature(publicKey: key, signature: [0x01], data: []))
+    }
+
+    func testSignatureDigestNameSelectionCoversActiveAuthenticationAlgorithms() {
+        XCTAssertEqual(OpenSSLUtils.digestName(forSignatureType: "ecdsa-plain-SHA1"), "sha1")
+        XCTAssertEqual(OpenSSLUtils.digestName(forSignatureType: "ecdsa-plain-SHA224"), "sha224")
+        XCTAssertEqual(OpenSSLUtils.digestName(forSignatureType: "ecdsa-plain-SHA256"), "sha256")
+        XCTAssertEqual(OpenSSLUtils.digestName(forSignatureType: "ecdsa-plain-SHA384"), "sha384")
+        XCTAssertEqual(OpenSSLUtils.digestName(forSignatureType: "ecdsa-plain-SHA512"), "sha512")
+        XCTAssertEqual(OpenSSLUtils.digestName(forSignatureType: "ecdsa-plain-RIPEMD160"), "ripemd160")
+        XCTAssertEqual(OpenSSLUtils.digestName(forSignatureType: "RSASSA-PSS"), "sha256")
+        XCTAssertEqual(OpenSSLUtils.digestName(forSignatureType: ""), "sha256")
     }
 
     
@@ -436,4 +551,8 @@ final class NFCPassportReaderTests: XCTestCase {
         ("testSecureMessagingUnprotectNoData", testSecureMessagingUnprotectNoData),
         ("testSecureMessagingUnprotectWithData", testSecureMessagingUnprotectWithData),
     ]
+}
+
+private func mirroredByteArray(from object: Any, named label: String) -> [UInt8] {
+    Mirror(reflecting: object).children.first { $0.label == label }?.value as? [UInt8] ?? []
 }

@@ -22,91 +22,89 @@ enum PassportAuthenticationStatus {
 @available(iOS 13, macOS 10.15, *)
 class NFCPassportModel {
     
-    public private(set) lazy var documentType : String = { return String( passportDataElements?["5F03"]?.first ?? "?" ) }()
-    public private(set) lazy var documentSubType : String = { return String( passportDataElements?["5F03"]?.last ?? "?" ) }()
-    public private(set) lazy var documentNumber : String = { return (passportDataElements?["5A"] ?? "?").replacingOccurrences(of: "<", with: "" ) }()
-    public private(set) lazy var issuingAuthority : String = { return passportDataElements?["5F28"] ?? "?" }()
-    public private(set) lazy var documentExpiryDate : String = { return passportDataElements?["59"] ?? "?" }()
-    public private(set) lazy var dateOfBirth : String = { return passportDataElements?["5F57"] ?? "?" }()
-    public private(set) lazy var gender : String = { return passportDataElements?["5F35"] ?? "?" }()
-    public private(set) lazy var nationality : String = { return passportDataElements?["5F2C"] ?? "?" }()
+    public var documentType : String { return String( passportDataElements?["5F03"]?.first ?? "?" ) }
+    public var documentSubType : String { return String( passportDataElements?["5F03"]?.last ?? "?" ) }
+    public var documentNumber : String { return (passportDataElements?["5A"] ?? "?").replacingOccurrences(of: "<", with: "" ) }
+    public var issuingAuthority : String { return passportDataElements?["5F28"] ?? "?" }
+    public var documentExpiryDate : String { return passportDataElements?["59"] ?? "?" }
+    public var dateOfBirth : String { return passportDataElements?["5F57"] ?? "?" }
+    public var gender : String { return passportDataElements?["5F35"] ?? "?" }
+    public var nationality : String { return passportDataElements?["5F2C"] ?? "?" }
     
-    public private(set) lazy var lastName : String = {
+    public var lastName : String {
         return names[0].replacingOccurrences(of: "<", with: " " )
-    }()
+    }
     
-    public private(set) lazy var firstName : String = {
+    public var firstName : String {
         var name = ""
         for i in 1 ..< names.count {
             let fn = names[i].replacingOccurrences(of: "<", with: " " ).trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
             name += fn + " "
         }
         return name.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
-    }()
-    
-    private lazy var passportMRZ : String = { return passportDataElements?["5F1F"] ?? "NOT FOUND" }()
+    }
     
     // Extract fields from DG11 if present
-    private lazy var names : [String] = {
+    private var names : [String] {
         guard let dg11 = dataGroupsRead[.DG11] as? DataGroup11,
               let fullName = dg11.fullName?.components(separatedBy: "<<") else { return (passportDataElements?["5B"] ?? "?").components(separatedBy: "<<") }
         return fullName
-    }()
+    }
     
-    public private(set) lazy var placeOfBirth : String? = {
+    public var placeOfBirth : String? {
         guard let dg11 = dataGroupsRead[.DG11] as? DataGroup11,
               let placeOfBirth = dg11.placeOfBirth else { return nil }
         return placeOfBirth
-    }()
+    }
     
     /// residence address
-    public private(set) lazy var residenceAddress : String? = {
+    public var residenceAddress : String? {
         guard let dg11 = dataGroupsRead[.DG11] as? DataGroup11,
               let address = dg11.address else { return nil }
         return address
-    }()
+    }
     
     /// phone number
-    public private(set) lazy var phoneNumber : String? = {
+    public var phoneNumber : String? {
         guard let dg11 = dataGroupsRead[.DG11] as? DataGroup11,
               let telephone = dg11.telephone else { return nil }
         return telephone
-    }()
+    }
     
     /// personal number
-    public private(set) lazy var personalNumber : String? = {
+    public var personalNumber : String? {
         if let dg11 = dataGroupsRead[.DG11] as? DataGroup11,
            let personalNumber = dg11.personalNumber { return personalNumber }
         
         return (passportDataElements?["53"] ?? "?").replacingOccurrences(of: "<", with: "" )
-    }()
+    }
     
     /// face image info
-    public private(set) lazy var faceImageInfo : FaceImageInfo? = {
+    public var faceImageInfo : FaceImageInfo? {
         guard let dg2 = dataGroupsRead[.DG2] as? DataGroup2 else { return nil }
         
         return FaceImageInfo.from(dg2: dg2)
-    }()
+    }
 
-    public var documentSigningCertificate : X509Wrapper? {
+    var documentSigningCertificate : X509Wrapper? {
         return certificateSigningGroups[.documentSigningCertificate]
     }
 
-    public var countrySigningCertificate : X509Wrapper? {
+    var countrySigningCertificate : X509Wrapper? {
         return certificateSigningGroups[.issuerSigningCertificate]
     }
     
     // Extract data from COM
-    public private(set) lazy var LDSVersion : String = {
+    public var LDSVersion : String {
         guard let com = dataGroupsRead[.COM] as? COM else { return "Unknown" }
         return com.version
-    }()
+    }
     
     
-    public private(set) lazy var dataGroupsPresent : [String] = {
+    public var dataGroupsPresent : [String] {
         guard let com = dataGroupsRead[.COM] as? COM else { return [] }
         return com.dataGroupsPresent
-    }()
+    }
     
     // Parsed datagroup hashes
     public private(set) var dataGroupsAvailable = [DataGroupId]()
@@ -116,6 +114,8 @@ class NFCPassportModel {
     public private(set) var dataGroupReadReports: [PassportDataGroupReadReport] = []
 
     public internal(set) var cardAccess : CardAccess?
+    internal var cardSecurity: CardSecurity?
+    internal var paceChipAuthenticationMappingResult: PACEChipAuthenticationMappingResult?
     public internal(set) var BACStatus : PassportAuthenticationStatus = .notDone
     public internal(set) var PACEStatus : PassportAuthenticationStatus = .notDone
     public internal(set) var chipAuthenticationStatus : PassportAuthenticationStatus = .notDone
@@ -134,7 +134,7 @@ class NFCPassportModel {
     public private(set) var masterListModifiedDate : Date?
     public private(set) var revocationCheckPerformed : Bool = false
 
-    public var verificationResult: PassportVerificationResult {
+    var verificationResult: PassportVerificationResult {
         let sodSignatureDetail = verificationCheckForSODSignature()
         let dataGroupHashDetail = verificationCheckForDataGroupHashes()
         let documentSignerCertificateDetail = verificationCheckForDocumentSignerCertificate()
@@ -159,7 +159,7 @@ class NFCPassportModel {
         )
     }
 
-    public var isPACESupported : Bool {
+    var isPACESupported : Bool {
         get {
             if cardAccess?.paceInfo != nil {
                 return true
@@ -174,7 +174,7 @@ class NFCPassportModel {
         }
     }
     
-    public var isChipAuthenticationSupported : Bool {
+    var isChipAuthenticationSupported : Bool {
         get {
             if let dg14 = dataGroupsRead[.DG14] as? DataGroup14,
                (dg14.securityInfos.filter { ($0 as? ChipAuthenticationPublicKeyInfo) != nil }).count > 0 {
@@ -187,20 +187,20 @@ class NFCPassportModel {
     }
     
 #if os(iOS)
-    public var passportImage : UIImage? {
+    var passportImage : UIImage? {
         guard let dg2 = dataGroupsRead[.DG2] as? DataGroup2 else { return nil }
         
         return dg2.getImage()
     }
 
-    public var signatureImage : UIImage? {
+    var signatureImage : UIImage? {
         guard let dg7 = dataGroupsRead[.DG7] as? DataGroup7 else { return nil }
         
         return dg7.getImage()
     }
 #endif
 
-    public var activeAuthenticationSupported : Bool {
+    var activeAuthenticationSupported : Bool {
         guard let dg15 = dataGroupsRead[.DG15] as? DataGroup15 else { return false }
         if dg15.ecdsaPublicKey != nil || dg15.rsaPublicKey != nil {
             return true
@@ -221,7 +221,7 @@ class NFCPassportModel {
         
     }
     
-    public func addDataGroup(_ id : DataGroupId, dataGroup: DataGroup ) {
+    func addDataGroup(_ id : DataGroupId, dataGroup: DataGroup ) {
         self.dataGroupsRead[id] = dataGroup
         if id != .COM && id != .SOD && !self.dataGroupsAvailable.contains(id) {
             self.dataGroupsAvailable.append( id )
@@ -238,12 +238,15 @@ class NFCPassportModel {
     /// hashes, card-access data, certificate objects, and active-authentication material held by this
     /// model instance. Swift value copies and framework internals may still retain their own memory, so
     /// this is data minimization rather than a complete zeroization guarantee.
-    public func removeSensitiveDataForPrivacy() {
+    func removeSensitiveDataForPrivacy() {
         dataGroupsAvailable.removeAll(keepingCapacity: false)
+        dataGroupsRead.values.forEach { $0.removeSensitiveDataForPrivacy() }
         dataGroupsRead.removeAll(keepingCapacity: false)
         dataGroupHashes.removeAll(keepingCapacity: false)
         dataGroupReadReports.removeAll(keepingCapacity: false)
         cardAccess = nil
+        cardSecurity = nil
+        paceChipAuthenticationMappingResult = nil
         certificateSigningGroups.removeAll(keepingCapacity: false)
         activeAuthenticationChallenge.removeAll(keepingCapacity: false)
         activeAuthenticationSignature.removeAll(keepingCapacity: false)
@@ -257,7 +260,7 @@ class NFCPassportModel {
         }
     }
 
-    public func getHashesForDatagroups( hashAlgorythm: String ) -> [DataGroupId:[UInt8]]  {
+    func getHashesForDatagroups( hashAlgorythm: String ) -> [DataGroupId:[UInt8]]  {
         var ret = [DataGroupId:[UInt8]]()
         
         for (key, value) in dataGroupsRead {
@@ -290,7 +293,7 @@ class NFCPassportModel {
     ///         CMS fails under certain circumstances (e.g. hashes are SHA512 whereas content is signed with SHA256RSA).
     ///         Currently defaulting to manual verification - hoping this will replace the CMS verification totally
     ///         CMS Verification currently there just in case
-    public func verifyPassport( masterListURL: URL?, useCMSVerification : Bool = false ) {
+    func verifyPassport( masterListURL: URL?, useCMSVerification : Bool = false ) {
         passportVerificationAttempted = true
         masterListWasProvided = masterListURL != nil
         masterListModifiedDate = masterListURL?.privacySafeFileModificationDate
@@ -317,7 +320,7 @@ class NFCPassportModel {
         }
     }
     
-    public func verifyActiveAuthentication( challenge: [UInt8], signature: [UInt8] ) {
+    func verifyActiveAuthentication( challenge: [UInt8], signature: [UInt8] ) {
         self.activeAuthenticationChallenge = challenge
         self.activeAuthenticationSignature = signature
 
@@ -331,9 +334,8 @@ class NFCPassportModel {
                 // Decrypted signature compromises of header (6A), Message, Digest hash, Trailer
                 // Trailer can be 1 byte (BC - SHA-1 hash) or 2 bytes (xxCC) - where xx identifies the hash algorithm used
                 
-                // if the last byte of the digest is 0xBC, then this uses dedicated hash function 3 (SHA-1),
-                // If the last byte is 0xCC, then the preceding byte tells you which hash function
-                // should be used (currently not yet implemented!)
+                // If the last byte is 0xBC, this uses dedicated hash function 3 (SHA-1).
+                // If the last byte is 0xCC, the preceding byte identifies the hash function.
                 // See ISO/IEC9796-2 for details on the verification and ISO/IEC 10118-3 for the dedicated hash functions!
                 var hashTypeByte = decryptedSig.popLast() ?? 0x00
                 if hashTypeByte == 0xCC {
@@ -396,24 +398,6 @@ class NFCPassportModel {
         }
     }
     
-    // Check if signing certificate is on the revocation list
-    // We do this by trying to build a trust chain of the passport certificate against the ones in the revocation list
-    // and if we are successful then its been revoked.
-    // NOTE - NOT USED YET AS NOT ABLE TO TEST
-    func hasCertBeenRevoked( revocationListURL : URL ) -> Bool {
-        var revoked = false
-        do {
-            try validateAndExtractSigningCertificates( masterListURL: revocationListURL )
-            
-            // Certificate chain found - which means certificate is on revocation list
-            revoked = true
-        } catch {
-            // No chain found - certificate not revoked
-        }
-        
-        return revoked
-    }
-
     private func validateAndExtractSigningCertificates( masterListURL: URL ) throws {
         self.passportCorrectlySigned = false
         
@@ -501,9 +485,9 @@ class NFCPassportModel {
     }
     
     
-    /// Parses an text ASN1 structure, and extracts the Hash Algorythm and Hashes contained from the Octect strings
-    /// - Parameter content: the text ASN1 stucure format
-    /// - Returns: The Hash Algorythm used - either SHA1 or SHA256, and a dictionary of hashes for the datagroups (currently only DG1 and DG2 are handled)
+    /// Parses the structured LDS Security Object and extracts the digest algorithm and data-group hashes.
+    /// - Parameter data: DER-encoded LDS Security Object content.
+    /// - Returns: The digest algorithm and a dictionary of hashes for SOD-listed data groups.
     func parseSODSignatureContent(data: Data) throws -> (String, [DataGroupId : String]) {
         let root = try SimpleASN1Node.parse([UInt8](data))
         guard root.tag == 0x30,
@@ -535,63 +519,6 @@ class NFCPassportModel {
         }
 
         return (digestAlgorithm, sodHashes)
-    }
-
-    func parseSODSignatureContent( _ content : String ) throws -> (String, [DataGroupId : String]){
-        var currentDG = ""
-        var sodHashAlgo = ""
-        var sodHashes :  [DataGroupId : String] = [:]
-        
-        let lines = content.components(separatedBy: "\n")
-        
-        let dgList : [DataGroupId] = [.COM,.DG1,.DG2,.DG3,.DG4,.DG5,.DG6,.DG7,.DG8,.DG9,.DG10,.DG11,.DG12,.DG13,.DG14,.DG15,.DG16,.SOD]
-
-        for line in lines {
-            if line.contains( "d=2" ) && line.contains( "OBJECT" ) {
-                if line.contains( "sha1" ) {
-                    sodHashAlgo = "SHA1"
-                } else if line.contains( "sha224" ) {
-                    sodHashAlgo = "SHA224"
-                } else if line.contains( "sha256" ) {
-                    sodHashAlgo = "SHA256"
-                } else if line.contains( "sha384" ) {
-                    sodHashAlgo = "SHA384"
-                } else if line.contains( "sha512" ) {
-                    sodHashAlgo = "SHA512"
-                }
-            } else if line.contains("d=3" ) && line.contains( "INTEGER" ) {
-                if let range = line.range(of: "INTEGER") {
-                    let substr = line[range.upperBound..<line.endIndex]
-                    if let r2 = substr.range(of: ":") {
-                        currentDG = String(line[r2.upperBound...])
-                    }
-                }
-                
-            } else if line.contains("d=3" ) && line.contains( "OCTET STRING" ) {
-                if let range = line.range(of: "[HEX DUMP]:") {
-                    let val = line[range.upperBound..<line.endIndex]
-                    if currentDG != "", let id = Int(currentDG.trimmingCharacters(in: .whitespacesAndNewlines), radix:16) {
-                        guard id > 0,
-                              id <= 16,
-                              dgList.indices.contains(id) else {
-                            throw PassiveAuthenticationError.UnableToParseSODHashes("Invalid data group id")
-                        }
-
-                        sodHashes[dgList[id]] = String(val)
-                        currentDG = ""
-                    }
-                }
-            }
-        }
-        
-        if sodHashAlgo == "" {
-            throw PassiveAuthenticationError.UnableToParseSODHashes("Unable to find hash algorythm used" )
-        }
-        if sodHashes.count == 0 {
-            throw PassiveAuthenticationError.UnableToParseSODHashes("Unable to extract hashes" )
-        }
-        
-        return (sodHashAlgo, sodHashes)
     }
 
     private func hashAlgorithmName(for oid: String) -> String? {
@@ -703,7 +630,20 @@ class NFCPassportModel {
 
     private func verificationCheckForActiveAuthentication() -> PassportVerificationCheck {
         guard activeAuthenticationSupported else {
-            return PassportVerificationCheck(status: .notChecked, reason: .notSupported)
+            let dg15Statuses = dataGroupReadReports
+                .filter { $0.dataGroup == .DG15 }
+                .map(\.status)
+
+            if dg15Statuses.contains(.skippedByProfile) || dg15Statuses.contains(.blockedByPolicy) {
+                return PassportVerificationCheck(status: .notChecked, reason: .skipped)
+            }
+            if dg15Statuses.contains(.advertised) || dg15Statuses.contains(.requested) || dg15Statuses.contains(.failed) {
+                return PassportVerificationCheck(status: .notChecked, reason: .skipped)
+            }
+            if dataGroupsRead[.DG15] != nil || dataGroupsRead[.COM] != nil || dg15Statuses.contains(.unsupported) {
+                return PassportVerificationCheck(status: .notChecked, reason: .notSupported)
+            }
+            return PassportVerificationCheck(status: .notChecked, reason: .notRequested)
         }
         if activeAuthenticationPassed {
             return PassportVerificationCheck(status: .passed, reason: .passed)
@@ -716,7 +656,20 @@ class NFCPassportModel {
 
     private func verificationCheckForChipAuthentication() -> PassportVerificationCheck {
         guard isChipAuthenticationSupported else {
-            return PassportVerificationCheck(status: .notChecked, reason: .notSupported)
+            let dg14Statuses = dataGroupReadReports
+                .filter { $0.dataGroup == .DG14 }
+                .map(\.status)
+
+            if dg14Statuses.contains(.skippedByProfile) || dg14Statuses.contains(.blockedByPolicy) {
+                return PassportVerificationCheck(status: .notChecked, reason: .skipped)
+            }
+            if dg14Statuses.contains(.advertised) || dg14Statuses.contains(.requested) || dg14Statuses.contains(.failed) {
+                return PassportVerificationCheck(status: .notChecked, reason: .skipped)
+            }
+            if dataGroupsRead[.DG14] != nil || dataGroupsRead[.COM] != nil || dg14Statuses.contains(.unsupported) {
+                return PassportVerificationCheck(status: .notChecked, reason: .notSupported)
+            }
+            return PassportVerificationCheck(status: .notChecked, reason: .notRequested)
         }
         switch chipAuthenticationStatus {
         case .notDone:

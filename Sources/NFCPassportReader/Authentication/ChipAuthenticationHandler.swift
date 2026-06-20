@@ -30,7 +30,7 @@ class ChipAuthenticationHandler {
     
     var isChipAuthenticationSupported : Bool = false
     
-    public init(dg14 : DataGroup14, tagReader: TagReader) {
+    init(dg14 : DataGroup14, tagReader: TagReader) {
         self.tagReader = tagReader
         
         for secInfo in dg14.securityInfos {
@@ -47,7 +47,21 @@ class ChipAuthenticationHandler {
         }
     }
 
-    public func doChipAuthentication() async throws  {
+    deinit {
+        removeSensitiveData()
+    }
+
+    func removeSensitiveData() {
+        gaSegments.removeAll(keepingCapacity: false)
+        chipAuthInfos.removeAll(keepingCapacity: false)
+        chipAuthPublicKeyInfos.removeAll(keepingCapacity: false)
+        tagReader?.secureMessaging?.removeSensitiveData()
+        tagReader?.secureMessaging = nil
+        tagReader = nil
+        isChipAuthenticationSupported = false
+    }
+
+    func doChipAuthentication() async throws  {
         guard isChipAuthenticationSupported else {
             throw NFCPassportReaderError.NotYetSupported( "ChipAuthentication not supported" )
         }
@@ -156,7 +170,7 @@ class ChipAuthenticationHandler {
             gaSegments = self.chunk(data: data, segmentSize: ChipAuthenticationHandler.COMMAND_CHAINING_CHUNK_SIZE )
             try await self.handleGeneralAuthentication()
         } else {
-            throw NFCPassportReaderError.InvalidDataPassed("Cipher Algorithm \(cipherAlg) not supported")
+            throw NFCPassportReaderError.UnsupportedCipherAlgorithm
         }
     }
     
@@ -188,7 +202,7 @@ class ChipAuthenticationHandler {
             let sm = SecureMessaging(encryptionAlgorithm: .AES, ksenc: ksEnc, ksmac: ksMac, ssc: ssc)
             tagReader?.secureMessaging = sm
         } else {
-            throw NFCPassportReaderError.InvalidDataPassed("Unsupported cipher algorithm \(cipherAlg)" )
+            throw NFCPassportReaderError.UnsupportedCipherAlgorithm
         }
     }
     
@@ -207,7 +221,7 @@ class ChipAuthenticationHandler {
             return "SHA256"
         }
         
-        throw NFCPassportReaderError.InvalidDataPassed("Unsupported cipher algorithm or key length")
+        throw NFCPassportReaderError.UnsupportedCipherAlgorithm
     }
     
     /// Chunks up a byte array into a number of segments of the given size,

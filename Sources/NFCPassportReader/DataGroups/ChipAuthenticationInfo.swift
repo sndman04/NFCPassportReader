@@ -8,7 +8,7 @@
 import Foundation
 
 @available(iOS 13, macOS 10.15, *)
-public class ChipAuthenticationInfo : SecurityInfo {
+class ChipAuthenticationInfo : SecurityInfo {
     
     var oid : String
     var version : Int
@@ -88,7 +88,7 @@ public class ChipAuthenticationInfo : SecurityInfo {
     }
     
     // The keyid refers to a specific key if there are multiple otherwise if not set, only one key is present so set to 0
-    public func getKeyId() -> Int {
+    func getKeyId() -> Int {
         return keyId ?? 0
     }
     

@@ -38,7 +38,15 @@ public struct PassportInteroperabilityRecord: Sendable, Equatable {
 
     public var containsOnlyNonIdentifyingFields: Bool {
         let text = [issuingRegionCode, chipFeatureClass, notes].compactMap { $0 }.joined(separator: " ")
-        return text.range(of: #"[A-Z0-9<]{30,}"#, options: .regularExpression) == nil
-            && text.range(of: #"[0-9A-Fa-f]{32,}"#, options: .regularExpression) == nil
+        let sensitivePatterns = [
+            #"[A-Z0-9<]{30,}"#,
+            #"(?i)(?:[0-9a-f]{2}[\s:.-]?){8,}"#,
+            #"(?i)\b(?:mrz|passport\s*(?:no|number)|document\s*(?:no|number)|date\s*of\s*birth|dob|birth\s*date|expiry|expiration|surname|given\s*name|full\s*name|photo|image|face\s*image)\b"#,
+            #"(?i)\b(?:apdu|rapdu|kseed|ksenc|ksmac|rnd\.ifd|rnd\.icc|bac\s*key|pace\s*key|session\s*key|certificate\s*(?:dump|serial|fingerprint|thumbprint)|fingerprint|thumbprint)\b"#
+        ]
+
+        return sensitivePatterns.allSatisfy { pattern in
+            text.range(of: pattern, options: .regularExpression) == nil
+        }
     }
 }

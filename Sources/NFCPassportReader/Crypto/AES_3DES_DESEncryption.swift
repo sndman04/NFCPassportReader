@@ -9,13 +9,19 @@
 import Foundation
 import CommonCrypto
 
+// Low-level cryptography implementation helpers.
+//
+// These functions are module-internal protocol primitives, not app-level passport scanning APIs.
+// Keep keys, IVs, APDU payloads, secure-messaging data, and decrypted chip bytes out of logs,
+// diagnostics, persistence, and network traffic. New app integrations should use
+// `PassportReader.readPassportIdentity(...)`.
 
 /// Encrypts a message using AES/CBC/NOPADDING with a specified key and initialisation vector
 /// - Parameter key: Key use to encrypt
 /// - Parameter message: Message to encrypt
 /// - Parameter iv: Initialisation vector
 @available(iOS 13, macOS 10.15, *)
-public func AESEncrypt(key:[UInt8], message:[UInt8], iv:[UInt8]) -> [UInt8] {
+func AESEncrypt(key:[UInt8], message:[UInt8], iv:[UInt8]) -> [UInt8] {
     guard [kCCKeySizeAES128, kCCKeySizeAES192, kCCKeySizeAES256].contains(key.count),
           iv.count == kCCBlockSizeAES128 else {
         return []
@@ -70,7 +76,7 @@ public func AESEncrypt(key:[UInt8], message:[UInt8], iv:[UInt8]) -> [UInt8] {
 /// - Parameter message: Message to decrypt
 /// - Parameter iv: Initialisation vector
 @available(iOS 13, macOS 10.15, *)
-public func AESDecrypt(key:[UInt8], message:[UInt8], iv:[UInt8]) -> [UInt8] {
+func AESDecrypt(key:[UInt8], message:[UInt8], iv:[UInt8]) -> [UInt8] {
     guard [kCCKeySizeAES128, kCCKeySizeAES192, kCCKeySizeAES256].contains(key.count),
           iv.count == kCCBlockSizeAES128 else {
         return []
@@ -123,7 +129,7 @@ public func AESDecrypt(key:[UInt8], message:[UInt8], iv:[UInt8]) -> [UInt8] {
 /// - Parameter message: Message to decrypt
 /// - Parameter iv: Initialisation vector
 @available(iOS 13, macOS 10.15, *)
-public func AESECBEncrypt(key:[UInt8], message:[UInt8]) -> [UInt8] {
+func AESECBEncrypt(key:[UInt8], message:[UInt8]) -> [UInt8] {
     guard [kCCKeySizeAES128, kCCKeySizeAES192, kCCKeySizeAES256].contains(key.count) else {
         return []
     }
@@ -174,7 +180,7 @@ public func AESECBEncrypt(key:[UInt8], message:[UInt8]) -> [UInt8] {
 /// - Parameter message: Message to encrypt
 /// - Parameter iv: Initialisation vector
 @available(iOS 13, macOS 10.15, *)
-public func tripleDESEncrypt(key:[UInt8], message:[UInt8], iv:[UInt8]) -> [UInt8] {
+func tripleDESEncrypt(key:[UInt8], message:[UInt8], iv:[UInt8]) -> [UInt8] {
     // Fix key data - if length is 16 then take the first 98 bytes and append them to the end to make 24 bytes
     var fixedKey = key
     if key.count == 16 {
@@ -232,7 +238,7 @@ public func tripleDESEncrypt(key:[UInt8], message:[UInt8], iv:[UInt8]) -> [UInt8
 /// - Parameter message: Message to decrypt
 /// - Parameter iv: Initialisation vector
 @available(iOS 13, macOS 10.15, *)
-public func tripleDESDecrypt(key:[UInt8], message:[UInt8], iv:[UInt8]) -> [UInt8] {
+func tripleDESDecrypt(key:[UInt8], message:[UInt8], iv:[UInt8]) -> [UInt8] {
     var fixedKey = key
     if key.count == 16 {
         fixedKey += key[0..<8]
@@ -291,7 +297,7 @@ public func tripleDESDecrypt(key:[UInt8], message:[UInt8], iv:[UInt8]) -> [UInt8
 /// - Parameter iv: Initialisation vector
 /// - Parameter options: Encryption options to use
 @available(iOS 13, macOS 10.15, *)
-public func DESEncrypt(key:[UInt8], message:[UInt8], iv:[UInt8], options:UInt32 = 0) -> [UInt8] {
+func DESEncrypt(key:[UInt8], message:[UInt8], iv:[UInt8], options:UInt32 = 0) -> [UInt8] {
     guard key.count == kCCKeySizeDES,
           options & UInt32(kCCOptionECBMode) != 0 || iv.count == kCCBlockSizeDES else {
         return []
@@ -345,7 +351,7 @@ public func DESEncrypt(key:[UInt8], message:[UInt8], iv:[UInt8], options:UInt32 
 /// - Parameter iv: Initialisation vector
 /// - Parameter options: Decryption options to use
 @available(iOS 13, macOS 10.15, *)
-public func DESDecrypt(key:[UInt8], message:[UInt8], iv:[UInt8], options:UInt32 = 0) -> [UInt8] {
+func DESDecrypt(key:[UInt8], message:[UInt8], iv:[UInt8], options:UInt32 = 0) -> [UInt8] {
     guard key.count == kCCKeySizeDES,
           options & UInt32(kCCOptionECBMode) != 0 || iv.count == kCCBlockSizeDES else {
         return []

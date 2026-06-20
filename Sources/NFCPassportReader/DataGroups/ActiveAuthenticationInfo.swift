@@ -8,7 +8,7 @@
 import Foundation
 
 @available(iOS 13, macOS 10.15, *)
-public class ActiveAuthenticationInfo : SecurityInfo {
+class ActiveAuthenticationInfo : SecurityInfo {
 
     var oid : String
     var version : Int
@@ -32,7 +32,7 @@ public class ActiveAuthenticationInfo : SecurityInfo {
         return ActiveAuthenticationInfo.toProtocolOIDString(oid:oid)
     }
 
-    public func getSignatureAlgorithmOIDString() -> String? {
+    func getSignatureAlgorithmOIDString() -> String? {
         return ActiveAuthenticationInfo.toSignatureAlgorithmOIDString(oid: signatureAlgorithmOID)
     }
 
