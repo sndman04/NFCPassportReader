@@ -195,11 +195,8 @@ public class TagReader {
         var data = [UInt8](resp.data[..<amountRead])
         data.reserveCapacity(amountRead + remaining)
         
-        var readAmount : Int = maxDataLengthToRead
         while remaining > 0 {
-            if maxDataLengthToRead != 256 && remaining < maxDataLengthToRead {
-                readAmount = remaining
-            }
+            let readAmount = Self.readAmount(maximum: maxDataLengthToRead, remaining: remaining)
             guard readAmount > 0 else {
                 throw NFCPassportReaderError.InvalidASN1Structure
             }
@@ -224,6 +221,10 @@ public class TagReader {
         }
         
         return data
+    }
+
+    static func readAmount(maximum: Int, remaining: Int) -> Int {
+        min(max(maximum, 0), max(remaining, 0))
     }
 
 

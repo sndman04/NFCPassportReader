@@ -395,6 +395,14 @@ final class DataGroupParsingTests: XCTestCase {
         XCTAssertEqual(sut.body, [0x5F])
     }
 
+    func testBaseDataGroupTrimsRetainedDataToDeclaredLength() throws {
+        let sut = try DataGroup([0x61, 0x01, 0x5F, 0x00, 0xFF])
+
+        XCTAssertEqual(sut.body, [0x5F])
+        XCTAssertEqual(sut.data, [0x61, 0x01, 0x5F])
+        XCTAssertEqual(sut.hash("SHA1"), calcSHA1Hash([0x61, 0x01, 0x5F]))
+    }
+
     func testBaseDataGroupAcceptsThreeByteLongFormLength() throws {
         let payload = [UInt8](repeating: 0x5F, count: 65_536)
         let sut = try DataGroup([0x61, 0x83, 0x01, 0x00, 0x00] + payload)

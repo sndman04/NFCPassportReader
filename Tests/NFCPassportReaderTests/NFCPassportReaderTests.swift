@@ -162,6 +162,15 @@ final class NFCPassportReaderTests: XCTestCase {
         XCTAssertEqual(hexRepToBin("F"), [0x0f])
     }
 
+    #if !os(macOS)
+    func testExtendedReadAmountIsCappedToRemainingFileLength() {
+        XCTAssertEqual(TagReader.readAmount(maximum: 256, remaining: 12), 12)
+        XCTAssertEqual(TagReader.readAmount(maximum: 256, remaining: 256), 256)
+        XCTAssertEqual(TagReader.readAmount(maximum: 160, remaining: 12), 12)
+        XCTAssertEqual(TagReader.readAmount(maximum: 160, remaining: 300), 160)
+    }
+    #endif
+
     func testByteIntegerHelpersUseBigEndianArithmetic() {
         XCTAssertEqual(binToHex([0x01, 0x02, 0x03]), 0x010203)
         XCTAssertEqual(binToHex([UInt8](repeating: 0xFF, count: 9)), 0)

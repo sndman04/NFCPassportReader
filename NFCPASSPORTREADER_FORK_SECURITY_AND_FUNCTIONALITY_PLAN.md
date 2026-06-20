@@ -390,6 +390,46 @@ Developer and release safety:
 
 ## Implementation Status
 
+### 2026-06-20 Extended-Read Hash Mismatch Fix
+
+Completed:
+
+- Investigated a Passport Chip Harness result where all read data groups reported `Hash mismatch` and trust level `verification failed`.
+- Root cause: the 256-byte extended READ BINARY optimization did not clamp the final read command to the remaining declared EF length. On chips that return extra bytes when the requested length extends past the file end, parsing can still succeed because the TLV length is valid, but `DataGroup.hash(...)` hashes the retained buffer including trailing bytes, causing every SOD-covered data-group hash to mismatch.
+- Fixed `TagReader.selectFileAndRead(...)` so every read command, including final extended-mode chunks, is capped to the remaining file length.
+- Added adjacent hardening in `DataGroup` so retained `data` is normalized to the declared TLV length even if a caller supplies trailing bytes from a fixture/import path.
+- Added focused regression tests for extended read-size clamping and retained data-group byte trimming.
+
+Verification:
+
+- Full iOS simulator unit suite passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5'
+  ```
+
+  Result: 89 tests, 0 failures.
+
+- iOS package build succeeded:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build
+  ```
+
+- External Passport Chip Harness build succeeded:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -project "/Users/dougalvey/Documents/Passport Chip Fork Test App/PassportChipHarness.xcodeproj" -scheme PassportChipHarness -destination generic/platform=iOS CODE_SIGNING_ALLOWED=NO build
+  ```
+
+- `scripts/privacy_scan.sh` passed.
+- `git diff --check` passed.
+- Targeted scan of changed files found no new logging sinks or raw diagnostics. Hits are existing APDU type names/comments and existing cryptographic test fixtures.
+
+Remaining follow-up:
+
+- Re-run the on-device harness scan that produced the screenshot. Expected result: data-group hashes should match unless the passport data is genuinely tampered or SOD verification falls back to another unrelated failure.
+
 ### 2026-06-20 Notary Journal Test App Integration Pass
 
 Completed:

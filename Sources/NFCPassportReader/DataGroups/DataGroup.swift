@@ -31,8 +31,9 @@ public class DataGroup {
         }
         bodyEnd = pos + bodyLength
         self.body = [UInt8](data[pos..<bodyEnd])
+        self.data = [UInt8](data[..<bodyEnd])
         
-        try parse(data)
+        try parse(self.data)
     }
 
     var hasUnreadBody: Bool {
