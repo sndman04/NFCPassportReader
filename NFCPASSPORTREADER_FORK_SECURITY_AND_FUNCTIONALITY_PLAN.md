@@ -390,6 +390,33 @@ Developer and release safety:
 
 ## Implementation Status
 
+### 2026-06-20 Notary Journal Test App Integration Pass
+
+Completed:
+
+- Updated the Notary Journal test app package reference from the upstream `AndyQ/NFCPassportReader` 2.3.0 remote to the adjacent local fork at `../../../Passport Chip Fork` so the app can compile against fork-only APIs during local validation.
+- Removed the stale upstream `nfcpassportreader` pin from the app's `Package.resolved`; OpenSSL remains pinned.
+- Updated `Notary Journal/PassportNFCServices.swift` to construct `PassportReader(masterListURL:logLevel:)` with `logLevel: .off`.
+- Migrated the chip read call from the historical explicit tag list to `scanProfile: .fullVerification`, with `skipSecureElements: false`, `photoPolicy: .read`, `securityPolicy: .notaryRecommended`, `operationTimeout: 60`, and the existing safe NFC sheet copy.
+- Mapped fork `NFCPassportReaderError.privacySafeFailure` values into existing app-facing `PassportChipScanError` cases so low-level reader details remain out of UI and logs.
+- Switched app-facing identity-field mapping to start from `passport.identityResult` where possible, while still using the raw model only for currently required compatibility surfaces: DG12 issue date, chip/active authentication status, and transient in-memory passport photo review data.
+
+Verification:
+
+- `plutil -lint Notary Journal.xcodeproj/project.pbxproj` passed.
+- `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcrun swift package describe --package-path "../../../Passport Chip Fork"` passed from the Notary Journal repo and confirmed the local fork manifest/products resolve.
+- `git diff --check` passed for the touched Notary Journal files.
+- Targeted scan of `Notary Journal/PassportNFCServices.swift` found no new logging sinks, `dumpPassportData`, APDU/key diagnostics, MRZ-key logging, or raw byte diagnostics. Remaining hits are the existing transient passport photo extraction needed for the app's review flow.
+
+Blocked verification:
+
+- `xcodebuild -list` and package resolution for the Notary Journal project repeatedly hung with no diagnostic output after printing the command invocation, even with `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`, `-disableAutomaticPackageResolution`, and isolated DerivedData/package clone paths. The commands were manually interrupted. Full app build/test verification remains pending until Xcode project loading/package resolution completes in this environment.
+
+Remaining follow-up:
+
+- Run the Notary Journal app build and focused passport chip unit/UI tests once Xcode project loading is no longer hanging.
+- Validate `.notaryRecommended` against real passports before relying on the stricter passive-authentication requirement in production, especially when the master list is missing or incomplete.
+
 ### 2026-06-20 Scan/Decode Performance Pass
 
 Completed:
