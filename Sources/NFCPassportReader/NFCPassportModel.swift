@@ -131,6 +131,11 @@ public class NFCPassportModel {
     /// Sensitive Active Authentication signature retained for compatibility and explicit unsafe export paths.
     public private(set) var activeAuthenticationSignature : [UInt8] = []
     public private(set) var verificationErrors : [Error] = []
+    /// Privacy-safe errors recorded while rebuilding a model from a raw dump.
+    ///
+    /// `init(from:)` is retained for source compatibility and cannot throw, so malformed dump entries
+    /// are skipped and summarized here without retaining the offending raw values.
+    public private(set) var rawDataImportErrors : [NFCPassportReaderError] = []
     public private(set) var passportVerificationAttempted : Bool = false
     public private(set) var masterListWasProvided : Bool = false
 
@@ -211,19 +216,23 @@ public class NFCPassportModel {
         var AAChallenge : [UInt8]?
         var AASignature : [UInt8]?
         for (key,value) in dump {
-            if let data = Data(base64Encoded: value) {
-                let bin = [UInt8](data)
-                if key == "AASignature" {
-                    AASignature = bin
-                } else if key == "AAChallenge" {
-                    AAChallenge = bin
-                } else {
-                    do {
-                        let dg = try DataGroupParser().parseDG(data: bin)
-                        let dgId = DataGroupId.getIDFromName(name:key)
-                        self.addDataGroup( dgId, dataGroup:dg )
-                    } catch {
-                    }
+            guard let data = Data(base64Encoded: value) else {
+                rawDataImportErrors.append(.InvalidDataPassed("Raw data import entry could not be decoded"))
+                continue
+            }
+
+            let bin = [UInt8](data)
+            if key == "AASignature" {
+                AASignature = bin
+            } else if key == "AAChallenge" {
+                AAChallenge = bin
+            } else {
+                do {
+                    let dg = try DataGroupParser().parseDG(data: bin)
+                    let dgId = DataGroupId.getIDFromName(name:key)
+                    self.addDataGroup( dgId, dataGroup:dg )
+                } catch {
+                    rawDataImportErrors.append(.InvalidDataPassed("Raw data import data group could not be parsed"))
                 }
             }
         }
@@ -479,12 +488,12 @@ public class NFCPassportModel {
         passportDataNotTampered = false
         let (sodHashAlgorythm, sodHashes) = try parseSODSignatureContent(data: signedData)
         
-        var errors : String = ""
+        var errorSummaries: [String] = []
         for (id,dgVal) in dataGroupsRead {
             guard let sodHashVal = sodHashes[id] else {
                 // SOD and COM don't have hashes so these aren't errors
                 if id != .SOD && id != .COM {
-                    errors += "DataGroup \(id) is missing!\n"
+                    errorSummaries.append("\(id.getName()) missing from SOD hashes")
                 }
                 continue
             }
@@ -493,15 +502,15 @@ public class NFCPassportModel {
             
             var match = true
             if computedHashVal != sodHashVal {
-                errors += "\(id) invalid hash:\n  SOD hash:\(sodHashVal)\n   Computed hash:\(computedHashVal)\n"
+                errorSummaries.append("\(id.getName()) hash mismatch")
                 match = false
             }
 
             dataGroupHashes[id] = DataGroupHash(id: id.getName(), sodHash:sodHashVal, computedHash:computedHashVal, match:match)
         }
         
-        if errors != "" {
-            throw PassiveAuthenticationError.InvalidDataGroupHash(errors)
+        if !errorSummaries.isEmpty {
+            throw PassiveAuthenticationError.InvalidDataGroupHash(errorSummaries.joined(separator: "; "))
         }
         passportDataNotTampered = true
     }

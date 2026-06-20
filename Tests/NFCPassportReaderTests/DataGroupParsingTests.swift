@@ -27,6 +27,18 @@ final class DataGroupParsingTests: XCTestCase {
             XCTAssertTrue( dg is DataGroup1 )
         }
     }
+
+    func testDatagroup1RejectsNonStandardMRZLength() throws {
+        let invalidMRZ = [UInt8](repeating: 0x50, count: 89)
+        let tag = try [0x5F, 0x1F] + toAsn1Length(invalidMRZ.count) + invalidMRZ
+        let dg1 = try [0x61] + toAsn1Length(tag.count) + tag
+
+        XCTAssertThrowsError(try DataGroupParser().parseDG(data: dg1)) { error in
+            guard case NFCPassportReaderError.InvalidASN1Structure = error else {
+                return XCTFail("Expected InvalidASN1Structure, got \(error)")
+            }
+        }
+    }
     
     func testDatagroup2ParsingJPEG2000() {
         

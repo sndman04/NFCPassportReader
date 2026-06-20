@@ -514,9 +514,10 @@ public class OpenSSLUtils {
             }
         }
         
-        let md = EVP_get_digestbyname(digest)
-        
-        let ctx = EVP_MD_CTX_new()
+        guard let md = EVP_get_digestbyname(digest),
+              let ctx = EVP_MD_CTX_new() else {
+            return false
+        }
         var pkey_ctx : OpaquePointer?
 
         defer{ EVP_MD_CTX_free( ctx) }
@@ -531,12 +532,20 @@ public class OpenSSLUtils {
             EVP_PKEY_CTX_ctrl_str(pkey_ctx, "rsa_pss_saltlen", "auto" )
         }
         
-        nRes = EVP_DigestUpdate(ctx, data, data.count);
+        nRes = data.withUnsafeBytes { dataPtr in
+            EVP_DigestUpdate(ctx, dataPtr.baseAddress, data.count)
+        }
         if ( nRes != 1 ) {
             return false;
         }
         
-        nRes = EVP_DigestVerifyFinal(ctx, fixedSignature, fixedSignature.count);
+        nRes = fixedSignature.withUnsafeBytes { signaturePtr in
+            EVP_DigestVerifyFinal(
+                ctx,
+                signaturePtr.baseAddress?.assumingMemoryBound(to: UInt8.self),
+                fixedSignature.count
+            )
+        }
         if (nRes != 1) {
             return false;
         }
@@ -576,14 +585,35 @@ public class OpenSSLUtils {
             free(params[0].data)
         }
 
-        var mutableKey = key
-        var mutableMessage = message
         var output = [UInt8](repeating: 0, count: 32)
         var outputLength = 0
+        let outputCapacity = output.count
 
-        guard EVP_MAC_init(ctx, &mutableKey, mutableKey.count, &params) == 1,
-              EVP_MAC_update(ctx, &mutableMessage, mutableMessage.count) == 1,
-              EVP_MAC_final(ctx, &output, &outputLength, output.count) == 1 else {
+        let success = key.withUnsafeBytes { keyPtr in
+            message.withUnsafeBytes { messagePtr in
+                output.withUnsafeMutableBytes { outputPtr in
+                    EVP_MAC_init(
+                        ctx,
+                        keyPtr.baseAddress?.assumingMemoryBound(to: UInt8.self),
+                        key.count,
+                        &params
+                    ) == 1
+                    && EVP_MAC_update(
+                        ctx,
+                        messagePtr.baseAddress?.assumingMemoryBound(to: UInt8.self),
+                        message.count
+                    ) == 1
+                    && EVP_MAC_final(
+                        ctx,
+                        outputPtr.baseAddress?.assumingMemoryBound(to: UInt8.self),
+                        &outputLength,
+                        outputCapacity
+                    ) == 1
+                }
+            }
+        }
+
+        guard success else {
             return []
         }
 

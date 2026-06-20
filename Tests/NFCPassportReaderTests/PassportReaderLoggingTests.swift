@@ -107,7 +107,7 @@ final class PassportReaderLoggingTests: XCTestCase {
         XCTAssertEqual(NFCPassportReaderError.InvalidMRZKey.privacySafeFailureReason.description, "access key rejected")
         XCTAssertEqual(NFCPassportReaderError.UnsupportedDataGroup.privacySafeFailureReason.description, "unsupported passport")
         XCTAssertEqual(NFCPassportReaderError.InvalidResponseChecksum.privacySafeFailureReason.description, "verification failed")
-        XCTAssertEqual(NFCPassportReaderError.ScanAlreadyInProgress.privacySafeFailureReason.description, "unexpected read failure")
+        XCTAssertEqual(NFCPassportReaderError.ScanAlreadyInProgress.privacySafeFailureReason.description, "read failed")
     }
 
     func testProgressDescriptionsDoNotExposeSensitivePatterns() {
@@ -141,6 +141,15 @@ final class PassportReaderLoggingTests: XCTestCase {
         XCTAssertFalse(message.contains("0x6C"))
         XCTAssertFalse(message.contains("0x20"))
         XCTAssertEqual(message, "Sorry, there was a problem reading the passport. Please try again.")
+    }
+
+    func testASN1DebugDescriptionRedactsParsedValues() {
+        let item = ASN1Item(line: "0:d=1  hl=2 l=  16 prim: OCTET STRING      :00112233445566778899AABBCCDDEEFF")
+        let description = item.debugDescription
+
+        XCTAssertTrue(description.contains("<redacted>"))
+        XCTAssertFalse(description.contains("00112233445566778899AABBCCDDEEFF"))
+        XCTAssertNil(description.range(of: #"[0-9A-Fa-f]{16,}"#, options: .regularExpression))
     }
 
     func testPACEErrorDescriptionDoesNotExposeTokenBytes() {
@@ -183,6 +192,16 @@ final class PassportReaderLoggingTests: XCTestCase {
             XCTAssertFalse(descriptions.localizedCaseInsensitiveContains(fragment))
         }
         XCTAssertNil(descriptions.range(of: #"[0-9A-Fa-f]{16,}"#, options: .regularExpression))
+    }
+
+    func testPassiveAuthenticationHashMismatchPayloadUsesSummaryOnly() {
+        let error = PassiveAuthenticationError.InvalidDataGroupHash("DG1 hash mismatch")
+        let description = String(describing: error)
+
+        XCTAssertTrue(description.contains("DG1 hash mismatch"))
+        XCTAssertFalse(description.localizedCaseInsensitiveContains("SOD hash"))
+        XCTAssertFalse(description.localizedCaseInsensitiveContains("Computed hash"))
+        XCTAssertNil(description.range(of: #"[0-9A-Fa-f]{16,}"#, options: .regularExpression))
     }
 
     func testScanProfilesMapToExpectedDataGroups() {
@@ -254,6 +273,14 @@ final class PassportReaderLoggingTests: XCTestCase {
         XCTAssertEqual(info.getProtocolOIDString(), "Unknown security info")
     }
 
+    func testSecurityInfoRejectsInvalidPublicKeyOffsetsWithoutTrapping() {
+        let sequenceItem = ASN1Item(line: "0:d=1  hl=2 l=  10 cons: SEQUENCE")
+        sequenceItem.addChild(ASN1Item(line: "0:d=2  hl=2 l=   4 prim: OBJECT            :0.4.0.127.0.7.2.2.1.2"))
+        sequenceItem.addChild(ASN1Item(line: "0:d=2  hl=-1 l=   1 prim: SEQUENCE"))
+
+        XCTAssertNil(SecurityInfo.getInstance(object: sequenceItem, body: [0x30, 0x00]))
+    }
+
     func testCustomScanProfileDeduplicatesWithoutReordering() {
         let profile = PassportScanProfile.custom([.DG1, .DG2, .DG1, .SOD, .DG2])
 
@@ -290,6 +317,24 @@ final class PassportReaderLoggingTests: XCTestCase {
         XCTAssertTrue(NFCPassportReaderError.ResponseError("redacted", 0x6C, 0x20).shouldReduceReadAmountAndRedoBAC)
         XCTAssertTrue(NFCPassportReaderError.UnsupportedDataGroup.isUnsupportedDataGroupRead)
         XCTAssertFalse(NFCPassportReaderError.InvalidMRZKey.shouldRedoBACForDataGroupRead)
+    }
+
+    @available(iOS 15, *)
+    func testStatusWordSuccessRequiresExact9000() {
+        XCTAssertTrue(TagReader.isSuccessStatus(sw1: 0x90, sw2: 0x00))
+        XCTAssertFalse(TagReader.isSuccessStatus(sw1: 0x90, sw2: 0x01))
+        XCTAssertFalse(TagReader.isSuccessStatus(sw1: 0x91, sw2: 0x00))
+    }
+
+    @available(iOS 15, *)
+    func testUnknownStatusWordMessageDoesNotExposeRawStatusBytes() {
+        let message = TagReader.decodeError(sw1: 0x6F, sw2: 0x42)
+
+        XCTAssertEqual(message, "Unknown passport chip response error")
+        XCTAssertFalse(message.localizedCaseInsensitiveContains("sw1"))
+        XCTAssertFalse(message.localizedCaseInsensitiveContains("sw2"))
+        XCTAssertFalse(message.localizedCaseInsensitiveContains("6F"))
+        XCTAssertFalse(message.localizedCaseInsensitiveContains("42"))
     }
 
     func testVerificationResultDefaultsToNotChecked() {
@@ -462,6 +507,20 @@ final class PassportReaderLoggingTests: XCTestCase {
         let exported = try allowedExporter.unsafeExportRawPassportData(from: model, selectedDataGroups: [.DG1])
 
         XCTAssertEqual(exported["DG1"], Data([0x61, 0x00]).base64EncodedString())
+    }
+
+    func testRawDumpImportRecordsMalformedEntriesWithoutSensitiveValues() {
+        let model = NFCPassportModel(from: [
+            "DG1": "not base64",
+            "DG2": Data([0x75, 0x00]).base64EncodedString()
+        ])
+
+        XCTAssertEqual(model.rawDataImportErrors.count, 2)
+        let descriptions = model.rawDataImportErrors.map(\.localizedDescription).joined(separator: "\n")
+        XCTAssertFalse(descriptions.localizedCaseInsensitiveContains("not base64"))
+        XCTAssertFalse(descriptions.localizedCaseInsensitiveContains("DG1"))
+        XCTAssertFalse(descriptions.localizedCaseInsensitiveContains("DG2"))
+        XCTAssertNil(descriptions.range(of: #"[0-9A-Fa-f]{16,}"#, options: .regularExpression))
     }
 
     @available(iOS 15, *)

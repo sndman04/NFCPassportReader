@@ -93,8 +93,6 @@ public class PACEHandler {
 
         paceKeyType = keyReference.rawValue
         paceKey = try createPaceKey(from: accessKey, keyReference: keyReference)
-        
-        // Temporary logging
 
         // First start the initial auth call
         _ = try await tagReader.sendMSESetATMutualAuth(oid: paceOID, keyType: paceKeyType)

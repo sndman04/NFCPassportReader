@@ -94,12 +94,16 @@ public class SecurityInfo {
         }
         
         if ChipAuthenticationPublicKeyInfo.checkRequiredIdentifier(oid) {
-            let keyDataEnd = requiredData.pos + requiredData.headerLen + requiredData.length
             guard requiredData.pos >= 0,
-                  keyDataEnd <= body.count else {
+                  requiredData.headerLen >= 0,
+                  requiredData.length >= 0,
+                  requiredData.pos <= body.count,
+                  requiredData.headerLen <= body.count - requiredData.pos,
+                  requiredData.length <= body.count - requiredData.pos - requiredData.headerLen else {
                 return nil
             }
 
+            let keyDataEnd = requiredData.pos + requiredData.headerLen + requiredData.length
             let keyData : [UInt8] = [UInt8](body[requiredData.pos ..< keyDataEnd])
             
             var subjectPublicKeyInfo : OpaquePointer? = nil

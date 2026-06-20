@@ -279,7 +279,7 @@ final class NFCPassportReaderTests: XCTestCase {
         
         let sm = SecureMessaging(ksenc: KSenc, ksmac: KSmac, ssc: ssc)
         
-        let data : [UInt8] = hexRepToBin("990290008E08C61E440E5DD415469000")
+        let data : [UInt8] = hexRepToBin("990290008E08C61E440E5DD41546")
         let protRespApdu = ResponseAPDU(data: data, sw1: 0x90, sw2: 0x00)
         
         XCTAssertNoThrow(try sm.unprotect( rapdu: protRespApdu )) { rapdu in
@@ -297,7 +297,7 @@ final class NFCPassportReaderTests: XCTestCase {
         
         let sm = SecureMessaging(ksenc: KSenc, ksmac: KSmac, ssc: ssc)
         
-        let data : [UInt8] = hexRepToBin("87090156D0EFCC887F8973990290008E08D6B9C0DA21DC965F9000")
+        let data : [UInt8] = hexRepToBin("87090156D0EFCC887F8973990290008E08D6B9C0DA21DC965F")
         let protRespApdu = ResponseAPDU(data: data, sw1: 0x90, sw2: 0x00)
         
         XCTAssertNoThrow(try sm.unprotect( rapdu: protRespApdu )) { rapdu in
@@ -335,6 +335,22 @@ final class NFCPassportReaderTests: XCTestCase {
         XCTAssertThrowsError(try sm.unprotect(rapdu: malformed)) { error in
             guard case NFCPassportReaderError.D087Malformed = error else {
                 XCTFail("Expected D087Malformed, got \(error)")
+                return
+            }
+        }
+    }
+
+    func testSecureMessagingRejectsTrailingBytesAfterChecksumObject() {
+        let KSenc = hexRepToBin("8FDCFE759E40A4DF4575160B3BFB79FB")
+        let KSmac = hexRepToBin("2AE92531E55707D9C4CEF8C2D6E5AD70")
+        let ssc = hexRepToBin("73061884A0E57AA8")
+
+        let sm = SecureMessaging(ksenc: KSenc, ksmac: KSmac, ssc: ssc)
+        let malformed = ResponseAPDU(data: hexRepToBin("990290008E08C61E440E5DD4154600"), sw1: 0x90, sw2: 0x00)
+
+        XCTAssertThrowsError(try sm.unprotect(rapdu: malformed)) { error in
+            guard case NFCPassportReaderError.MissingMandatoryFields = error else {
+                XCTFail("Expected MissingMandatoryFields, got \(error)")
                 return
             }
         }

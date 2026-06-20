@@ -1211,6 +1211,75 @@ Second-pass residual gaps:
 - `NFCPassportModel` still exposes raw compatibility surfaces by design for this source-compatible fork. Future major-version cleanup should move ordinary app integrations fully to safe projected result types and quarantine raw access behind an explicitly unsafe namespace or module.
 - Active Authentication support is still only knowable when DG15 is read. Profiles that omit DG15 should continue to present active authentication as not checked rather than unsupported.
 
+### 2026-06-20 Implementation Gap Cleanup Pass
+
+Completed:
+
+- Redacted `ASN1Item.debugDescription` values so parsed ASN.1 nodes cannot casually dump SOD, certificate, security-info, or OCTET STRING hex values through debug printing.
+- Removed public mutable access to BAC key-material fields (`ksenc`, `ksmac`, and `kifd`) and made direct BAC session-key derivation internal to the package. App integrations should use `PassportReader`/`PassportChipReading`, not low-level BAC/session-key flows.
+- Changed the privacy-safe `.unexpectedReadFailure` text to `read failed` so logs and diagnostics avoid misleading "expected/unexpected" wording.
+- Cleaned up default NFC sheet copy for grammar, punctuation, and clearer multi-tag guidance.
+- Moved `verifyingDataGroups` progress emission before synchronous passport verification, so progress events reflect the actual work order.
+- Updated README and Notary migration notes to warn against backend transfer of active-authentication data or raw chip data without explicit privacy-reviewed controls.
+- Added a regression test that ASN.1 debug descriptions redact long hex values.
+
+Verification:
+
+- iOS package build succeeded:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build
+  ```
+
+- Full iOS simulator unit suite passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5'
+  ```
+
+  Result: 90 tests, 0 failures.
+
+- `scripts/privacy_scan.sh` passed.
+- `git diff --check` passed.
+- Targeted risky-pattern search found no active production raw logging, print diagnostics, direct `Logger`, `os_log`, runtime traps, clipboard, persistence, network, or accidental raw-export usage. Remaining hits are expected internal APDU/key code paths, typed redacted events, documentation, and negative-test fixtures.
+
+### 2026-06-20 Full Bug Check Loop
+
+Completed:
+
+- Tightened secure-messaging response parsing so `unprotect(rapdu:)` rejects trailing bytes after the checksum object instead of accepting malformed protected responses.
+- Corrected legacy secure-messaging tests to model CoreNFC responses accurately, with status words provided separately from `ResponseAPDU.data`.
+- Made DG1 MRZ parsing require exact TD1/TD2/TD3 lengths, preventing non-standard trailing MRZ bytes from being silently accepted.
+- Hardened DG14 `SecurityInfo` public-key extraction against negative or out-of-bounds ASN.1 dump offsets before slicing raw body bytes.
+- Hardened OpenSSL signature/CMAC wrappers by validating digest/context allocation and using scoped Swift unsafe-buffer access for C calls.
+- Added sanitized `rawDataImportErrors` for legacy `NFCPassportModel(from:)` raw-dump import so malformed Base64 or data groups are not silently ignored.
+- Removed raw SOD/computed hash values from passive-authentication error payloads; mismatch errors now carry summary text only.
+- Fixed APDU status-word success handling so only exact `90 00` is accepted. Partial matches such as `90 01` and `91 00` are now failures.
+- Redacted fallback status-word diagnostic text and kept retry behavior on typed status-word fields instead of string diagnostics.
+- Removed stale temporary logging/comment leftovers found during the audit.
+- Updated README and Notary migration notes for the sanitized raw-dump import behavior.
+
+Verification:
+
+- Focused tests passed for secure-messaging trailing bytes, exact DG1 length rejection, malformed SecurityInfo offsets, OpenSSL signature/CMAC paths, raw-dump import errors, passive-authentication error payloads, and status-word classification.
+- Full iOS simulator unit suite passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5'
+  ```
+
+  Result: 97 tests, 0 failures.
+
+- Required iOS package build passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build
+  ```
+
+- `scripts/privacy_scan.sh` passed.
+- `git diff --check` passed.
+- Repeated risky-pattern loops over logging, runtime traps, raw hash/status diagnostics, unsafe C boundaries, raw export/import APIs, and stale implementation markers found no new actionable production issues after the fixes above. Remaining hits are expected typed internals, test fixtures, or documentation references.
+
 ### Option A: Remote Fork
 
 Preferred long-term route:

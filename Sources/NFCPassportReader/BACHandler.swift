@@ -16,12 +16,12 @@ public class BACHandler {
     let KENC : [UInt8] = [0,0,0,1]
     let KMAC : [UInt8] = [0,0,0,2]
     
-    public var ksenc : [UInt8] = []
-    public var ksmac : [UInt8] = []
+    private var ksenc : [UInt8] = []
+    private var ksmac : [UInt8] = []
 
     var rnd_icc : [UInt8] = []
     var rnd_ifd : [UInt8] = []
-    public var kifd : [UInt8] = []
+    private var kifd : [UInt8] = []
     
     var tagReader : TagReader?
     
@@ -131,7 +131,7 @@ public class BACHandler {
     /// @param data: the data received from the mutual authenticate command send to the chip.
     /// @type data: a binary string
     /// @return: A set of two 16 bytes keys (KSenc, KSmac) and the SSC
-    public func sessionKeys(data : [UInt8] ) throws -> ([UInt8], [UInt8], [UInt8]) {
+    func sessionKeys(data : [UInt8] ) throws -> ([UInt8], [UInt8], [UInt8]) {
         guard data.count >= 32 else {
             throw NFCPassportReaderError.InvalidMRZKey
         }

@@ -138,7 +138,7 @@ public enum PassportReaderFailureReason: Sendable, Equatable, CustomStringConver
         case .accessKeyRejected: return "access key rejected"
         case .unsupportedPassport: return "unsupported passport"
         case .verificationFailed: return "verification failed"
-        case .unexpectedReadFailure: return "unexpected read failure"
+        case .unexpectedReadFailure: return "read failed"
         }
     }
 }

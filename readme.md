@@ -156,9 +156,13 @@ Integrated Mapping (IM) and Chip Authentication Mapping (CAM) are not silently t
 Extended mode reads (not supported by all passports) can be enabled by passing in the useExtendedMode flag to the readPassport function.
 This will increase the number of bytes that can be read in a call and may be required for some passports that use long AA keys (some Australian passports for example).
 
-A custom Active Authentiion challenge can be provided to the PassportReader to ensure that the challenge/response was specifically executed in the session and not replayed. The app could then send the activeAuthenticationSignature to a backend, along with the rest of the chip data to perform validation.
+A custom Active Authentication challenge can be provided to `PassportReader` to ensure that the challenge/response was specifically executed in the session and not replayed. Treat the challenge and signature as sensitive. Do not send active-authentication data, raw chip data, or passport images to a backend unless the host app has explicit user consent, retention rules, transport controls, and a privacy-reviewed validation workflow.
 
 `NFCPassportModel.dumpPassportData(...)` is deprecated in this fork because it returns raw Base64-encoded passport chip data. Prefer `identityResult`, `verificationResult`, and privacy-safe failure/progress diagnostics. Rare raw export workflows should use `UnsafePassportRawDataExporter` with a `PassportReaderSecurityPolicy` that explicitly sets `allowsUnsafeRawDataExport: true`.
+
+`NFCPassportModel(from:)` is retained for legacy raw-dump import. It skips malformed entries and records privacy-safe summaries in `rawDataImportErrors` without retaining the invalid Base64 text or data-group bytes.
+
+Low-level BAC internals such as `KSenc`, `KSmac`, and `KIFD` are not public API in this fork. Apps should use `PassportReader`/`PassportChipReading` rather than constructing BAC/session-key flows directly.
 
 
 ## Logging

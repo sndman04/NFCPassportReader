@@ -25,16 +25,16 @@ extension NFCViewDisplayMessage {
                 return "Hold your iPhone near an NFC enabled passport."
             case .authenticatingWithPassport(let progress):
                 let progressString = handleProgress(percentualProgress: progress)
-                return "Authenticating with passport.....\n\n\(progressString)"
+                return "Authenticating with passport...\n\n\(progressString)"
             case .readingDataGroupProgress(let dataGroup, let progress):
                 let progressString = handleProgress(percentualProgress: progress)
-                return "Reading \(dataGroup).....\n\n\(progressString)"
+                return "Reading \(dataGroup)...\n\n\(progressString)"
             case .error(let tagError):
                 switch tagError {
                     case NFCPassportReaderError.TagNotValid:
                         return "Tag not valid."
                     case NFCPassportReaderError.MoreThanOneTagFound:
-                        return "More than 1 tags was found. Please present only 1 tag."
+                        return "More than one NFC tag was found. Please present only one passport."
                     case NFCPassportReaderError.ConnectionError:
                         return "Connection error. Please try again."
                     case NFCPassportReaderError.InvalidMRZKey:
@@ -42,12 +42,12 @@ extension NFCViewDisplayMessage {
                     case NFCPassportReaderError.ResponseError:
                         return "Sorry, there was a problem reading the passport. Please try again."
                     default:
-                        return "Sorry, there was a problem reading the passport. Please try again"
+                        return "Sorry, there was a problem reading the passport. Please try again."
                 }
             case .activeAuthentication:
-                return "Authenticating....."
+                return "Authenticating..."
             case .successfulRead:
-                return "Passport read successfully"
+                return "Passport read successfully."
         }
     }
     

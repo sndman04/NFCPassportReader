@@ -49,7 +49,7 @@ public class DataGroup1 : DataGroup {
     }
     
     func parseTd1(_ data : [UInt8]) throws {
-        guard data.count >= 90 else {
+        guard data.count == 90 else {
             throw NFCPassportReaderError.InvalidASN1Structure
         }
 
@@ -70,7 +70,7 @@ public class DataGroup1 : DataGroup {
     }
     
     func parseTd2(_ data : [UInt8]) throws {
-        guard data.count >= 72 else {
+        guard data.count == 72 else {
             throw NFCPassportReaderError.InvalidASN1Structure
         }
 
@@ -90,7 +90,7 @@ public class DataGroup1 : DataGroup {
     }
     
     func parseOther(_ data : [UInt8]) throws {
-        guard data.count >= 88 else {
+        guard data.count == 88 else {
             throw NFCPassportReaderError.InvalidASN1Structure
         }
 

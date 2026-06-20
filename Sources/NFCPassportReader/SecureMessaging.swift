@@ -189,6 +189,11 @@ public class SecureMessaging {
             if !res {
                 throw NFCPassportReaderError.InvalidResponseChecksum
             }
+
+            offset += 2 + ccLength
+            guard offset + 2 == rapduBin.count else {
+                throw NFCPassportReaderError.MissingMandatoryFields
+            }
         }
         else if needCC {
             throw NFCPassportReaderError.MissingMandatoryFields

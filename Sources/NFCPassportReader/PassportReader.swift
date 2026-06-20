@@ -567,10 +567,10 @@ extension PassportReader {
         // If we have a masterlist url set then use that and verify the passport now
         eventLogger.log(.verificationStarted)
         emitProgress(.verifyingSOD)
+        emitProgress(.verifyingDataGroups)
         self.passport.verifyPassport(masterListURL: self.masterListURL, useCMSVerification: self.passiveAuthenticationUsesOpenSSL)
         try self.securityPolicy.validate(self.passport)
         eventLogger.log(.readSucceeded)
-        emitProgress(.verifyingDataGroups)
         emitProgress(.complete)
 
         return self.passport

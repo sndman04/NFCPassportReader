@@ -72,6 +72,10 @@ Depend on `PassportChipReading` in app services and inject `PassportReaderFixtur
 
 `NFCPassportModel.dumpPassportData(...)` is deprecated in this fork because it returns raw Base64-encoded chip data. Notary Journal should use `identityResult`, `verificationResult`, and app-owned in-memory photo review data instead. Raw export should remain unused; if a future workflow truly requires it, use `UnsafePassportRawDataExporter` only with explicit user consent, written retention rules, and `PassportReaderSecurityPolicy(allowsUnsafeRawDataExport: true)`.
 
+Legacy `NFCPassportModel(from:)` raw-dump import now records sanitized `rawDataImportErrors` for malformed entries. Notary Journal should not use raw dump import in normal scan flows, but any migration or support tooling that does use it should check this property before trusting the rebuilt model.
+
+Do not use low-level BAC/session-key APIs from app code. This fork keeps BAC key material internal to the reader flow; Notary Journal should depend on `PassportReader` or `PassportChipReading` only.
+
 ## Release Checklist
 
 - Build this package with the iOS package scheme.

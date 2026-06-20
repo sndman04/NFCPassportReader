@@ -287,17 +287,15 @@ public class TagReader {
         
         if let sm = self.secureMessaging {
             rep = try sm.unprotect(rapdu:rep)
-        } else {
-            
         }
         
-        if rep.sw1 != 0x90 && rep.sw2 != 0x00 {
+        if !Self.isSuccessStatus(sw1: rep.sw1, sw2: rep.sw2) {
             let tagError: NFCPassportReaderError
             if (rep.sw1 == 0x63 && rep.sw2 == 0x00) {
                 tagError = NFCPassportReaderError.InvalidMRZKey
             } else {
-                let errorMsg = self.decodeError(sw1: rep.sw1, sw2: rep.sw2)
-                tagError = NFCPassportReaderError.ResponseError( errorMsg, sw1, sw2 )
+                let errorMsg = Self.decodeError(sw1: rep.sw1, sw2: rep.sw2)
+                tagError = NFCPassportReaderError.ResponseError( errorMsg, rep.sw1, rep.sw2 )
             }
             throw tagError
         }
@@ -305,24 +303,28 @@ public class TagReader {
         return rep
     }
 
-    private func decodeError( sw1: UInt8, sw2:UInt8 ) -> String {
+    static func isSuccessStatus(sw1: UInt8, sw2: UInt8) -> Bool {
+        sw1 == 0x90 && sw2 == 0x00
+    }
+
+    static func decodeError( sw1: UInt8, sw2:UInt8 ) -> String {
 
         let errors = Self.statusWordDescriptions
 
         // Special cases - where sw2 isn't an error but contains a value
         if sw1 == 0x61 {
-            return "SW2 indicates the number of response bytes still available - (\(sw2) bytes still available)"
+            return "Response bytes still available"
         } else if sw1 == 0x64 {
-            return "State of non-volatile memory unchanged (SW2=00, other values are RFU)"
+            return "Passport chip memory state unchanged"
         } else if sw1 == 0x6C {
-            return "Wrong length Le: SW2 indicates the exact length - (exact length :\(sw2))"
+            return "Wrong response length"
         }
 
         if let dict = errors[sw1], let errorMsg = dict[sw2] {
             return errorMsg
         }
 
-        return "Unknown error - sw1: 0x\(binToHexRep(sw1)), sw2 - 0x\(binToHexRep(sw2)) "
+        return "Unknown passport chip response error"
     }
 
     private static let statusWordDescriptions: [UInt8 : [UInt8:String]] = [

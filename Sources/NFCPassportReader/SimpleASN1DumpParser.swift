@@ -73,7 +73,8 @@ public class ASN1Item : CustomDebugStringConvertible {
     }
     
     public var debugDescription: String {
-        var ret = "pos:\(pos), d=\(depth), hl=\(headerLen), l=\(length): \(itemType): \(type) \(value)\n"
+        let redactedValue = value.isEmpty ? "" : " <redacted>"
+        var ret = "pos:\(pos), d=\(depth), hl=\(headerLen), l=\(length): \(itemType): \(type)\(redactedValue)\n"
         children.forEach { ret += $0.debugDescription }
         return ret
     }
