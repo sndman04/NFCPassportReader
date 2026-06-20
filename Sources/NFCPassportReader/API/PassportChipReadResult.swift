@@ -21,7 +21,7 @@ public struct PassportChipReadResult: Sendable, Equatable {
     public let certificateTrustMetadata: PassportCertificateTrustMetadata
     public let diagnosticsSummary: PassportReaderDiagnosticsSummary
 
-    public init(passport: NFCPassportModel) {
+    init(passport: NFCPassportModel) {
         self.identity = passport.identityResult
         self.verificationResult = passport.verificationResult
         self.trustLevel = PassportTrustLevel(passport: passport)

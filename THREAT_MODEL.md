@@ -25,12 +25,11 @@ This fork reads identity-document NFC data. Privacy, security, correctness, and 
 - Public error descriptions and NFC sheet messages are privacy-safe by default.
 - Sensitive low-level parsing and crypto errors should fail closed without exposing raw values.
 - Scan profiles and photo policy let apps request only the data groups they need.
-- `PassportReaderSecurityPolicy` centralizes photo access, raw-export permission, and verification strictness.
-- `PassportReaderPACEPolicy` lets callers keep compatible BAC fallback, require PACE when advertised, or require an explicit CAN/PIN/PUK credential for workflows that should fail closed.
+- `PassportReaderSecurityPolicy` centralizes photo access and verification strictness.
+- `PassportReaderPACEPolicy` lets callers keep current BAC fallback behavior, require PACE when advertised, or require an explicit CAN/PIN/PUK credential for workflows that should fail closed.
 - `PassportIdentityResult` gives host apps normalized fields and verification metadata without MRZ text, raw data groups, APDUs, certificates, keys, or image bytes.
-- `PassportChipReadResult` and `PassportReader.readPassportIdentity(...)` provide a privacy-first scan path that does not return the raw compatibility model to the host app.
-- `NFCPassportModel.removeSensitiveDataForPrivacy()` provides best-effort cleanup of raw groups, parsed hashes, card-access data, certificates, and active-authentication material for compatibility callers after projection.
-- `UnsafePassportRawDataExporter` requires an explicit policy opt-in for rare raw export workflows.
+- `PassportChipReadResult` and `PassportReader.readPassportIdentity(...)` provide the app-facing scan path and do not return the internal raw model to the host app.
+- Raw passport dump import/export APIs are not public surfaces in this fork.
 - `PassportReaderFailure` carries stage-aware retry metadata without exposing low-level error payloads, and data-group read reports describe requested/advertised/read/skipped/blocked/unsupported/failed states without raw contents.
 - `PassportInteroperabilityRecord` is limited to non-identifying real-device compatibility notes and rejects MRZ-like strings or long hex samples.
 - Parser and crypto boundaries should reject malformed input without traps, out-of-bounds reads, or empty cryptographic outputs.
@@ -60,5 +59,5 @@ This fork reads identity-document NFC data. Privacy, security, correctness, and 
 - Build the iOS test bundle.
 - Run `scripts/privacy_scan.sh`.
 - Run `git diff --check`.
-- Run targeted searches for raw diagnostics, risky sinks, runtime traps, and legacy raw export calls.
+- Run targeted searches for raw diagnostics, risky sinks, runtime traps, and removed raw import/export APIs.
 - Manually scan real passports on device before tagging, without recording real passport values.

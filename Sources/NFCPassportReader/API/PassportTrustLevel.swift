@@ -16,7 +16,7 @@ public enum PassportTrustLevel: Sendable, Equatable, CustomStringConvertible {
     case verificationFailed
     case inconclusive
 
-    public init(passport: NFCPassportModel) {
+    init(passport: NFCPassportModel) {
         let verification = passport.verificationResult
 
         if verification.overallStatus == .failed {
@@ -81,7 +81,7 @@ public struct PassportCertificateTrustMetadata: Sendable, Equatable {
     public let signerTrustEstablished: Bool
     public let revocationCheckPerformed: Bool
 
-    public init(passport: NFCPassportModel) {
+    init(passport: NFCPassportModel) {
         self.verificationAttempted = passport.passportVerificationAttempted
         self.masterListProvided = passport.masterListWasProvided
         self.masterListModifiedDate = passport.masterListModifiedDate

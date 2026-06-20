@@ -13,7 +13,7 @@ import UIKit
 import CoreNFC
 
 @available(iOS 15, *)
-public protocol PassportReaderTrackingDelegate: AnyObject {
+protocol PassportReaderTrackingDelegate: AnyObject {
     func nfcTagDetected()
     func readCardAccess(cardAccess: CardAccess)
     func paceStarted()
@@ -47,7 +47,7 @@ public class PassportReader : NSObject {
     private var scanTimeoutTask: Task<Void, Never>?
     private var securityPolicy: PassportReaderSecurityPolicy = .default
 
-    public weak var trackingDelegate: PassportReaderTrackingDelegate?
+    weak var trackingDelegate: PassportReaderTrackingDelegate?
     private var passport : NFCPassportModel = NFCPassportModel()
     
     private var readerSession: NFCTagReaderSession?
@@ -101,11 +101,11 @@ public class PassportReader : NSObject {
     // chip. NOTE - this really shouldn't be used for production but is useful for testing as different
     // passports support different data amounts.
     // It appears that the most reliable is 0xA0 (160 chars) but some will support arbitary reads (0xFF or 256)
-    public func overrideNFCDataAmountToRead( amount: Int ) {
+    func overrideNFCDataAmountToRead( amount: Int ) {
         dataAmountToReadOverride = amount
     }
     
-    public func readPassport( mrzKey : String, tags : [DataGroupId] = [], aaChallenge: [UInt8]? = nil, skipSecureElements : Bool = true, skipCA : Bool = false, skipPACE : Bool = false, useExtendedMode : Bool = false, operationTimeout: TimeInterval? = nil, photoPolicy: PassportPhotoPolicy = .read, securityPolicy: PassportReaderSecurityPolicy = .default, pacePolicy: PassportReaderPACEPolicy = .allowBACFallback, progressHandler: PassportReaderProgressHandler? = nil, customDisplayMessage : ((NFCViewDisplayMessage) -> String?)? = nil) async throws -> NFCPassportModel {
+    func readPassport( mrzKey : String, tags : [DataGroupId] = [], aaChallenge: [UInt8]? = nil, skipSecureElements : Bool = true, skipCA : Bool = false, skipPACE : Bool = false, useExtendedMode : Bool = false, operationTimeout: TimeInterval? = nil, photoPolicy: PassportPhotoPolicy = .read, securityPolicy: PassportReaderSecurityPolicy = .default, pacePolicy: PassportReaderPACEPolicy = .allowBACFallback, progressHandler: PassportReaderProgressHandler? = nil, customDisplayMessage : ((NFCViewDisplayMessage) -> String?)? = nil) async throws -> NFCPassportModel {
         guard NFCNDEFReaderSession.readingAvailable else {
             pendingPACECredential = nil
             eventLogger.log(.readFailed(.nfcNotSupported))
@@ -185,7 +185,7 @@ public class PassportReader : NSObject {
         }
     }
 
-    public func readPassport(
+    func readPassport(
         mrzKey: String,
         scanProfile: PassportScanProfile,
         aaChallenge: [UInt8]? = nil,
@@ -217,7 +217,7 @@ public class PassportReader : NSObject {
         )
     }
 
-    public func readPassport(
+    func readPassport(
         mrzKey: String,
         tags: [DataGroupId] = [],
         paceKey: String,
@@ -252,7 +252,7 @@ public class PassportReader : NSObject {
         )
     }
 
-    public func readPassport(
+    func readPassport(
         mrzKey: String,
         scanProfile: PassportScanProfile,
         paceKey: String,
@@ -288,7 +288,7 @@ public class PassportReader : NSObject {
         )
     }
 
-    public func readPassport(
+    func readPassport(
         mrzKey: String,
         options: PassportScanOptions,
         aaChallenge: [UInt8]? = nil,
@@ -348,6 +348,45 @@ public class PassportReader : NSObject {
     }
 
     public func readPassportIdentity(
+        mrzKey: String,
+        scanProfile: PassportScanProfile,
+        paceKey: String,
+        paceKeyReference: PassportPACEKeyReference,
+        aaChallenge: [UInt8]? = nil,
+        skipSecureElements: Bool = true,
+        skipCA: Bool = false,
+        skipPACE: Bool = false,
+        useExtendedMode: Bool = false,
+        operationTimeout: TimeInterval? = nil,
+        photoPolicy: PassportPhotoPolicy = .read,
+        securityPolicy: PassportReaderSecurityPolicy = .default,
+        pacePolicy: PassportReaderPACEPolicy = .allowBACFallback,
+        progressHandler: PassportReaderProgressHandler? = nil,
+        customDisplayMessage: ((NFCViewDisplayMessage) -> String?)? = nil
+    ) async throws -> PassportChipReadResult {
+        let passport = try await readPassport(
+            mrzKey: mrzKey,
+            scanProfile: scanProfile,
+            paceKey: paceKey,
+            paceKeyReference: paceKeyReference,
+            aaChallenge: aaChallenge,
+            skipSecureElements: skipSecureElements,
+            skipCA: skipCA,
+            skipPACE: skipPACE,
+            useExtendedMode: useExtendedMode,
+            operationTimeout: operationTimeout,
+            photoPolicy: photoPolicy,
+            securityPolicy: securityPolicy,
+            pacePolicy: pacePolicy,
+            progressHandler: progressHandler,
+            customDisplayMessage: customDisplayMessage
+        )
+        let result = PassportChipReadResult(passport: passport)
+        passport.removeSensitiveDataForPrivacy()
+        return result
+    }
+
+    func readPassportIdentity(
         mrzKey: String,
         tags: [DataGroupId] = [],
         aaChallenge: [UInt8]? = nil,

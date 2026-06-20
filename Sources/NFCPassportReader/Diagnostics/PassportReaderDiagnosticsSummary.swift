@@ -38,7 +38,7 @@ public struct PassportReaderDiagnosticsSummary: Sendable, Equatable {
         self.dataGroupReadReports = []
     }
 
-    public init(
+    init(
         scanProfile: PassportScanProfile,
         photoPolicy: PassportPhotoPolicy,
         securityPolicy: PassportReaderSecurityPolicy = .default,
@@ -54,7 +54,7 @@ public struct PassportReaderDiagnosticsSummary: Sendable, Equatable {
         self.dataGroupReadReports = passport.dataGroupReadReports
     }
 
-    public init(passport: NFCPassportModel) {
+    init(passport: NFCPassportModel) {
         self.scanProfile = .custom(passport.dataGroupsAvailable)
         self.photoPolicy = passport.getDataGroup(.DG2) == nil ? .skip : .read
         self.securityPolicy = .default

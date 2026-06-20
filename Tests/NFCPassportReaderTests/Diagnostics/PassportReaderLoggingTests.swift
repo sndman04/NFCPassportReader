@@ -595,53 +595,26 @@ final class PassportReaderLoggingTests: XCTestCase {
         }
     }
 
-    func testUnsafeRawExporterRequiresExplicitPolicyOptIn() throws {
-        let model = NFCPassportModel()
-        let dataGroup = try DataGroup([0x61, 0x00])
-        model.addDataGroup(.DG1, dataGroup: dataGroup)
+    func testSecurityPolicyDoesNotExposeRawExportOptIn() {
+        let labels = Mirror(reflecting: PassportReaderSecurityPolicy()).children.compactMap(\.label)
 
-        let blockedExporter = UnsafePassportRawDataExporter(securityPolicy: .default)
-        XCTAssertThrowsError(
-            try blockedExporter.unsafeExportRawPassportData(from: model, selectedDataGroups: [.DG1])
-        ) { error in
-            guard case .RawDataExportNotAllowed = error as? NFCPassportReaderError else {
-                return XCTFail("Expected RawDataExportNotAllowed")
-            }
-        }
-
-        let explicitPolicy = PassportReaderSecurityPolicy(allowsUnsafeRawDataExport: true)
-        let allowedExporter = UnsafePassportRawDataExporter(securityPolicy: explicitPolicy)
-        let exported = try allowedExporter.unsafeExportRawPassportData(from: model, selectedDataGroups: [.DG1])
-
-        XCTAssertEqual(exported["DG1"], Data([0x61, 0x00]).base64EncodedString())
-    }
-
-    func testRawDumpImportRecordsMalformedEntriesWithoutSensitiveValues() {
-        let model = NFCPassportModel(from: [
-            "DG1": "not base64",
-            "DG2": Data([0x75, 0x00]).base64EncodedString()
-        ])
-
-        XCTAssertEqual(model.rawDataImportErrors.count, 2)
-        let descriptions = model.rawDataImportErrors.map(\.localizedDescription).joined(separator: "\n")
-        XCTAssertFalse(descriptions.localizedCaseInsensitiveContains("not base64"))
-        XCTAssertFalse(descriptions.localizedCaseInsensitiveContains("DG1"))
-        XCTAssertFalse(descriptions.localizedCaseInsensitiveContains("DG2"))
-        XCTAssertNil(descriptions.range(of: #"[0-9A-Fa-f]{16,}"#, options: .regularExpression))
+        XCTAssertFalse(labels.contains("allowsUnsafeRawDataExport"))
     }
 
     @available(iOS 15, *)
-    func testFixtureReaderCanReturnModelAndProgressWithoutNFC() async throws {
-        let fixture = PassportReaderFixture(result: .success(NFCPassportModel()))
+    func testFixtureReaderCanReturnSafeResultAndProgressWithoutNFC() async throws {
+        let result = PassportChipReadResult(passport: NFCPassportModel())
+        let fixture = PassportReaderFixture(result: .success(result))
         let progressRecorder = ProgressRecorder()
 
-        let model = try await fixture.readPassport(
+        let scannedResult = try await fixture.readPassportIdentity(
             mrzKey: "SYNTHETIC",
             scanProfile: .identityOnly,
             progressHandler: { progressRecorder.record($0) }
         )
 
-        XCTAssertNotNil(model)
+        XCTAssertEqual(scannedResult, result)
+        XCTAssertFalse(Mirror(reflecting: scannedResult).children.contains { $0.label == "dataGroupsRead" })
         XCTAssertEqual(progressRecorder.events, [.waitingForPassport, .complete])
     }
 
@@ -650,7 +623,7 @@ final class PassportReaderLoggingTests: XCTestCase {
         let fixture = PassportReaderFixture(result: .failure(.ConnectionError))
 
         do {
-            _ = try await fixture.readPassport(mrzKey: "SYNTHETIC", scanProfile: .identityOnly)
+            _ = try await fixture.readPassportIdentity(mrzKey: "SYNTHETIC", scanProfile: .identityOnly)
             XCTFail("Expected fixture to throw")
         } catch let error as NFCPassportReaderError {
             XCTAssertEqual(error.privacySafeFailure.reason, .connectionLost)
@@ -660,23 +633,19 @@ final class PassportReaderLoggingTests: XCTestCase {
     }
 
     @available(iOS 15, *)
-    func testFixtureReaderAppliesSecurityPolicy() async {
-        let fixture = PassportReaderFixture(result: .success(NFCPassportModel()))
+    func testFixtureReaderUsesSafeOptionsShape() async throws {
+        let result = PassportChipReadResult(passport: NFCPassportModel())
+        let fixture = PassportReaderFixture(result: .success(result))
 
-        do {
-            _ = try await fixture.readPassport(
-                mrzKey: "SYNTHETIC",
+        let scannedResult = try await fixture.readPassportIdentity(
+            mrzKey: "SYNTHETIC",
+            options: PassportScanOptions(
                 scanProfile: .identityOnly,
                 securityPolicy: PassportReaderSecurityPolicy(verificationRequirement: .passiveAuthentication),
                 pacePolicy: .requirePACEWhenAdvertised
             )
-            XCTFail("Expected policy failure")
-        } catch let error as NFCPassportReaderError {
-            guard case .SecurityPolicyViolation = error else {
-                return XCTFail("Expected SecurityPolicyViolation")
-            }
-        } catch {
-            XCTFail("Unexpected error: \(error)")
-        }
+        )
+
+        XCTAssertEqual(scannedResult, result)
     }
 }

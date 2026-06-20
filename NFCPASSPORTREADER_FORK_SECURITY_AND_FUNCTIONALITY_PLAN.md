@@ -1418,6 +1418,106 @@ Remaining external or versioned follow-up:
 - Certificate revocation checking remains explicitly not performed. Do not imply revocation status until the fork has a defined CRL/PKD data source, cache policy, offline behavior, test vectors, and real-device/revoked-certificate validation.
 - `NFCPassportModel` still exposes raw compatibility properties for source compatibility. A future major version should quarantine ordinary app integrations behind the privacy-first result types and move raw access into explicitly unsafe APIs only.
 
+### 2026-06-20 Repository Structure Pass
+
+Completed:
+
+- Reorganized the single `NFCPassportReader` Swift target into responsibility-focused source folders without changing module names or public API declarations:
+  - `API` for app-facing protocols, result types, scan options, policies, and trust labels.
+  - `Reader` for `PassportReader` orchestration and the compatibility `NFCPassportModel`.
+  - `Diagnostics` for privacy-safe logging, progress, display messages, failure mapping, scan stages, support summaries, read reports, and interoperability records.
+  - `NFC` for low-level tag/APDU transport helpers.
+  - `Authentication` for BAC, PACE, secure messaging, session keys, and chip authentication.
+  - `Crypto` for OpenSSL-facing Swift helpers, X.509, and encryption wrappers.
+  - `Verification` for passive-authentication hashes and verification detail/result types.
+  - `Parsing` for TLV/ASN.1/string/byte parsing utilities and the data-group parser dispatcher.
+  - `Privacy` for package-owned host-app privacy copy.
+  - `Unsafe` for explicit raw export compatibility code guarded by policy.
+- Kept `DataGroups`, `Models`, `Resources`, and `OpenSSLCompat` as dedicated existing boundaries.
+- Mirrored tests into `Core`, `Diagnostics`, and `Parsing` subfolders so future privacy, parser, and regression work has a predictable home.
+- Added `REPOSITORY_STRUCTURE.md` with the full folder map, where-to-start guidance, test layout, fixture cautions, and structural-change verification commands.
+- Updated `readme.md` with a concise repository-structure overview for app integrators and maintainers.
+- Updated `scripts/privacy_scan.sh` to account for the new `Reader/NFCPassportModel.swift` location when checking accidental legacy raw export usage.
+
+Verification:
+
+- Required iOS package build passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build
+  ```
+
+- Full iOS simulator unit suite passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5'
+  ```
+
+  Result: 107 tests, 0 failures.
+
+- Consolidated release check passed:
+
+  ```sh
+  scripts/release_check.sh
+  ```
+
+  This reran the iOS package build, iOS build-for-testing, `scripts/privacy_scan.sh`, `git diff --check`, and the targeted risky-diagnostics search. Remaining search hits were reviewed as expected documentation, negative-test fixtures, typed APDU/key internals, or redacted event logging.
+
+- A direct stale-path search for old root-level source/test locations returned no hits.
+
+Remaining follow-up:
+
+- No public API migration is intended from this pass. If future source locations are documented in downstream app notes or scripts, update those references to the new folder structure.
+
+### 2026-06-20 Future-Ready API Break Pass
+
+Context:
+
+- Product direction changed: no app currently depends on this fork, so preserving upstream/source compatibility is no longer a goal.
+- Earlier compatibility decisions in this plan are superseded by this pass where they conflict with a privacy-first public API.
+
+Completed:
+
+- Made `NFCPassportModel` an internal working model rather than an app-facing public result type.
+- Made the raw `PassportReader.readPassport(...) -> NFCPassportModel` overloads internal. Public app scans should use `readPassportIdentity(...)` and receive `PassportChipReadResult`.
+- Removed public raw dump import/export surfaces: `NFCPassportModel(from:)`, `dumpPassportData(...)`, `UnsafePassportRawDataExporter`, `PassportReaderSecurityPolicy.allowsUnsafeRawDataExport`, and raw import error plumbing.
+- Updated `PassportChipReading` and `PassportReaderFixture` to return `PassportChipReadResult`, so simulator/UI tests do not require a raw passport model.
+- Added a safe `readPassportIdentity(...)` overload for explicit CAN/PIN/PUK PACE credentials.
+- Made low-level tracking/test hooks internal: `PassportReaderTrackingDelegate`, `trackingDelegate`, `overrideNFCDataAmountToRead(amount:)`, and the ad hoc `readPassportIdentity(tags:)` overload are no longer public API. Apps should use typed progress events, `PassportScanProfile.custom(...)`, or `PassportScanOptions`.
+- Updated `scripts/privacy_scan.sh` to fail if removed raw import/export APIs reappear in production sources.
+- Updated README, Notary migration notes, threat model, and repository structure docs to describe the safe-result boundary and the internal-only raw model.
+
+Verification during this pass:
+
+- Required iOS package build passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build
+  ```
+
+- Full iOS simulator unit suite passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5'
+  ```
+
+  Result: 106 tests, 0 failures.
+
+- Post-cleanup verification reran successfully after making the low-level tracking/test hooks internal:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5'
+  scripts/privacy_scan.sh
+  git diff --check && git diff --cached --check
+  ```
+
+  Result: iOS build passed, simulator suite passed 106 tests with 0 failures, privacy scan passed, and diff whitespace checks passed.
+
+- A broad risky-pattern search found no active production raw logging, removed raw import/export APIs, or direct print/Logger/os_log sinks. Remaining hits were reviewed as documentation, negative-test fixtures, internal APDU/key type names, or scanner patterns.
+
+- `scripts/release_check.sh` was attempted after the successful direct build/test run, but the local Xcode/CoreSimulator services failed to initialize and xcodebuild reported package discovery errors despite `Package.swift` being present. Treat this as an environment issue for this handoff; rerun the release wrapper before tagging if CoreSimulator is restarted.
+
 ### Option A: Remote Fork
 
 Preferred long-term route:

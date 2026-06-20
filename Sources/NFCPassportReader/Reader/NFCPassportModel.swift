@@ -13,14 +13,14 @@ import UIKit
 #endif
 
 
-public enum PassportAuthenticationStatus {
+enum PassportAuthenticationStatus {
     case notDone
     case success
     case failed
 }
 
 @available(iOS 13, macOS 10.15, *)
-public class NFCPassportModel {
+class NFCPassportModel {
     
     public private(set) lazy var documentType : String = { return String( passportDataElements?["5F03"]?.first ?? "?" ) }()
     public private(set) lazy var documentSubType : String = { return String( passportDataElements?["5F03"]?.last ?? "?" ) }()
@@ -44,9 +44,7 @@ public class NFCPassportModel {
         return name.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
     }()
     
-    /// Sensitive raw MRZ text from DG1. Prefer `identityResult` for app-facing mapping and do not log,
-    /// persist, upload, or display this value outside a deliberate privacy-reviewed workflow.
-    public private(set) lazy var passportMRZ : String = { return passportDataElements?["5F1F"] ?? "NOT FOUND" }()
+    private lazy var passportMRZ : String = { return passportDataElements?["5F1F"] ?? "NOT FOUND" }()
     
     // Extract fields from DG11 if present
     private lazy var names : [String] = {
@@ -112,8 +110,7 @@ public class NFCPassportModel {
     
     // Parsed datagroup hashes
     public private(set) var dataGroupsAvailable = [DataGroupId]()
-    /// Raw parsed data groups retained for compatibility, verification, and explicit unsafe export paths.
-    /// Prefer `identityResult` and `verificationResult` in host apps.
+    /// Raw parsed data groups retained internally for verification and safe result projection.
     public private(set) var dataGroupsRead : [DataGroupId:DataGroup] = [:]
     public private(set) var dataGroupHashes = [DataGroupId: DataGroupHash]()
     public private(set) var dataGroupReadReports: [PassportDataGroupReadReport] = []
@@ -127,16 +124,11 @@ public class NFCPassportModel {
     public private(set) var documentSigningCertificateVerified : Bool = false
     public private(set) var passportDataNotTampered : Bool = false
     public private(set) var activeAuthenticationPassed : Bool = false
-    /// Sensitive Active Authentication challenge retained for compatibility and explicit unsafe export paths.
+    /// Sensitive Active Authentication challenge retained internally until safe result projection completes.
     public private(set) var activeAuthenticationChallenge : [UInt8] = []
-    /// Sensitive Active Authentication signature retained for compatibility and explicit unsafe export paths.
+    /// Sensitive Active Authentication signature retained internally until safe result projection completes.
     public private(set) var activeAuthenticationSignature : [UInt8] = []
     public private(set) var verificationErrors : [Error] = []
-    /// Privacy-safe errors recorded while rebuilding a model from a raw dump.
-    ///
-    /// `init(from:)` is retained for source compatibility and cannot throw, so malformed dump entries
-    /// are skipped and summarized here without retaining the offending raw values.
-    public private(set) var rawDataImportErrors : [NFCPassportReaderError] = []
     public private(set) var passportVerificationAttempted : Bool = false
     public private(set) var masterListWasProvided : Bool = false
     public private(set) var masterListModifiedDate : Date?
@@ -229,37 +221,6 @@ public class NFCPassportModel {
         
     }
     
-    public init( from dump: [String:String] ) {
-        var AAChallenge : [UInt8]?
-        var AASignature : [UInt8]?
-        for (key,value) in dump {
-            guard let data = Data(base64Encoded: value) else {
-                rawDataImportErrors.append(.InvalidDataPassed("Raw data import entry could not be decoded"))
-                continue
-            }
-
-            let bin = [UInt8](data)
-            if key == "AASignature" {
-                AASignature = bin
-            } else if key == "AAChallenge" {
-                AAChallenge = bin
-            } else {
-                do {
-                    let dg = try DataGroupParser().parseDG(data: bin)
-                    let dgId = DataGroupId.getIDFromName(name:key)
-                    self.addDataGroup( dgId, dataGroup:dg )
-                } catch {
-                    rawDataImportErrors.append(.InvalidDataPassed("Raw data import data group could not be parsed"))
-                }
-            }
-        }
-
-        // See if we have Active Auth info in the dump
-        if let challenge = AAChallenge, let signature = AASignature {
-            verifyActiveAuthentication(challenge: challenge, signature: signature)
-        }
-    }
-    
     public func addDataGroup(_ id : DataGroupId, dataGroup: DataGroup ) {
         self.dataGroupsRead[id] = dataGroup
         if id != .COM && id != .SOD && !self.dataGroupsAvailable.contains(id) {
@@ -267,13 +228,11 @@ public class NFCPassportModel {
         }
     }
 
-    /// Returns a raw parsed data group. Prefer `identityResult`, `verificationResult`, or dedicated
-    /// image accessors unless the host app has an explicit privacy-reviewed need for raw chip data.
-    public func getDataGroup( _ id : DataGroupId ) -> DataGroup? {
+    func getDataGroup( _ id : DataGroupId ) -> DataGroup? {
         return dataGroupsRead[id]
     }
 
-    /// Best-effort cleanup for sensitive raw chip material retained by the compatibility model.
+    /// Best-effort cleanup for sensitive raw chip material retained by the internal working model.
     ///
     /// Call this after projecting the values needed by the host app. This clears parsed raw data groups,
     /// hashes, card-access data, certificate objects, and active-authentication material held by this
@@ -288,39 +247,6 @@ public class NFCPassportModel {
         certificateSigningGroups.removeAll(keepingCapacity: false)
         activeAuthenticationChallenge.removeAll(keepingCapacity: false)
         activeAuthenticationSignature.removeAll(keepingCapacity: false)
-    }
-
-    /// Returns raw, Base64-encoded passport data groups for explicit export or debugging workflows.
-    ///
-    /// The returned values can contain sensitive identity-document data and optional active-authentication
-    /// material. Do not log, persist, upload, or display this output unless the host app has a deliberate,
-    /// user-approved privacy policy for that use.
-    /// - Parameters:
-    ///    selectedDataGroups - the Data Groups to be exported (if they are present in the passport)
-    ///    includeActiveAutheticationData - Whether to include the Active Authentication challenge and response (if supported and retrieved)
-    /// - Returns: dictionary of DataGroup ids and Base64 encoded data
-    @available(*, deprecated, message: "This returns sensitive raw passport data. Prefer identityResult, verificationResult, and UnsafePassportRawDataExporter for deliberate raw export.")
-    public func dumpPassportData( selectedDataGroups : [DataGroupId], includeActiveAuthenticationData : Bool = false) -> [String:String] {
-        unsafeDumpPassportData(
-            selectedDataGroups: selectedDataGroups,
-            includeActiveAuthenticationData: includeActiveAuthenticationData
-        )
-    }
-
-    func unsafeDumpPassportData(selectedDataGroups: [DataGroupId], includeActiveAuthenticationData: Bool = false) -> [String:String] {
-        var ret = [String:String]()
-        for dg in selectedDataGroups {
-            if let dataGroup = self.dataGroupsRead[dg] {
-                let val = Data(dataGroup.data)
-                let base64 = val.base64EncodedString()
-                ret[dg.getName()] = base64
-            }
-        }
-        if includeActiveAuthenticationData && self.activeAuthenticationSupported {
-            ret["AAChallenge"] = Data(activeAuthenticationChallenge).base64EncodedString()
-            ret["AASignature"] = Data(activeAuthenticationSignature).base64EncodedString()
-        }
-        return ret
     }
 
     func recordDataGroupReadStatus(_ status: PassportDataGroupReadStatus, for id: DataGroupId) {

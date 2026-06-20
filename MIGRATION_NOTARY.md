@@ -1,6 +1,6 @@
 # Notary Journal Migration Notes
 
-This fork keeps `PassportReader(masterListURL:)` and the existing `readPassport(mrzKey:tags:...)` API source-compatible, but Notary Journal should prefer the newer privacy-safe surfaces.
+This fork intentionally exposes the privacy-safe passport-chip API as the app integration boundary. Notary Journal should use `readPassportIdentity(...)` and should not depend on the internal raw passport model.
 
 ## Recommended Reader Setup
 
@@ -41,43 +41,13 @@ let result = try await reader.readPassportIdentity(
 
 `PassportChipReadResult` exposes normalized identity, verification, trust, certificate/master-list metadata, and safe diagnostics without returning `NFCPassportModel` or raw chip data. It intentionally omits MRZ text, raw data groups, APDUs, certificates, keys, active-authentication challenge/signature bytes, and image bytes.
 
-If the app still needs transient photo review from `NFCPassportModel.passportImage`, use the compatibility call below and call `passport.removeSensitiveDataForPrivacy()` as soon as the app has projected identity fields, verification status, and any in-memory photo review object it deliberately needs.
-
-```swift
-let passport = try await reader.readPassport(
-    mrzKey: mrzKey,
-    scanProfile: .fullVerification,
-    skipSecureElements: true,
-    skipCA: false,
-    skipPACE: false,
-    useExtendedMode: true,
-    operationTimeout: 60,
-    photoPolicy: .read,
-    securityPolicy: .notaryRecommended,
-    progressHandler: { event in
-        // Map to app UI state. Do not log event values together with identity data.
-    },
-    customDisplayMessage: { message in
-        switch message {
-        case .requestPresentPassport:
-            return "Hold the top of your iPhone near the passport chip."
-        case .successfulRead:
-            return "Passport chip read."
-        default:
-            return nil
-        }
-    }
-)
-```
-
 Use `.identityOnly` or `.identityWithPhoto` only after confirming Notary Journal does not need optional details, signature/mark images, or chip-authentication groups for its workflow.
-For compatibility calls that still use `readPassport(mrzKey:tags:)`, an empty tag list plus `securityPolicy: .identityOnly` now resolves to the minimal identity group set instead of reading every group advertised by COM.
 
-`PassportReaderSecurityPolicy.notaryRecommended` currently allows passport photo review, blocks unsafe raw export, and requires passive-authentication integrity checks to pass when verification is attempted. If Notary Journal needs a softer rollout while validating real passports, use `.default` temporarily and document the reason in this file before tagging.
+`PassportReaderSecurityPolicy.notaryRecommended` currently allows passport photo presence in the safe result and requires passive-authentication integrity checks to pass when verification is attempted. If Notary Journal needs a softer rollout while validating real passports, use `.default` temporarily and document the reason in this file before tagging.
 
-`PassportScanOptions.notaryStrict` uses the compatibility PACE policy `.allowBACFallback` so existing MRZ-based scans still work while Notary validates its passport population. After real-device coverage confirms the rollout path, the app can choose `.requirePACEWhenAdvertised` or `.requireExplicitCredential(.can)` for workflows where fallback should be blocked.
+`PassportScanOptions.notaryStrict` uses `.allowBACFallback` for current passport interoperability while Notary validates its passport population. After real-device coverage confirms the rollout path, the app can choose `.requirePACEWhenAdvertised` or `.requireExplicitCredential(.can)` for workflows where fallback should be blocked.
 
-Prefer `passport.identityResult` for app-facing mapping where possible. It omits MRZ text, raw data-group bytes, APDU data, certificates, cryptographic material, and image bytes while preserving normalized fields, verification status, trust level, and certificate-trust metadata. Passive authentication verifies the groups that were actually read; app copy should not imply unread optional groups were checked.
+Use `result.identity`, `result.verificationResult`, `result.trustLevel`, and `result.certificateTrustMetadata` for app-facing mapping. Passive authentication verifies the groups that were actually read; app copy should not imply unread optional groups were checked.
 
 Use `passport.verificationResult.*Detail` fields when the app needs to distinguish missing master list, skipped authentication, unsupported authentication, hash mismatch, signer trust failure, and other safe reasons. Do not parse raw error strings.
 
@@ -94,17 +64,15 @@ catch let error as NFCPassportReaderError {
 }
 ```
 
-Do not display or log `error.value`; it is retained only for internal compatibility paths.
+Do not display or log `error.value`; use `privacySafeFailure` or `privacySafeFailure(at:)` instead.
 
 ## Test Injection
 
 Depend on `PassportChipReading` in app services and inject `PassportReaderFixture` in simulator and UI tests. This allows success and failure flows without NFC hardware or real passport data.
 
-## Sensitive Export API
+## Raw Data Boundary
 
-`NFCPassportModel.dumpPassportData(...)` is deprecated in this fork because it returns raw Base64-encoded chip data. Notary Journal should use `identityResult`, `verificationResult`, and app-owned in-memory photo review data instead. Raw export should remain unused; if a future workflow truly requires it, use `UnsafePassportRawDataExporter` only with explicit user consent, written retention rules, and `PassportReaderSecurityPolicy(allowsUnsafeRawDataExport: true)`.
-
-Legacy `NFCPassportModel(from:)` raw-dump import now records sanitized `rawDataImportErrors` for malformed entries. Notary Journal should not use raw dump import in normal scan flows, but any migration or support tooling that does use it should check this property before trusting the rebuilt model.
+Raw passport dump import/export APIs are not public in this fork. Notary Journal should use the projected `PassportChipReadResult` only and should not add support tooling that stores raw data groups, APDUs, active-authentication challenge/signature bytes, certificate dumps, or passport image bytes.
 
 Do not use low-level BAC/session-key APIs from app code. This fork keeps BAC key material internal to the reader flow; Notary Journal should depend on `PassportReader` or `PassportChipReading` only.
 

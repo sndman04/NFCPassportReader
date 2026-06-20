@@ -10,36 +10,31 @@ import Foundation
 /// Controls privacy and verification decisions that should be deliberate at the host-app boundary.
 @available(iOS 13, macOS 10.15, *)
 public struct PassportReaderSecurityPolicy: Sendable, Equatable {
-    /// Source-compatible default. Allows requested photo reads and does not fail a read solely because
+    /// Permissive default. Allows requested photo reads and does not fail a read solely because
     /// verification is incomplete.
     public static let `default` = PassportReaderSecurityPolicy()
 
     /// Conservative policy for apps that only need normalized identity fields.
     public static let identityOnly = PassportReaderSecurityPolicy(
         allowsPassportPhoto: false,
-        allowsUnsafeRawDataExport: false,
         verificationRequirement: .none
     )
 
-    /// Recommended starting point for Notary Journal: allow photo review, disallow raw export, and
-    /// require passive-authentication integrity checks to pass when verification is attempted.
+    /// Recommended starting point for Notary Journal: allow photo review and require
+    /// passive-authentication integrity checks to pass when verification is attempted.
     public static let notaryRecommended = PassportReaderSecurityPolicy(
         allowsPassportPhoto: true,
-        allowsUnsafeRawDataExport: false,
         verificationRequirement: .passiveAuthentication
     )
 
     public let allowsPassportPhoto: Bool
-    public let allowsUnsafeRawDataExport: Bool
     public let verificationRequirement: PassportVerificationRequirement
 
     public init(
         allowsPassportPhoto: Bool = true,
-        allowsUnsafeRawDataExport: Bool = false,
         verificationRequirement: PassportVerificationRequirement = .none
     ) {
         self.allowsPassportPhoto = allowsPassportPhoto
-        self.allowsUnsafeRawDataExport = allowsUnsafeRawDataExport
         self.verificationRequirement = verificationRequirement
     }
 

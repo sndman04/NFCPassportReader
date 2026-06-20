@@ -7,7 +7,7 @@ This package handles reading an NFC Enabled passport using iOS 15 CoreNFC APIS
 Supported features:
 * Basic Access Control (BAC)
 * Secure Messaging
-* Reads and preserves all LDS data groups. COM, DG1, DG2, DG7, DG11, DG12, DG14, DG15, and SOD have typed parsers; DG3, DG4, DG5, DG6, DG8, DG9, DG10, DG13, and DG16 are retained as opaque typed data groups for hashing and explicit raw export workflows.
+* Reads and verifies LDS data groups without exposing raw chip data through public app APIs. COM, DG1, DG2, DG7, DG11, DG12, DG14, DG15, and SOD have typed parsers; DG3, DG4, DG5, DG6, DG8, DG9, DG10, DG13, and DG16 are retained internally as opaque typed data groups for hashing.
 * Passive Authentication with structured LDS Security Object hash parsing and CMS verification fallback.
 * Active Authentication with RSA and ECDSA DG15 public-key detection.
 * Chip Authentication (ECDH DES and AES keys tested, DH DES AES keys implemented ad should work but currently not tested)
@@ -47,19 +47,16 @@ Expiry date checksum - 5
 mrzKey = "12345678898012772508315"
 ```
 
-Then create a `PassportReader` and call the async `readPassport` API. Prefer scan profiles over ad hoc data-group lists where possible.
+Then create a `PassportReader` and call the privacy-first async `readPassportIdentity` API. Prefer reviewed scan options over ad hoc data-group lists where possible.
 
 Progress events are structured and redacted; they do not include MRZ values, APDUs, keys, decrypted data groups, or image bytes.
 
 ```swift
 let passportReader = PassportReader(masterListURL: masterListURL)
 
-let passport = try await passportReader.readPassport(
+let result = try await passportReader.readPassportIdentity(
     mrzKey: mrzKey,
-    scanProfile: .identityWithPhoto,
-    operationTimeout: 60,
-    photoPolicy: .read,
-    securityPolicy: .default,
+    options: .notaryStrict,
     progressHandler: { event in
         switch event {
         case .waitingForPassport:
@@ -87,25 +84,9 @@ let passport = try await passportReader.readPassport(
 Supported scan profiles are `.identityOnly`, `.identityWithPhoto`, `.fullVerification`, and `.custom([DataGroupId])`.
 Prefer the smallest profile that supports the app workflow.
 `.fullVerification` reads COM, SOD, DG1, DG2, DG7, DG11, DG12, DG14, and DG15 for identity, photo, signature/mark image, optional personal details, document details, and chip/authentication checks.
-Use `photoPolicy: .skip` to remove DG2 from the requested data groups when the app does not need passport face image data. The policy is also applied after COM expansion for legacy empty-tag reads.
+Use `photoPolicy: .skip` to remove DG2 from the requested data groups when the app does not need passport face image data.
 
 Use `PassportReaderSecurityPolicy` to centralize privacy and verification decisions:
-
-```swift
-let passport = try await passportReader.readPassport(
-    mrzKey: mrzKey,
-    scanProfile: .fullVerification,
-    photoPolicy: .read,
-    securityPolicy: .notaryRecommended
-)
-```
-
-Security policies can disallow passport photo reads even when a broader scan profile requests DG2, block raw export by default, and require verification strictness such as `.passiveAuthentication`, `.trustedPassiveAuthentication`, or `.fullVerificationWhenSupported`.
-For legacy `readPassport(mrzKey:tags:)` calls that pass an empty tag list, `securityPolicy: .identityOnly` resolves to the minimal identity profile instead of expanding to every group advertised by COM.
-
-For app-facing data, prefer `passport.identityResult`. It contains normalized identity fields, verification status, trust level, and certificate-trust metadata, and intentionally omits MRZ text, raw data-group bytes, APDUs, certificates, keys, and image bytes.
-
-For the strongest app boundary, use the privacy-first result API instead of receiving an `NFCPassportModel`:
 
 ```swift
 let result = try await passportReader.readPassportIdentity(
@@ -114,13 +95,13 @@ let result = try await passportReader.readPassportIdentity(
 )
 ```
 
-`PassportChipReadResult` contains `identity`, `verificationResult`, `trustLevel`, `certificateTrustMetadata`, and `diagnosticsSummary`. It intentionally does not expose the raw compatibility model, MRZ text, data-group bytes, APDUs, certificates, keys, active-authentication challenge/signature bytes, or image bytes. It also intentionally does not conform to `Codable`.
+Security policies can disallow passport photo reads even when a broader scan profile requests DG2 and require verification strictness such as `.passiveAuthentication`, `.trustedPassiveAuthentication`, or `.fullVerificationWhenSupported`.
 
-For compatibility flows that still need `NFCPassportModel`, call `removeSensitiveDataForPrivacy()` after projecting the app-facing values you need. This clears raw data groups, parsed hashes, card-access data, certificate objects, and active-authentication material held by that model instance. This is best-effort data minimization; Swift value copies and framework internals cannot guarantee complete memory zeroization.
+`PassportChipReadResult` contains `identity`, `verificationResult`, `trustLevel`, `certificateTrustMetadata`, and `diagnosticsSummary`. It intentionally does not expose the internal raw model, MRZ text, data-group bytes, APDUs, certificates, keys, active-authentication challenge/signature bytes, or image bytes. It also intentionally does not conform to `Codable`.
 
 `PassportScanOptions` provides reviewed combinations of profile, timeout, photo policy, authentication flags, security policy, and PACE policy. `.notaryStrict` is the recommended starting point for Notary Journal style workflows; `.identityOnly` keeps collection minimal when the app does not need photo or optional verification groups.
 
-PACE policy defaults to `.allowBACFallback` for compatibility. Use `.requirePACEWhenAdvertised` only after validating the target passport population with real devices, and use `.requireExplicitCredential(.can)`, `.pin`, or `.puk` when the workflow has collected that credential and should fail rather than fall back to MRZ-derived PACE/BAC.
+PACE policy defaults to `.allowBACFallback` for current passport interoperability. Use `.requirePACEWhenAdvertised` only after validating the target passport population with real devices, and use `.requireExplicitCredential(.can)`, `.pin`, or `.puk` when the workflow has collected that credential and should fail rather than fall back to MRZ-derived PACE/BAC.
 
 If passive authentication runs without a CSCA master list, SOD signature and data-group hash checks can still report that the data groups actually read are internally consistent, but country signer trust is reported as not checked. A trusted signer result requires a master list from the issuing country or ICAO PKD.
 
@@ -136,8 +117,8 @@ Errors can be mapped to privacy-safe app copy and retry decisions:
 
 ```swift
 do {
-    let passport = try await passportReader.readPassport(mrzKey: mrzKey, scanProfile: .fullVerification)
-    let verification = passport.verificationResult
+    let result = try await passportReader.readPassportIdentity(mrzKey: mrzKey, options: .notaryStrict)
+    let verification = result.verificationResult
 } catch let error as NFCPassportReaderError {
     let failure = error.privacySafeFailure(at: .readingDataGroup(.DG2))
     // Use failure.reason, failure.stage, failure.isRetryLikelyToHelp, and failure.recoverySuggestion.
@@ -147,26 +128,26 @@ do {
 For UI tests or simulator flows, depend on `PassportChipReading` and inject `PassportReaderFixture` instead of creating a real NFC session:
 
 ```swift
-let fixture = PassportReaderFixture(result: .success(NFCPassportModel()))
+let fixture = PassportReaderFixture(result: .success(syntheticResult))
 ```
 
-The reader can read every LDS data-group file id. COM, DG1, DG2, DG7, DG11, DG12, DG14, DG15, and SOD have typed parsers used by the app-facing model. DG7 preserves multiple displayed signature/mark image items when present while keeping the first image available through the existing compatibility API. DG3, DG4, DG5, DG6, DG8, DG9, DG10, DG13, and DG16 are represented as opaque typed groups so they can be read, retained, hashed for passive authentication, and exported only through explicit unsafe raw-export policy.
+The reader can read every LDS data-group file id. COM, DG1, DG2, DG7, DG11, DG12, DG14, DG15, and SOD have typed parsers used by the safe app-facing result. DG7 preserves multiple displayed signature/mark image items when present. DG3, DG4, DG5, DG6, DG8, DG9, DG10, DG13, and DG16 are represented as opaque typed groups internally so they can be read and hashed for passive authentication without public raw export.
 
 DG2 and DG7 image parsing has explicit byte and structural bounds. Malformed payloads with excessive image bytes, excessive dimensions, or impossible feature-point skips are rejected before unbounded retention or image decoding.
 
 PACE defaults to the MRZ-derived key:
 
 ```swift
-let passport = try await passportReader.readPassport(
+let result = try await passportReader.readPassportIdentity(
     mrzKey: mrzKey,
-    scanProfile: .fullVerification
+    options: .notaryStrict
 )
 ```
 
 If a document or inspection workflow requires a CAN, PIN, or PUK PACE credential, pass it explicitly while still providing the MRZ key for BAC fallback:
 
 ```swift
-let passport = try await passportReader.readPassport(
+let result = try await passportReader.readPassportIdentity(
     mrzKey: mrzKey,
     scanProfile: .identityWithPhoto,
     paceKey: can,
@@ -176,16 +157,12 @@ let passport = try await passportReader.readPassport(
 
 Integrated Mapping (IM) and Chip Authentication Mapping (CAM) are not silently treated as supported. They fail with a privacy-safe PACE failure until implemented and validated against real chips. Unknown DG14/CardAccess `SecurityInfo` records are preserved as redacted `UnknownSecurityInfo` values so callers can detect unrecognized security capabilities without exposing raw chip data.
 
-Extended mode reads (not supported by all passports) can be enabled by passing in the useExtendedMode flag to the readPassport function.
+Extended mode reads (not supported by all passports) can be enabled through `PassportScanOptions.useExtendedMode`.
 This will increase the number of bytes that can be read in a call and may be required for some passports that use long AA keys (some Australian passports for example).
 
 A custom Active Authentication challenge can be provided to `PassportReader` to ensure that the challenge/response was specifically executed in the session and not replayed. Treat the challenge and signature as sensitive. Do not send active-authentication data, raw chip data, or passport images to a backend unless the host app has explicit user consent, retention rules, transport controls, and a privacy-reviewed validation workflow.
 
-`NFCPassportModel.dumpPassportData(...)` is deprecated in this fork because it returns raw Base64-encoded passport chip data. Prefer `identityResult`, `verificationResult`, and privacy-safe failure/progress diagnostics. Rare raw export workflows should use `UnsafePassportRawDataExporter` with a `PassportReaderSecurityPolicy` that explicitly sets `allowsUnsafeRawDataExport: true`.
-
-`NFCPassportModel(from:)` is retained for legacy raw-dump import. It skips malformed entries and records privacy-safe summaries in `rawDataImportErrors` without retaining the invalid Base64 text or data-group bytes.
-
-Low-level BAC internals such as `KSenc`, `KSmac`, and `KIFD` are not public API in this fork. Apps should use `PassportReader`/`PassportChipReading` rather than constructing BAC/session-key flows directly.
+Raw passport dump import/export APIs are not part of this fork's public surface. Low-level BAC internals such as `KSenc`, `KSmac`, and `KIFD` are not public API. Apps should use `PassportReader.readPassportIdentity(...)` or the safe `PassportChipReading` abstraction rather than constructing NFC, BAC, session-key, or raw data-group flows directly.
 
 
 ## Logging
@@ -226,6 +203,21 @@ The release check script runs the required iOS package build, iOS build-for-test
 Run at least one manual on-device passport scan before releasing a fork tag, because PACE/BAC/Chip Authentication behavior depends on real chip interoperability.
 
 See `THREAT_MODEL.md` for the fork's privacy and verification assumptions.
+
+## Repository structure
+
+The source tree is organized by responsibility so app integrators can find safe public APIs without digging through low-level NFC or cryptography internals.
+
+- `Sources/NFCPassportReader/API/`: app-facing reader protocols, result types, scan options, policies, and trust labels.
+- `Sources/NFCPassportReader/Reader/`: high-level `PassportReader` orchestration and the internal working `NFCPassportModel`.
+- `Sources/NFCPassportReader/Diagnostics/`: privacy-safe logging, progress, display messages, failure mapping, scan stages, and support diagnostics.
+- `Sources/NFCPassportReader/NFC/`: CoreNFC transport helpers and APDU response handling.
+- `Sources/NFCPassportReader/Authentication/`: BAC, PACE, secure messaging, session keys, and chip authentication.
+- `Sources/NFCPassportReader/Crypto/`: OpenSSL-facing Swift helpers, X.509, and encryption wrappers.
+- `Sources/NFCPassportReader/Verification/`: passive-authentication hashes and structured verification results.
+- `Sources/NFCPassportReader/DataGroups/`: LDS data-group models and typed data-group parsing.
+- `Sources/NFCPassportReader/Parsing/`: shared TLV, ASN.1, byte, and string parsing helpers.
+See `REPOSITORY_STRUCTURE.md` for the full maintainer map, test layout, and guidance on where to start for common changes.
 
 ## Other info
 

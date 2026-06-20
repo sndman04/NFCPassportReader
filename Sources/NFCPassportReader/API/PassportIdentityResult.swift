@@ -35,7 +35,7 @@ public struct PassportIdentityResult: Sendable, Equatable {
     public let trustLevel: PassportTrustLevel
     public let certificateTrustMetadata: PassportCertificateTrustMetadata
 
-    public init(passport: NFCPassportModel) {
+    init(passport: NFCPassportModel) {
         self.documentType = passport.documentType
         self.documentSubType = passport.documentSubType
         self.documentNumber = passport.documentNumber
@@ -65,7 +65,7 @@ public struct PassportIdentityResult: Sendable, Equatable {
 }
 
 @available(iOS 13, macOS 10.15, *)
-public extension NFCPassportModel {
+extension NFCPassportModel {
     /// Returns normalized fields and safe verification metadata for app integration.
     ///
     /// The returned value still contains personal identity data. It intentionally omits MRZ text,
