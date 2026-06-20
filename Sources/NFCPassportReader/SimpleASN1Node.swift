@@ -74,7 +74,7 @@ struct SimpleASN1Node {
 
         var cursor = offset
         let tag = try readTag(bytes, cursor: &cursor, limit: limit)
-        let (length, lengthSize) = try asn1Length([UInt8](bytes[cursor ..< min(cursor + 5, limit)]))
+        let (length, lengthSize) = try asn1Length(bytes[cursor ..< min(cursor + 5, limit)])
         cursor += lengthSize
         let headerLength = cursor - offset
         guard length >= 0, cursor + length <= limit else {

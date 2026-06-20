@@ -51,8 +51,8 @@ public class COM : DataGroup {
         
         let vals = try getNextValue()
         for v in vals {
-            if let index = DataGroupParser.tags.firstIndex(of: v) {
-                dataGroupsPresent.append( DataGroupParser.dataGroupNames[index] )
+            if let name = DataGroupParser.tagNameLookup[v] {
+                dataGroupsPresent.append(name)
             }
         }
     }

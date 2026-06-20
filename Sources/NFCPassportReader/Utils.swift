@@ -17,14 +17,17 @@ import CryptoTokenKit
 
 private extension UInt8 {
     var hexString: String {
-        let string = String(self, radix: 16)
-        return (self < 16 ? "0" + string : string)
+        String(Self.uppercaseHexDigits[Int(self >> 4)]) + String(Self.uppercaseHexDigits[Int(self & 0x0F)])
     }
+
+    static let uppercaseHexDigits = Array("0123456789ABCDEF")
+    static let lowercaseHexDigits = Array("0123456789abcdef")
 }
 
 extension Int {
     var hexString: String {
-        String(format:"%02X", self)
+        let string = String(self, radix: 16, uppercase: true)
+        return string.count == 1 ? "0" + string : string
     }
 }
 
@@ -56,22 +59,30 @@ extension StringProtocol {
 
 
 public func binToHexRep( _ val : [UInt8], asArray : Bool = false ) -> String {
-    var string = asArray ? "[" : ""
-    for x in val {
-        if asArray {
-            string += String(format:"0x%02x, ", x )
-
-        } else {
-            string += String(format:"%02x", x )
+    if asArray {
+        var string = "["
+        string.reserveCapacity(2 + val.count * 6)
+        for x in val {
+            string += "0x"
+            string.append(UInt8.lowercaseHexDigits[Int(x >> 4)])
+            string.append(UInt8.lowercaseHexDigits[Int(x & 0x0F)])
+            string += ", "
         }
+        string += "]"
+        return string
     }
-    string += asArray ? "]" : ""
-    return asArray ? string : string.uppercased()
+
+    var string = ""
+    string.reserveCapacity(val.count * 2)
+    for x in val {
+        string.append(UInt8.uppercaseHexDigits[Int(x >> 4)])
+        string.append(UInt8.uppercaseHexDigits[Int(x & 0x0F)])
+    }
+    return string
 }
 
 public func binToHexRep( _ val : UInt8 ) -> String {
-    let string = String(format:"%02x", val ).uppercased()
-    return string
+    val.hexString
 }
 
 public func binToHex( _ val: UInt8 ) -> Int {
@@ -100,8 +111,18 @@ public func binToHex( _ val: ArraySlice<UInt8> ) -> UInt64 {
 
 
 public func hexToBin( _ val : UInt64 ) -> [UInt8] {
-    let hexRep = String(format:"%lx", val)
-    return hexRepToBin( hexRep)
+    if val == 0 {
+        return [0]
+    }
+
+    var value = val
+    var bytes: [UInt8] = []
+    bytes.reserveCapacity(MemoryLayout<UInt64>.size)
+    while value > 0 {
+        bytes.append(UInt8(value & 0xFF))
+        value >>= 8
+    }
+    return Array(bytes.reversed())
 }
 
 public func binToInt( _ val: ArraySlice<UInt8> ) -> Int {
@@ -130,27 +151,45 @@ public func intToBin(_ data : Int, pad : Int = 2) -> [UInt8] {
 
 /// 'AABB' --> \xaa\xbb'"""
 public func hexRepToBin(_ val : String) -> [UInt8] {
+    let bytes = Array(val.utf8)
     var output : [UInt8] = []
-    var x = 0
-    while x < val.count {
-        let byteString: Substring
-        if x+2 <= val.count {
-            byteString = val[x ..< x + 2]
-        } else {
-            byteString = val[x ..< x+1]
-        }
+    output.reserveCapacity((bytes.count + 1) / 2)
 
-        guard let byte = UInt8(byteString, radix: 16) else {
+    var index = 0
+    while index < bytes.count {
+        guard let high = hexNibble(bytes[index]) else {
             return []
         }
-        output.append(byte)
-        x += 2
+
+        if index + 1 < bytes.count {
+            guard let low = hexNibble(bytes[index + 1]) else {
+                return []
+            }
+            output.append((high << 4) | low)
+        } else {
+            output.append(high)
+        }
+        index += 2
     }
     return output
 }
 
+private func hexNibble(_ byte: UInt8) -> UInt8? {
+    switch byte {
+    case 48...57:
+        return byte - 48
+    case 65...70:
+        return byte - 55
+    case 97...102:
+        return byte - 87
+    default:
+        return nil
+    }
+}
+
 public func xor(_ kifd : [UInt8], _ response_kicc : [UInt8] ) -> [UInt8] {
     var kseed = [UInt8]()
+    kseed.reserveCapacity(min(kifd.count, response_kicc.count))
     for (left, right) in zip(kifd, response_kicc) {
         kseed.append(left ^ right)
     }
@@ -160,6 +199,7 @@ public func xor(_ kifd : [UInt8], _ response_kicc : [UInt8] ) -> [UInt8] {
 public func generateRandomUInt8Array( _ size: Int ) -> [UInt8] {
     
     var ret : [UInt8] = []
+    ret.reserveCapacity(size)
     for _ in 0 ..< size {
         ret.append( UInt8(arc4random_uniform(UInt32(UInt8.max) + 1)) )
     }
@@ -169,6 +209,7 @@ public func generateRandomUInt8Array( _ size: Int ) -> [UInt8] {
 public func pad(_ toPad : [UInt8], blockSize : Int) -> [UInt8] {
     
     var ret = toPad + [0x80]
+    ret.reserveCapacity(((ret.count + blockSize - 1) / blockSize) * blockSize)
     while ret.count % blockSize != 0 {
         ret.append(0x00)
     }
@@ -298,7 +339,33 @@ public func oidToBytes(oid : String, replaceTag : Bool) -> [UInt8] {
 
 @available(iOS 13, macOS 10.15, *)
 public func asn1Length( _ data: ArraySlice<UInt8> ) throws -> (Int, Int) {
-    return try asn1Length( Array(data) )
+    guard let firstByte = data.first else {
+        throw NFCPassportReaderError.CannotDecodeASN1Length
+    }
+
+    if firstByte < 0x80 {
+        return (Int(firstByte), 1)
+    }
+
+    let lengthByteCount = Int(firstByte & 0x7F)
+    guard lengthByteCount > 0,
+          lengthByteCount <= 4,
+          data.count >= lengthByteCount + 1 else {
+        throw NFCPassportReaderError.CannotDecodeASN1Length
+    }
+
+    var value = 0
+    var index = data.index(after: data.startIndex)
+    for _ in 0 ..< lengthByteCount {
+        value = (value << 8) | Int(data[index])
+        index = data.index(after: index)
+    }
+
+    guard value <= Int(Int32.max) else {
+        throw NFCPassportReaderError.CannotDecodeASN1Length
+    }
+
+    return (value, lengthByteCount + 1)
 }
 
 @available(iOS 13, macOS 10.15, *)

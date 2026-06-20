@@ -184,7 +184,7 @@ public class TagReader {
             throw NFCPassportReaderError.InvalidASN1Structure
         }
 
-        let (len, o) = try asn1Length([UInt8](resp.data[1..<4]))
+        let (len, o) = try asn1Length(resp.data[1..<4])
         var remaining = Int(len)
         var amountRead = o + 1
 
@@ -205,12 +205,11 @@ public class TagReader {
             }
 
             self.progress?( Int(Float(amountRead) / Float(remaining+amountRead ) * 100))
-            let offset = intToBin(amountRead, pad:4)
             let cmd = NFCISO7816APDU(
                 instructionClass: 00,
                 instructionCode: 0xB0,
-                p1Parameter: offset[0],
-                p2Parameter: offset[1],
+                p1Parameter: UInt8((amountRead >> 8) & 0xFF),
+                p2Parameter: UInt8(amountRead & 0xFF),
                 data: Data(),
                 expectedResponseLength: readAmount
             )
@@ -307,7 +306,25 @@ public class TagReader {
 
     private func decodeError( sw1: UInt8, sw2:UInt8 ) -> String {
 
-        let errors : [UInt8 : [UInt8:String]] = [
+        let errors = Self.statusWordDescriptions
+
+        // Special cases - where sw2 isn't an error but contains a value
+        if sw1 == 0x61 {
+            return "SW2 indicates the number of response bytes still available - (\(sw2) bytes still available)"
+        } else if sw1 == 0x64 {
+            return "State of non-volatile memory unchanged (SW2=00, other values are RFU)"
+        } else if sw1 == 0x6C {
+            return "Wrong length Le: SW2 indicates the exact length - (exact length :\(sw2))"
+        }
+
+        if let dict = errors[sw1], let errorMsg = dict[sw2] {
+            return errorMsg
+        }
+
+        return "Unknown error - sw1: 0x\(binToHexRep(sw1)), sw2 - 0x\(binToHexRep(sw2)) "
+    }
+
+    private static let statusWordDescriptions: [UInt8 : [UInt8:String]] = [
             0x62: [0x00:"No information given",
                    0x81:"Part of returned data may be corrupted",
                    0x82:"End of file/record reached before reading Le bytes",
@@ -357,22 +374,6 @@ public class TagReader {
             0x6F: [0x00:"No precise diagnosis"],
             0x90: [0x00:"Success"] //No further qualification
         ]
-        
-        // Special cases - where sw2 isn't an error but contains a value
-        if sw1 == 0x61 {
-            return "SW2 indicates the number of response bytes still available - (\(sw2) bytes still available)"
-        } else if sw1 == 0x64 {
-            return "State of non-volatile memory unchanged (SW2=00, other values are RFU)"
-        } else if sw1 == 0x6C {
-            return "Wrong length Le: SW2 indicates the exact length - (exact length :\(sw2))"
-        }
-
-        if let dict = errors[sw1], let errorMsg = dict[sw2] {
-            return errorMsg
-        }
-        
-        return "Unknown error - sw1: 0x\(binToHexRep(sw1)), sw2 - 0x\(binToHexRep(sw2)) "
-    }
 }
 
 #endif

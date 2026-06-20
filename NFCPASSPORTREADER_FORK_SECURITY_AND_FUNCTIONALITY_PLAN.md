@@ -399,6 +399,13 @@ Completed:
 - Removed unused secure-messaging diagnostic string assembly from APDU protect/unprotect hot paths.
 - Replaced secure-messaging send-sequence-counter increment with byte arithmetic instead of hex-string conversion on every protected command/response.
 - Replaced frequently used BER/byte integer helpers with direct big-endian arithmetic, avoiding string formatting/parsing in ASN.1 length, tag, and DG2 header parsing paths.
+- Added a follow-up allocation pass across scan/decode hot paths:
+  - Hex formatting and test/helper hex parsing now use direct byte/nibble operations with reserved output buffers instead of repeated `String(format:)`, substring indexing, and uppercasing.
+  - BER length parsing now works directly on `ArraySlice<UInt8>`, removing temporary arrays in `DataGroup`, `TagReader`, `SecureMessaging`, and `SimpleASN1Node`.
+  - Data-group tag-to-class/name lookups are cached instead of scanning arrays for each parsed group.
+  - DG2 image-format validation now checks the image slice before copying the full photo payload into `imageData`.
+  - READ BINARY offsets and secure-messaging checksum lengths now use direct byte arithmetic.
+  - Tag status-word descriptions are cached instead of rebuilding the dictionary on each response error.
 - Kept parser hardening intact while fixing synthetic DG2/DG7 fixtures whose declared lengths did not match their test payloads.
 - Tightened DG2 missing-image classification so a complete face-image header with no image bytes reports `UnknownImageFormat` rather than a generic ASN.1 structure failure.
 - Changed privacy-safe unexpected-error copy from `Unexpected read failure` to `Read failed` because privacy tests intentionally reject the substring `expected`.
@@ -428,6 +435,26 @@ Verification:
 - `scripts/privacy_scan.sh` passed.
 - `git diff --check` passed.
 - Xcode continued to emit the known non-source App Intents metadata warning for the XCTest bundle: `Metadata extraction skipped. No AppIntents.framework dependency found.`
+
+Follow-up verification on the allocation pass:
+
+- Full iOS simulator unit suite passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.3.1'
+  ```
+
+  Result: 87 tests, 0 failures.
+
+- iOS package build succeeded:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build
+  ```
+
+- `scripts/privacy_scan.sh` passed.
+- `git diff --check` passed.
+- Targeted scan of changed scan/decode files found no new logging sinks or raw byte diagnostics. Hits were limited to internal APDU/status-word code paths and comments already covered by sanitized `LocalizedError`/failure mapping.
 
 Remaining follow-up:
 

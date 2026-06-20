@@ -17,6 +17,8 @@ class DataGroupParser {
                                       DataGroup9.self, DataGroup10.self, DataGroup11.self,
                                       DataGroup12.self, DataGroup13.self, DataGroup14.self,
                                       DataGroup15.self, DataGroup16.self, SOD.self]
+    private static let tagClassLookup: [UInt8: DataGroup.Type] = Dictionary(uniqueKeysWithValues: zip(tags, classes))
+    static let tagNameLookup: [UInt8: String] = Dictionary(uniqueKeysWithValues: zip(tags, dataGroupNames))
     
     
     func parseDG( data : [UInt8] ) throws -> DataGroup {
@@ -31,7 +33,7 @@ class DataGroupParser {
     
     
     func tagToDG( _ tag : UInt8 ) throws -> DataGroup.Type {
-        guard let index = DataGroupParser.tags.firstIndex(of: tag) else { throw NFCPassportReaderError.UnknownTag}
-        return DataGroupParser.classes[index]
+        guard let dgClass = DataGroupParser.tagClassLookup[tag] else { throw NFCPassportReaderError.UnknownTag}
+        return dgClass
     }
 }

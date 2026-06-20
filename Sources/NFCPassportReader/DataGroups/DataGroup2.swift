@@ -163,7 +163,7 @@ func getImage() -> UIImage? {
             throw NFCPassportReaderError.UnknownImageFormat
         }
 
-        let imageBytes = [UInt8](data[offset...])
+        let imageBytes = data[offset...]
         
         if !imageBytes.starts(with: jpegHeader) &&
             !imageBytes.starts(with: jpeg2000BitmapHeader) &&
@@ -171,6 +171,6 @@ func getImage() -> UIImage? {
             throw NFCPassportReaderError.UnknownImageFormat
         }
         
-        imageData = imageBytes
+        imageData = Array(imageBytes)
     }
 }

@@ -122,7 +122,7 @@ public class SecureMessaging {
         // DO'87'
         // Mandatory if data is returned, otherwise absent
         if rapduBin[0] == 0x87 {
-            let (encDataLength, o) = try asn1Length([UInt8](rapduBin[1...]))
+            let (encDataLength, o) = try asn1Length(rapduBin[1...])
             offset = 1 + o
 
             guard offset < rapduBin.count,
@@ -166,7 +166,7 @@ public class SecureMessaging {
                 throw NFCPassportReaderError.MissingMandatoryFields
             }
 
-            let ccLength : Int = Int(binToHex(rapduBin[offset+1]))
+            let ccLength : Int = Int(rapduBin[offset+1])
             guard offset + 2 + ccLength <= rapduBin.count else {
                 throw NFCPassportReaderError.MissingMandatoryFields
             }

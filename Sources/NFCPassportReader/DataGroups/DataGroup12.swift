@@ -70,6 +70,6 @@ public class DataGroup12 : DataGroup {
     }
     
     private func decodeBCD(value: [UInt8]) -> String? {
-        value.map({ String(format: "%02X", $0) }).joined()
+        binToHexRep(value)
     }
 }
