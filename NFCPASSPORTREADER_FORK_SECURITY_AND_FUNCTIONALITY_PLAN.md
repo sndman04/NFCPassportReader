@@ -388,7 +388,101 @@ Developer and release safety:
 8. Add safe verification explanation copy so apps can explain successful, partial, inconclusive, and failed verification without exposing low-level details.
 9. Plan a future major-version cleanup to remove or quarantine raw byte access, stringly errors, and compatibility APIs that make unsafe use easy.
 
+### 2026-06-20 Expanded Passport-Chip Hardening Backlog
+
+This backlog turns the latest repository audit into implementable work. The items are intentionally broader than the original logging remediation and should be handled without breaking existing `NFCPassportModel` call sites unless a future major version deliberately removes compatibility APIs.
+
+Privacy-first result and lifetime controls:
+
+1. Add a first-class privacy-preserving read API, such as `PassportReader.readPassportIdentity(...)`, that returns only `PassportIdentityResult` and never hands the caller an `NFCPassportModel`.
+2. Add a non-raw `PassportChipReadResult` wrapper for apps that need identity, verification, trust level, certificate/master-list metadata, and safe diagnostics in one value. This type must not expose raw data groups, MRZ text, APDUs, keys, certificates, active-authentication challenge/signature bytes, or image bytes, and it should not conform to `Codable`.
+3. Add explicit sensitive-data cleanup on `NFCPassportModel` for callers that still receive the compatibility model. Cleanup should clear raw data groups, parsed hash values, card-access data, certificate objects, and active-authentication challenge/signature bytes after the caller has projected the values it needs.
+4. Document that cleanup is best-effort because Swift value copies and framework internals cannot guarantee complete memory zeroization.
+5. Add tests proving cleanup removes raw export material and that the privacy-first read path returns identity data without leaving raw groups accessible to the caller.
+
+Verification and trust semantics:
+
+1. Extend `PassportVerificationResult` with safe per-check details. Keep the existing simple `PassportVerificationStatus` properties for source compatibility, but add detail fields that distinguish: not requested, not supported/advertised, missing required data group, missing master list, signer untrusted, SOD signature failed, data-group hash mismatch, skipped by caller policy, attempted and failed, and passed.
+2. Track verification issues as typed, privacy-safe values rather than requiring apps to parse `Error.localizedDescription`.
+3. Report whether each read data group was covered by the SOD hashes, whether a SOD hash was present for a group that was not read, and whether COM advertised a group that was skipped, blocked by policy, unsupported, or failed to read.
+4. Keep app-facing trust labels conservative: chip-read success must not imply authenticity, passive-authentication success must not imply country signer trust unless a master list was provided and validation passed, and chip/active authentication should distinguish advertised-but-skipped from attempted-and-failed.
+5. Add tests for master-list missing, SOD missing, hash mismatch, signer-trust not checked, chip/active authentication not advertised, advertised-but-not-attempted, and failed verification policy.
+
+Master-list and certificate lifecycle:
+
+1. Add safe master-list metadata: whether a master list was configured, whether it was reachable/readable, whether a signer chain was found, and optionally the file age or modified date if available.
+2. Do not expose certificate subject/issuer dumps or serial numbers by default. If future support workflows need certificate identifiers, expose only redacted/fingerprinted metadata after a privacy review.
+3. Treat revocation checking as not implemented unless a tested CRL/master-list revocation workflow is added. Surface this as safe metadata rather than silently implying revocation was checked.
+
+Photo, image, and parser hardening:
+
+1. Bound DG2 and DG7 image byte retention with explicit maximum byte limits and safe parse failures.
+2. Bound declared image dimensions and feature-point counts so malformed DG2 payloads cannot trigger excessive memory use, integer overflow, or large skips.
+3. Validate image headers before copying image payloads and avoid decoding images unless the caller requests image access.
+4. Add parser tests for truncated TLVs, impossible ASN.1 lengths, nested-length inconsistencies, invalid OIDs, malformed SOD hash structures, oversized DG2 image payloads, excessive DG2 dimensions, and malformed DG7 image items.
+5. Add a fuzz/property-test scaffold using only synthetic data so future parser mutations can be exercised without real passport fixtures.
+
+Policy and scan ergonomics:
+
+1. Add preset strict scan options that bind scan profile, PACE/BAC behavior, secure-element policy, photo policy, timeout, and verification requirement together so apps do not accidentally combine incompatible flags.
+2. Add PACE policy controls for practical fallback, PACE-required-when-advertised, and external CAN/PIN/PUK credential flows where the host app supports them.
+3. Add clearer retry metadata by stage: waiting, connecting, PACE, BAC, data-group read, active authentication, chip authentication, passive authentication, and security-policy validation.
+4. Add tests that cancellation, timeout, connection loss, and double invalidation resume the async scan exactly once.
+
+Release, CI, and real-device validation:
+
+1. Add an iOS CI/release checklist that runs the iOS package build, iOS test build or simulator tests, `scripts/privacy_scan.sh`, `git diff --check`, risky logging/raw export searches, and documentation checks.
+2. Keep `swift test` marked as unsuitable unless the package manifest is deliberately changed to support macOS testing with the OpenSSL dependency.
+3. Maintain a private on-device interoperability matrix by country/feature class without retaining real passport values, MRZ text, certificate dumps, images, or APDU logs.
+4. Validate the 256-byte extended-read path, strict Notary policy, PACE fallback behavior, DG2 image handling, chip authentication, and active authentication on physical passports before tagging a release.
+
 ## Implementation Status
+
+### 2026-06-20 Privacy-First Result And Verification Detail Pass
+
+Completed:
+
+- Added an expanded implementable hardening backlog covering privacy-first result APIs, sensitive-data cleanup, richer verification semantics, master-list metadata, parser/image hardening, scan presets, release checks, and real-device validation requirements.
+- Added `PassportChipReadResult` and `PassportReader.readPassportIdentity(...)` so host apps can receive normalized identity, verification, trust, certificate/master-list metadata, and safe diagnostics without receiving the raw `NFCPassportModel` compatibility object.
+- Added `NFCPassportModel.removeSensitiveDataForPrivacy()` to clear raw data groups, parsed hashes, card-access data, certificate objects, and active-authentication challenge/signature bytes after callers project the values they deliberately need. This is documented as best-effort minimization rather than guaranteed zeroization.
+- Extended `PassportVerificationResult` with source-compatible simple statuses plus safe detail fields and data-group coverage summaries. Detail reasons distinguish not requested, not supported, skipped, missing SOD, missing master list, signer untrusted, invalid signature, hash mismatch, malformed SOD, unsupported algorithm, attempted failure, and passed without exposing raw hashes, certificates, APDUs, keys, or image bytes.
+- Added safe master-list metadata on the model and certificate-trust metadata, including a local master-list modification date when available and an explicit `revocationCheckPerformed` flag that remains false until a tested revocation workflow exists.
+- Added `PassportScanOptions` with reviewed `.notaryStrict`, `.identityOnly`, and `.defaultCompatibility` presets that bind scan profile, secure-element behavior, PACE/CA flags, extended mode, timeout, photo policy, and security policy into coherent configurations.
+- Hardened DG2 and DG7 image parsing with explicit byte, dimension, feature-point, and total image retention bounds before retaining image payloads or allowing decode.
+- Updated README, Notary migration notes, and threat model with `readPassportIdentity`, `PassportChipReadResult`, scan presets, verification detail semantics, sensitive cleanup, image bounds, and remaining real-device validation requirements.
+- Added focused tests for verification details, scan presets, privacy-first result shape, sensitive cleanup, and malformed DG2 image metadata.
+
+Verification:
+
+- iOS package build succeeded:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build
+  ```
+
+- Full iOS simulator unit suite passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5'
+  ```
+
+  Result: 102 tests, 0 failures.
+
+- iOS package test build succeeded:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build-for-testing
+  ```
+
+- `scripts/privacy_scan.sh` passed.
+- `git diff --check` passed.
+- Targeted risky-pattern search found no new active production raw logging, print diagnostics, direct `Logger`, `os_log`, clipboard, persistence, network, or accidental raw-export usage. Remaining hits are expected typed redacted events, APDU/key type names and comments, approved unsafe export internals, documentation references, and negative-test fixtures.
+- Xcode still emits the known non-source XCTest App Intents metadata warning during test-build: `Metadata extraction skipped. No AppIntents.framework dependency found.`
+
+Remaining follow-up:
+
+- Real-passport validation is still required before tagging: `.notaryStrict`, PACE fallback behavior, 256-byte extended reads, DG2 photo handling, chip authentication, active authentication, and master-list-dependent trust behavior cannot be fully proven with local synthetic tests.
+- Revocation checking remains explicitly not implemented and should not be implied in app copy or support diagnostics.
 
 ### 2026-06-20 Extended-Read Hash Mismatch Fix
 

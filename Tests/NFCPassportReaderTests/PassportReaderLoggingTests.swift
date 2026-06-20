@@ -348,6 +348,9 @@ final class PassportReaderLoggingTests: XCTestCase {
         XCTAssertEqual(result.activeAuthenticationStatus, .notChecked)
         XCTAssertEqual(result.chipAuthenticationStatus, .notChecked)
         XCTAssertEqual(result.overallStatus, .notChecked)
+        XCTAssertEqual(result.sodSignatureDetail.reason, .notRequested)
+        XCTAssertEqual(result.activeAuthenticationDetail.reason, .notSupported)
+        XCTAssertEqual(result.chipAuthenticationDetail.reason, .notSupported)
     }
 
     func testCountrySigningCertificateStatusIsNotCheckedWithoutMasterList() {
@@ -358,6 +361,8 @@ final class PassportReaderLoggingTests: XCTestCase {
         XCTAssertTrue(model.passportVerificationAttempted)
         XCTAssertFalse(model.masterListWasProvided)
         XCTAssertEqual(model.verificationResult.countrySigningCertificateStatus, .notChecked)
+        XCTAssertEqual(model.verificationResult.countrySigningCertificateDetail.reason, .missingMasterList)
+        XCTAssertFalse(model.revocationCheckPerformed)
     }
 
     func testVerifyPassportResetsErrorsBetweenAttempts() {
@@ -443,6 +448,53 @@ final class PassportReaderLoggingTests: XCTestCase {
         XCTAssertEqual(result.certificateTrustMetadata.masterListProvided, false)
         XCTAssertEqual(result.verificationResult.overallStatus, .notChecked)
         XCTAssertFalse(Mirror(reflecting: result).children.contains { $0.label == "passportMRZ" })
+    }
+
+    func testChipReadResultOmitsRawModelSurfaces() {
+        let model = NFCPassportModel()
+        let result = PassportChipReadResult(passport: model)
+
+        XCTAssertEqual(result.identity.trustLevel, .inconclusive)
+        XCTAssertEqual(result.verificationResult.overallStatus, .notChecked)
+        XCTAssertFalse(Mirror(reflecting: result).children.contains { $0.label == "dataGroupsRead" })
+        XCTAssertFalse(Mirror(reflecting: result).children.contains { $0.label == "passportImage" })
+    }
+
+    func testModelSensitiveCleanupRemovesRawExportMaterial() throws {
+        let model = NFCPassportModel()
+        let dataGroup = try DataGroup([0x61, 0x00])
+        model.addDataGroup(.DG1, dataGroup: dataGroup)
+        model.verifyActiveAuthentication(challenge: [0x01, 0x02], signature: [0x03, 0x04])
+
+        XCTAssertNotNil(model.getDataGroup(.DG1))
+        XCTAssertFalse(model.activeAuthenticationChallenge.isEmpty)
+        XCTAssertFalse(model.activeAuthenticationSignature.isEmpty)
+
+        model.removeSensitiveDataForPrivacy()
+
+        XCTAssertNil(model.getDataGroup(.DG1))
+        XCTAssertTrue(model.dataGroupsAvailable.isEmpty)
+        XCTAssertTrue(model.dataGroupHashes.isEmpty)
+        XCTAssertTrue(model.activeAuthenticationChallenge.isEmpty)
+        XCTAssertTrue(model.activeAuthenticationSignature.isEmpty)
+    }
+
+    func testScanOptionsPresetsBindReviewedPolicyCombinations() {
+        let strict = PassportScanOptions.notaryStrict
+
+        XCTAssertEqual(strict.scanProfile, .fullVerification)
+        XCTAssertFalse(strict.skipSecureElements)
+        XCTAssertFalse(strict.skipCA)
+        XCTAssertFalse(strict.skipPACE)
+        XCTAssertTrue(strict.useExtendedMode)
+        XCTAssertEqual(strict.operationTimeout, 60)
+        XCTAssertEqual(strict.photoPolicy, .read)
+        XCTAssertEqual(strict.securityPolicy, .notaryRecommended)
+
+        let identityOnly = PassportScanOptions.identityOnly
+        XCTAssertEqual(identityOnly.scanProfile, .identityOnly)
+        XCTAssertEqual(identityOnly.photoPolicy, .skip)
+        XCTAssertEqual(identityOnly.securityPolicy, .identityOnly)
     }
 
     func testIdentityResultRequiresActualDG7ImagePayloadForSignaturePresence() throws {

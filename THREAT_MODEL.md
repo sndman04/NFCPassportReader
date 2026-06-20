@@ -27,8 +27,11 @@ This fork reads identity-document NFC data. Privacy, security, correctness, and 
 - Scan profiles and photo policy let apps request only the data groups they need.
 - `PassportReaderSecurityPolicy` centralizes photo access, raw-export permission, and verification strictness.
 - `PassportIdentityResult` gives host apps normalized fields and verification metadata without MRZ text, raw data groups, APDUs, certificates, keys, or image bytes.
+- `PassportChipReadResult` and `PassportReader.readPassportIdentity(...)` provide a privacy-first scan path that does not return the raw compatibility model to the host app.
+- `NFCPassportModel.removeSensitiveDataForPrivacy()` provides best-effort cleanup of raw groups, parsed hashes, card-access data, certificates, and active-authentication material for compatibility callers after projection.
 - `UnsafePassportRawDataExporter` requires an explicit policy opt-in for rare raw export workflows.
 - Parser and crypto boundaries should reject malformed input without traps, out-of-bounds reads, or empty cryptographic outputs.
+- DG2 and DG7 image parsing applies explicit size and structural bounds before retaining image bytes or allowing image decode.
 
 ## Verification Trust Assumptions
 
@@ -37,6 +40,8 @@ This fork reads identity-document NFC data. Privacy, security, correctness, and 
 - Signer trust depends on the configured master list and certificate validation path.
 - Active authentication and chip authentication are meaningful only when supported, attempted, and passed.
 - Apps should use `PassportVerificationResult`, `PassportTrustLevel`, and `PassportReaderSecurityPolicy` instead of inferring trust from individual booleans.
+- Verification-detail fields distinguish safe causes such as missing master list, missing SOD, skipped authentication, unsupported authentication, hash mismatch, signer untrusted, and attempted failure without exposing raw hashes, certificates, APDUs, or cryptographic material.
+- Revocation checking is not currently performed by this fork and must not be implied in user or support copy.
 
 ## App Integration Risks
 

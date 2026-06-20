@@ -276,6 +276,114 @@ public class PassportReader : NSObject {
         )
     }
 
+    public func readPassport(
+        mrzKey: String,
+        options: PassportScanOptions,
+        aaChallenge: [UInt8]? = nil,
+        progressHandler: PassportReaderProgressHandler? = nil,
+        customDisplayMessage: ((NFCViewDisplayMessage) -> String?)? = nil
+    ) async throws -> NFCPassportModel {
+        try await readPassport(
+            mrzKey: mrzKey,
+            scanProfile: options.scanProfile,
+            aaChallenge: aaChallenge,
+            skipSecureElements: options.skipSecureElements,
+            skipCA: options.skipCA,
+            skipPACE: options.skipPACE,
+            useExtendedMode: options.useExtendedMode,
+            operationTimeout: options.operationTimeout,
+            photoPolicy: options.photoPolicy,
+            securityPolicy: options.securityPolicy,
+            progressHandler: progressHandler,
+            customDisplayMessage: customDisplayMessage
+        )
+    }
+
+    public func readPassportIdentity(
+        mrzKey: String,
+        scanProfile: PassportScanProfile,
+        aaChallenge: [UInt8]? = nil,
+        skipSecureElements: Bool = true,
+        skipCA: Bool = false,
+        skipPACE: Bool = false,
+        useExtendedMode: Bool = false,
+        operationTimeout: TimeInterval? = nil,
+        photoPolicy: PassportPhotoPolicy = .read,
+        securityPolicy: PassportReaderSecurityPolicy = .default,
+        progressHandler: PassportReaderProgressHandler? = nil,
+        customDisplayMessage: ((NFCViewDisplayMessage) -> String?)? = nil
+    ) async throws -> PassportChipReadResult {
+        let passport = try await readPassport(
+            mrzKey: mrzKey,
+            scanProfile: scanProfile,
+            aaChallenge: aaChallenge,
+            skipSecureElements: skipSecureElements,
+            skipCA: skipCA,
+            skipPACE: skipPACE,
+            useExtendedMode: useExtendedMode,
+            operationTimeout: operationTimeout,
+            photoPolicy: photoPolicy,
+            securityPolicy: securityPolicy,
+            progressHandler: progressHandler,
+            customDisplayMessage: customDisplayMessage
+        )
+        let result = PassportChipReadResult(passport: passport)
+        passport.removeSensitiveDataForPrivacy()
+        return result
+    }
+
+    public func readPassportIdentity(
+        mrzKey: String,
+        tags: [DataGroupId] = [],
+        aaChallenge: [UInt8]? = nil,
+        skipSecureElements: Bool = true,
+        skipCA: Bool = false,
+        skipPACE: Bool = false,
+        useExtendedMode: Bool = false,
+        operationTimeout: TimeInterval? = nil,
+        photoPolicy: PassportPhotoPolicy = .read,
+        securityPolicy: PassportReaderSecurityPolicy = .default,
+        progressHandler: PassportReaderProgressHandler? = nil,
+        customDisplayMessage: ((NFCViewDisplayMessage) -> String?)? = nil
+    ) async throws -> PassportChipReadResult {
+        let passport = try await readPassport(
+            mrzKey: mrzKey,
+            tags: tags,
+            aaChallenge: aaChallenge,
+            skipSecureElements: skipSecureElements,
+            skipCA: skipCA,
+            skipPACE: skipPACE,
+            useExtendedMode: useExtendedMode,
+            operationTimeout: operationTimeout,
+            photoPolicy: photoPolicy,
+            securityPolicy: securityPolicy,
+            progressHandler: progressHandler,
+            customDisplayMessage: customDisplayMessage
+        )
+        let result = PassportChipReadResult(passport: passport)
+        passport.removeSensitiveDataForPrivacy()
+        return result
+    }
+
+    public func readPassportIdentity(
+        mrzKey: String,
+        options: PassportScanOptions,
+        aaChallenge: [UInt8]? = nil,
+        progressHandler: PassportReaderProgressHandler? = nil,
+        customDisplayMessage: ((NFCViewDisplayMessage) -> String?)? = nil
+    ) async throws -> PassportChipReadResult {
+        let passport = try await readPassport(
+            mrzKey: mrzKey,
+            options: options,
+            aaChallenge: aaChallenge,
+            progressHandler: progressHandler,
+            customDisplayMessage: customDisplayMessage
+        )
+        let result = PassportChipReadResult(passport: passport)
+        passport.removeSensitiveDataForPrivacy()
+        return result
+    }
+
     public func cancelRead() {
         failActiveScan(error: .UserCanceled, invalidationReason: .userCanceled)
     }

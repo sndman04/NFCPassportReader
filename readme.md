@@ -105,7 +105,24 @@ For legacy `readPassport(mrzKey:tags:)` calls that pass an empty tag list, `secu
 
 For app-facing data, prefer `passport.identityResult`. It contains normalized identity fields, verification status, trust level, and certificate-trust metadata, and intentionally omits MRZ text, raw data-group bytes, APDUs, certificates, keys, and image bytes.
 
+For the strongest app boundary, use the privacy-first result API instead of receiving an `NFCPassportModel`:
+
+```swift
+let result = try await passportReader.readPassportIdentity(
+    mrzKey: mrzKey,
+    options: .notaryStrict
+)
+```
+
+`PassportChipReadResult` contains `identity`, `verificationResult`, `trustLevel`, `certificateTrustMetadata`, and `diagnosticsSummary`. It intentionally does not expose the raw compatibility model, MRZ text, data-group bytes, APDUs, certificates, keys, active-authentication challenge/signature bytes, or image bytes. It also intentionally does not conform to `Codable`.
+
+For compatibility flows that still need `NFCPassportModel`, call `removeSensitiveDataForPrivacy()` after projecting the app-facing values you need. This clears raw data groups, parsed hashes, card-access data, certificate objects, and active-authentication material held by that model instance. This is best-effort data minimization; Swift value copies and framework internals cannot guarantee complete memory zeroization.
+
+`PassportScanOptions` provides reviewed combinations of profile, timeout, photo policy, authentication flags, and security policy. `.notaryStrict` is the recommended starting point for Notary Journal style workflows; `.identityOnly` keeps collection minimal when the app does not need photo or optional verification groups.
+
 If passive authentication runs without a CSCA master list, SOD signature and data-group hash checks can still report that the data groups actually read are internally consistent, but country signer trust is reported as not checked. A trusted signer result requires a master list from the issuing country or ICAO PKD.
+
+`PassportVerificationResult` keeps the original simple status properties and also includes safe detail fields such as `sodSignatureDetail`, `dataGroupHashDetail`, `countrySigningCertificateDetail`, `activeAuthenticationDetail`, and `chipAuthenticationDetail`. These distinguish cases such as not requested, not supported, skipped, missing SOD, missing master list, signer untrusted, hash mismatch, malformed SOD, unsupported algorithm, attempted failed, and passed without exposing raw hashes or certificate contents. `dataGroupCoverage` summarizes whether read groups were covered by SOD hashes.
 
 For support diagnostics, use `PassportReaderDiagnosticsSummary`. It records the scan profile, photo policy, security policy, safe failure reason, verification summary, trust level, and data-group names read. It does not include identity fields, MRZ text, APDUs, certificates, keys, raw data groups, or images.
 
@@ -130,6 +147,8 @@ let fixture = PassportReaderFixture(result: .success(NFCPassportModel()))
 ```
 
 The reader can read every LDS data-group file id. COM, DG1, DG2, DG7, DG11, DG12, DG14, DG15, and SOD have typed parsers used by the app-facing model. DG7 preserves multiple displayed signature/mark image items when present while keeping the first image available through the existing compatibility API. DG3, DG4, DG5, DG6, DG8, DG9, DG10, DG13, and DG16 are represented as opaque typed groups so they can be read, retained, hashed for passive authentication, and exported only through explicit unsafe raw-export policy.
+
+DG2 and DG7 image parsing has explicit byte and structural bounds. Malformed payloads with excessive image bytes, excessive dimensions, or impossible feature-point skips are rejected before unbounded retention or image decoding.
 
 PACE defaults to the MRZ-derived key:
 

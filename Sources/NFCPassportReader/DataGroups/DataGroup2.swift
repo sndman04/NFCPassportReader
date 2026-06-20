@@ -12,6 +12,10 @@ import UIKit
 
 @available(iOS 13, macOS 10.15, *)
 public class DataGroup2 : DataGroup {
+    private static let maxImageDataLength = 10 * 1024 * 1024
+    private static let maxImageDimension = 20_000
+    private static let maxFeaturePoints = 10_000
+
     public private(set) var nrImages : Int = 0
     public private(set) var versionNumber : Int = 0
     public private(set) var lengthOfRecord : Int = 0
@@ -116,6 +120,10 @@ func getImage() -> UIImage? {
         // Features (not handled). There shouldn't be any but if for some reason there were,
         // then we are going to skip over them
         // The Feature block is 8 bytes
+        guard nrFeaturePoints <= Self.maxFeaturePoints,
+              nrFeaturePoints <= (data.count - offset) / 8 else {
+            throw NFCPassportReaderError.InvalidASN1Structure
+        }
         offset += nrFeaturePoints * 8
 
         guard data.count >= offset + 12 else {
@@ -130,6 +138,11 @@ func getImage() -> UIImage? {
         sourceType = try readInteger(from: data, offset: &offset, byteCount: 1)
         deviceType = try readInteger(from: data, offset: &offset, byteCount: 2)
         quality = try readInteger(from: data, offset: &offset, byteCount: 2)
+
+        guard imageWidth <= Self.maxImageDimension,
+              imageHeight <= Self.maxImageDimension else {
+            throw NFCPassportReaderError.UnknownImageFormat
+        }
         
         
         // Make sure that the image data at least has a valid header
@@ -144,7 +157,10 @@ func getImage() -> UIImage? {
         }
 
         let imageBytes = data[offset...]
-        
+        guard imageBytes.count <= Self.maxImageDataLength else {
+            throw NFCPassportReaderError.UnknownImageFormat
+        }
+
         if !imageBytes.starts(with: jpegHeader) &&
             !imageBytes.starts(with: jpeg2000BitmapHeader) &&
             !imageBytes.starts(with: jpeg2000CodestreamBitmapHeader) {

@@ -113,6 +113,30 @@ final class DataGroupParsingTests: XCTestCase {
             }
         }
     }
+
+    func testDataGroup2RejectsExcessiveFeaturePointSkipWithoutTrapping() throws {
+        let validDG2 = hexRepToBin("755C7F618220470201017F6082203FA1128002010081010282010087020101880200085F2E3846414300303130000000202600010000201800000000000000000001000000000000000100000000000000000000FFD8FFE000104A464946")
+        let dg2 = try XCTUnwrap(try DataGroupParser().parseDG(data: validDG2) as? DataGroup2)
+        let malformed = iso19794FaceRecord(featurePoints: 10_001)
+
+        XCTAssertThrowsError(try dg2.parseISO19794_5(data: malformed)) { error in
+            guard case NFCPassportReaderError.InvalidASN1Structure = error else {
+                return XCTFail("Expected InvalidASN1Structure, got \(error)")
+            }
+        }
+    }
+
+    func testDataGroup2RejectsExcessiveImageDimensionsBeforeRetainingImage() throws {
+        let validDG2 = hexRepToBin("755C7F618220470201017F6082203FA1128002010081010282010087020101880200085F2E3846414300303130000000202600010000201800000000000000000001000000000000000100000000000000000000FFD8FFE000104A464946")
+        let dg2 = try XCTUnwrap(try DataGroupParser().parseDG(data: validDG2) as? DataGroup2)
+        let malformed = iso19794FaceRecord(width: 20_001, height: 1)
+
+        XCTAssertThrowsError(try dg2.parseISO19794_5(data: malformed)) { error in
+            guard case NFCPassportReaderError.UnknownImageFormat = error else {
+                return XCTFail("Expected UnknownImageFormat, got \(error)")
+            }
+        }
+    }
     
     func testDatagroup7ParsingJPEG() {
         
@@ -473,4 +497,38 @@ private func asn1Integer(_ value: [UInt8]) throws -> [UInt8] {
 
 private func asn1OID(_ value: [UInt8]) throws -> [UInt8] {
     try tlv(tag: [0x06], value: value)
+}
+
+private func iso19794FaceRecord(
+    featurePoints: Int = 0,
+    width: Int = 1,
+    height: Int = 1,
+    imageBytes: [UInt8] = [0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46]
+) -> [UInt8] {
+    [0x46, 0x41, 0x43, 0x00] +
+    [0x30, 0x31, 0x30, 0x00] +
+    fixedWidthBytes(46 + imageBytes.count, count: 4) +
+    fixedWidthBytes(1, count: 2) +
+    fixedWidthBytes(46 + imageBytes.count - 14, count: 4) +
+    fixedWidthBytes(featurePoints, count: 2) +
+    [0x00, 0x00, 0x00] +
+    [0x00, 0x00, 0x00] +
+    [0x00, 0x00] +
+    [0x00, 0x00, 0x00] +
+    [0x00, 0x00, 0x00] +
+    Array(repeating: 0x00, count: max(featurePoints, 0) * 8) +
+    [0x00, 0x00] +
+    fixedWidthBytes(width, count: 2) +
+    fixedWidthBytes(height, count: 2) +
+    [0x00, 0x00] +
+    [0x00, 0x00] +
+    [0x00, 0x00] +
+    imageBytes
+}
+
+private func fixedWidthBytes(_ value: Int, count: Int) -> [UInt8] {
+    guard count > 0 else { return [] }
+    return (0..<count).map { shift in
+        UInt8((value >> ((count - shift - 1) * 8)) & 0xFF)
+    }
 }

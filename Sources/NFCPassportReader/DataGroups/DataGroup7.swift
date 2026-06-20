@@ -12,6 +12,8 @@ import UIKit
 
 @available(iOS 13, macOS 10.15, *)
 public class DataGroup7 : DataGroup {
+    private static let maxImageDataLength = 10 * 1024 * 1024
+    private static let maxTotalImageDataLength = 20 * 1024 * 1024
     
     public private(set) var imageData : [UInt8] = []
     public private(set) var imageDataItems : [[UInt8]] = []
@@ -42,7 +44,15 @@ public class DataGroup7 : DataGroup {
         while hasUnreadBody {
             tag = try getNextTag()
             try verifyTag(tag, equals: 0x5F43)
-            imageDataItems.append(try getNextValue())
+            let item = try getNextValue()
+            guard item.count <= Self.maxImageDataLength else {
+                throw NFCPassportReaderError.UnknownImageFormat
+            }
+            let currentTotal = imageDataItems.reduce(0) { $0 + $1.count }
+            guard currentTotal + item.count <= Self.maxTotalImageDataLength else {
+                throw NFCPassportReaderError.UnknownImageFormat
+            }
+            imageDataItems.append(item)
         }
 
         imageData = imageDataItems.first ?? []

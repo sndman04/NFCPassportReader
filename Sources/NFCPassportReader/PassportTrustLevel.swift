@@ -75,16 +75,20 @@ public enum PassportTrustLevel: Sendable, Equatable, CustomStringConvertible {
 public struct PassportCertificateTrustMetadata: Sendable, Equatable {
     public let verificationAttempted: Bool
     public let masterListProvided: Bool
+    public let masterListModifiedDate: Date?
     public let documentSigningCertificatePresent: Bool
     public let countrySigningCertificatePresent: Bool
     public let signerTrustEstablished: Bool
+    public let revocationCheckPerformed: Bool
 
     public init(passport: NFCPassportModel) {
         self.verificationAttempted = passport.passportVerificationAttempted
         self.masterListProvided = passport.masterListWasProvided
+        self.masterListModifiedDate = passport.masterListModifiedDate
         self.documentSigningCertificatePresent = passport.documentSigningCertificate != nil
         self.countrySigningCertificatePresent = passport.countrySigningCertificate != nil
         self.signerTrustEstablished = passport.verificationResult.documentSignerCertificateStatus == .passed
             && passport.verificationResult.countrySigningCertificateStatus == .passed
+        self.revocationCheckPerformed = passport.revocationCheckPerformed
     }
 }

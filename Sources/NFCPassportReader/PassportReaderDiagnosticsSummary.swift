@@ -50,4 +50,14 @@ public struct PassportReaderDiagnosticsSummary: Sendable, Equatable {
         self.trustLevel = PassportTrustLevel(passport: passport)
         self.dataGroupsRead = passport.dataGroupsAvailable
     }
+
+    public init(passport: NFCPassportModel) {
+        self.scanProfile = .custom(passport.dataGroupsAvailable)
+        self.photoPolicy = passport.getDataGroup(.DG2) == nil ? .skip : .read
+        self.securityPolicy = .default
+        self.failure = nil
+        self.verificationResult = passport.verificationResult
+        self.trustLevel = PassportTrustLevel(passport: passport)
+        self.dataGroupsRead = passport.dataGroupsAvailable
+    }
 }

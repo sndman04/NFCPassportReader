@@ -138,15 +138,31 @@ public class NFCPassportModel {
     public private(set) var rawDataImportErrors : [NFCPassportReaderError] = []
     public private(set) var passportVerificationAttempted : Bool = false
     public private(set) var masterListWasProvided : Bool = false
+    public private(set) var masterListModifiedDate : Date?
+    public private(set) var revocationCheckPerformed : Bool = false
 
     public var verificationResult: PassportVerificationResult {
-        PassportVerificationResult(
-            sodSignatureStatus: passportVerificationAttempted ? documentSigningCertificateVerified.verificationStatus : .notChecked,
-            dataGroupHashStatus: passportVerificationAttempted ? passportDataNotTampered.verificationStatus : .notChecked,
-            documentSignerCertificateStatus: passportVerificationAttempted ? documentSigningCertificateVerified.verificationStatus : .notChecked,
-            countrySigningCertificateStatus: passportVerificationAttempted && masterListWasProvided ? passportCorrectlySigned.verificationStatus : .notChecked,
-            activeAuthenticationStatus: activeAuthenticationSupported ? activeAuthenticationPassed.verificationStatus : .notChecked,
-            chipAuthenticationStatus: chipAuthenticationStatus.verificationStatus
+        let sodSignatureDetail = verificationCheckForSODSignature()
+        let dataGroupHashDetail = verificationCheckForDataGroupHashes()
+        let documentSignerCertificateDetail = verificationCheckForDocumentSignerCertificate()
+        let countrySigningCertificateDetail = verificationCheckForCountrySigningCertificate()
+        let activeAuthenticationDetail = verificationCheckForActiveAuthentication()
+        let chipAuthenticationDetail = verificationCheckForChipAuthentication()
+
+        return PassportVerificationResult(
+            sodSignatureStatus: sodSignatureDetail.status,
+            dataGroupHashStatus: dataGroupHashDetail.status,
+            documentSignerCertificateStatus: documentSignerCertificateDetail.status,
+            countrySigningCertificateStatus: countrySigningCertificateDetail.status,
+            activeAuthenticationStatus: activeAuthenticationDetail.status,
+            chipAuthenticationStatus: chipAuthenticationDetail.status,
+            sodSignatureDetail: sodSignatureDetail,
+            dataGroupHashDetail: dataGroupHashDetail,
+            documentSignerCertificateDetail: documentSignerCertificateDetail,
+            countrySigningCertificateDetail: countrySigningCertificateDetail,
+            activeAuthenticationDetail: activeAuthenticationDetail,
+            chipAuthenticationDetail: chipAuthenticationDetail,
+            dataGroupCoverage: dataGroupVerificationCoverage()
         )
     }
 
@@ -256,6 +272,22 @@ public class NFCPassportModel {
         return dataGroupsRead[id]
     }
 
+    /// Best-effort cleanup for sensitive raw chip material retained by the compatibility model.
+    ///
+    /// Call this after projecting the values needed by the host app. This clears parsed raw data groups,
+    /// hashes, card-access data, certificate objects, and active-authentication material held by this
+    /// model instance. Swift value copies and framework internals may still retain their own memory, so
+    /// this is data minimization rather than a complete zeroization guarantee.
+    public func removeSensitiveDataForPrivacy() {
+        dataGroupsAvailable.removeAll(keepingCapacity: false)
+        dataGroupsRead.removeAll(keepingCapacity: false)
+        dataGroupHashes.removeAll(keepingCapacity: false)
+        cardAccess = nil
+        certificateSigningGroups.removeAll(keepingCapacity: false)
+        activeAuthenticationChallenge.removeAll(keepingCapacity: false)
+        activeAuthenticationSignature.removeAll(keepingCapacity: false)
+    }
+
     /// Returns raw, Base64-encoded passport data groups for explicit export or debugging workflows.
     ///
     /// The returned values can contain sensitive identity-document data and optional active-authentication
@@ -325,6 +357,8 @@ public class NFCPassportModel {
     public func verifyPassport( masterListURL: URL?, useCMSVerification : Bool = false ) {
         passportVerificationAttempted = true
         masterListWasProvided = masterListURL != nil
+        masterListModifiedDate = masterListURL?.privacySafeFileModificationDate
+        revocationCheckPerformed = false
         verificationErrors = []
         passportCorrectlySigned = false
         documentSigningCertificateVerified = false
@@ -662,6 +696,123 @@ public class NFCPassportModel {
         default: return nil
         }
     }
+
+    private func verificationCheckForSODSignature() -> PassportVerificationCheck {
+        guard passportVerificationAttempted else {
+            return PassportVerificationCheck(status: .notChecked, reason: .notRequested)
+        }
+        guard getDataGroup(.SOD) != nil else {
+            return PassportVerificationCheck(status: .failed, reason: .missingSOD)
+        }
+        if documentSigningCertificateVerified {
+            return PassportVerificationCheck(status: .passed, reason: .passed)
+        }
+        if verificationErrors.contains(where: { $0 is OpenSSLError }) {
+            return PassportVerificationCheck(status: .failed, reason: .signatureInvalid)
+        }
+        return PassportVerificationCheck(status: .failed, reason: .attemptedFailed)
+    }
+
+    private func verificationCheckForDataGroupHashes() -> PassportVerificationCheck {
+        guard passportVerificationAttempted else {
+            return PassportVerificationCheck(status: .notChecked, reason: .notRequested)
+        }
+        guard getDataGroup(.SOD) != nil else {
+            return PassportVerificationCheck(status: .failed, reason: .missingSOD)
+        }
+        if passportDataNotTampered {
+            return PassportVerificationCheck(status: .passed, reason: .passed)
+        }
+        if verificationErrors.contains(where: { error in
+            if case PassiveAuthenticationError.InvalidDataGroupHash = error { return true }
+            return false
+        }) {
+            return PassportVerificationCheck(status: .failed, reason: .hashMismatch)
+        }
+        if verificationErrors.contains(where: { error in
+            if case PassiveAuthenticationError.UnableToParseSODHashes = error { return true }
+            return false
+        }) {
+            return PassportVerificationCheck(status: .failed, reason: .malformedSOD)
+        }
+        if verificationErrors.contains(where: { $0 is NFCPassportReaderError }) {
+            return PassportVerificationCheck(status: .failed, reason: .unsupportedAlgorithm)
+        }
+        return PassportVerificationCheck(status: .failed, reason: .attemptedFailed)
+    }
+
+    private func verificationCheckForDocumentSignerCertificate() -> PassportVerificationCheck {
+        guard passportVerificationAttempted else {
+            return PassportVerificationCheck(status: .notChecked, reason: .notRequested)
+        }
+        guard getDataGroup(.SOD) != nil else {
+            return PassportVerificationCheck(status: .failed, reason: .missingSOD)
+        }
+        return documentSigningCertificateVerified
+            ? PassportVerificationCheck(status: .passed, reason: .passed)
+            : PassportVerificationCheck(status: .failed, reason: .signatureInvalid)
+    }
+
+    private func verificationCheckForCountrySigningCertificate() -> PassportVerificationCheck {
+        guard passportVerificationAttempted else {
+            return PassportVerificationCheck(status: .notChecked, reason: .notRequested)
+        }
+        guard masterListWasProvided else {
+            return PassportVerificationCheck(status: .notChecked, reason: .missingMasterList)
+        }
+        return passportCorrectlySigned
+            ? PassportVerificationCheck(status: .passed, reason: .passed)
+            : PassportVerificationCheck(status: .failed, reason: .signerUntrusted)
+    }
+
+    private func verificationCheckForActiveAuthentication() -> PassportVerificationCheck {
+        guard activeAuthenticationSupported else {
+            return PassportVerificationCheck(status: .notChecked, reason: .notSupported)
+        }
+        if activeAuthenticationPassed {
+            return PassportVerificationCheck(status: .passed, reason: .passed)
+        }
+        if activeAuthenticationChallenge.isEmpty && activeAuthenticationSignature.isEmpty {
+            return PassportVerificationCheck(status: .notChecked, reason: .skipped)
+        }
+        return PassportVerificationCheck(status: .failed, reason: .attemptedFailed)
+    }
+
+    private func verificationCheckForChipAuthentication() -> PassportVerificationCheck {
+        guard isChipAuthenticationSupported else {
+            return PassportVerificationCheck(status: .notChecked, reason: .notSupported)
+        }
+        switch chipAuthenticationStatus {
+        case .notDone:
+            return PassportVerificationCheck(status: .notChecked, reason: .skipped)
+        case .success:
+            return PassportVerificationCheck(status: .passed, reason: .passed)
+        case .failed:
+            return PassportVerificationCheck(status: .failed, reason: .attemptedFailed)
+        }
+    }
+
+    private func dataGroupVerificationCoverage() -> [PassportDataGroupVerificationCoverage] {
+        var coverage: [PassportDataGroupVerificationCoverage] = []
+        let readIds = Set(dataGroupsRead.keys).filter { $0 != .COM && $0 != .SOD }
+        let hashedIds = Set(dataGroupHashes.keys)
+        let ids = Array(readIds.union(hashedIds)).sorted { $0.rawValue < $1.rawValue }
+
+        for id in ids {
+            if let hash = dataGroupHashes[id] {
+                coverage.append(PassportDataGroupVerificationCoverage(
+                    dataGroup: id,
+                    status: hash.match ? .coveredAndMatched : .coveredButMismatched
+                ))
+            } else if readIds.contains(id) {
+                coverage.append(PassportDataGroupVerificationCoverage(dataGroup: id, status: .readButNotCovered))
+            } else {
+                coverage.append(PassportDataGroupVerificationCoverage(dataGroup: id, status: .coveredButNotRead))
+            }
+        }
+
+        return coverage
+    }
 }
 
 @available(iOS 13, macOS 10.15, *)
@@ -682,5 +833,11 @@ private extension PassportAuthenticationStatus {
         case .failed:
             return .failed
         }
+    }
+}
+
+private extension URL {
+    var privacySafeFileModificationDate: Date? {
+        try? resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
     }
 }
