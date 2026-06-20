@@ -7,11 +7,11 @@ This package handles reading an NFC Enabled passport using iOS 15 CoreNFC APIS
 Supported features:
 * Basic Access Control (BAC)
 * Secure Messaging
-* Reads DG1 (MRZ data) and DG2 (Image) in both JPEG and JPEG2000 formats, DG7, DG11, DG12, DG14 and DG15 (also SOD and COM datagroups)
-* Passive Authentication
-* Active Authentication
+* Reads and preserves all LDS data groups. COM, DG1, DG2, DG7, DG11, DG12, DG14, DG15, and SOD have typed parsers; DG3, DG4, DG5, DG6, DG8, DG9, DG10, DG13, and DG16 are retained as opaque typed data groups for hashing and explicit raw export workflows.
+* Passive Authentication with structured LDS Security Object hash parsing and CMS verification fallback.
+* Active Authentication with RSA and ECDSA DG15 public-key detection.
 * Chip Authentication (ECDH DES and AES keys tested, DH DES AES keys implemented ad should work but currently not tested)
-* PACE - currently only Generic Mapping (GM) supported
+* PACE with MRZ, CAN, PIN, or PUK password references. When a chip advertises multiple PACE options, implemented Generic Mapping (GM) options are used when available. Integrated Mapping (IM) and Chip Authentication Mapping (CAM) remain explicit unsupported paths.
 * Ability to dump passport stream and read it back in
 * Uses Async/Await
 
@@ -127,7 +127,29 @@ For UI tests or simulator flows, depend on `PassportChipReading` and inject `Pas
 let fixture = PassportReaderFixture(result: .success(NFCPassportModel()))
 ```
 
-Currently supported data groups are COM, DG1, DG2, DG7, DG11, DG12, DG14 (partial), DG15, and SOD.
+The reader can read every LDS data-group file id. COM, DG1, DG2, DG7, DG11, DG12, DG14, DG15, and SOD have typed parsers used by the app-facing model. DG7 preserves multiple displayed signature/mark image items when present while keeping the first image available through the existing compatibility API. DG3, DG4, DG5, DG6, DG8, DG9, DG10, DG13, and DG16 are represented as opaque typed groups so they can be read, retained, hashed for passive authentication, and exported only through explicit unsafe raw-export policy.
+
+PACE defaults to the MRZ-derived key:
+
+```swift
+let passport = try await passportReader.readPassport(
+    mrzKey: mrzKey,
+    scanProfile: .fullVerification
+)
+```
+
+If a document or inspection workflow requires a CAN, PIN, or PUK PACE credential, pass it explicitly while still providing the MRZ key for BAC fallback:
+
+```swift
+let passport = try await passportReader.readPassport(
+    mrzKey: mrzKey,
+    scanProfile: .identityWithPhoto,
+    paceKey: can,
+    paceKeyReference: .can
+)
+```
+
+Integrated Mapping (IM) and Chip Authentication Mapping (CAM) are not silently treated as supported. They fail with a privacy-safe PACE failure until implemented and validated against real chips. Unknown DG14/CardAccess `SecurityInfo` records are preserved as redacted `UnknownSecurityInfo` values so callers can detect unrecognized security capabilities without exposing raw chip data.
 
 Extended mode reads (not supported by all passports) can be enabled by passing in the useExtendedMode flag to the readPassport function.
 This will increase the number of bytes that can be read in a call and may be required for some passports that use long AA keys (some Australian passports for example).
@@ -184,6 +206,8 @@ Passive Authentication is now part of the main library and can be used to ensure
 
 It requires a set of CSCA certificates in PEM format from a master list, either from a country that publishes its master list or from the ICAO PKD repository. See `scripts/README.md` for helper-script notes.
 
+The LDS Security Object hash list is parsed directly from DER, so all DG1-DG16 hash entries can be checked without relying on OpenSSL text-dump formatting. SOD signature verification tries the configured verifier first and then the alternate CMS/manual verifier before falling back to unsigned encapsulated-content extraction for data-group hash comparison. In that fallback case the signature status remains failed while data-group hash status can still report whether the read groups match the SOD.
+
 When no master list is supplied, signer-chain trust is not checked rather than failed. Apps should present that as an incomplete trust-anchor configuration, not as evidence that the passport or chip data is bad.
 
 ## Troubleshooting
@@ -198,7 +222,7 @@ e.g. 12345678<870052332507237 would be the key used.
 
 ## To do
 There are a number of things I'd like to implement in no particular order:
- * Finish off PACE authentication (IM and CAM)
+ * Finish off PACE authentication for Integrated Mapping (IM) and Chip Authentication Mapping (CAM), with real-chip interoperability validation.
  
 
 ## Thanks

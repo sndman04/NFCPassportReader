@@ -50,12 +50,12 @@ public class DataGroup {
             throw NFCPassportReaderError.TagNotValid
         }
 
-        if binToHex(data[pos]) & 0x0F == 0x0F {
+        if data[pos] & 0x1F == 0x1F {
             guard pos + 1 < bodyEnd else {
                 throw NFCPassportReaderError.InvalidASN1Structure
             }
 
-            tag = Int(binToHex(data[pos..<pos+2]))
+            tag = binToInt(data[pos..<pos+2])
             pos += 2
         } else {
             tag = Int(data[pos])
@@ -70,7 +70,7 @@ public class DataGroup {
         }
 
         let limit = bodyEnd == 0 ? data.count : bodyEnd
-        let end = pos+4 < limit ? pos+4 : limit
+        let end = pos+5 < limit ? pos+5 : limit
         let (len, lenOffset) = try asn1Length([UInt8](data[pos..<end]))
         pos += lenOffset
         return len

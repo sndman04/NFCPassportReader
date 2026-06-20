@@ -26,6 +26,10 @@ public class TagReader {
     func overrideDataAmountToRead( newAmount : Int ) {
         maxDataLengthToRead = min(max(newAmount, 1), 65_535)
     }
+
+    func preferExtendedReadAmount() {
+        maxDataLengthToRead = max(maxDataLengthToRead, 256)
+    }
     
     func reduceDataReadingAmount() {
         if maxDataLengthToRead > 0xA0 {
@@ -189,6 +193,7 @@ public class TagReader {
         }
         
         var data = [UInt8](resp.data[..<amountRead])
+        data.reserveCapacity(amountRead + remaining)
         
         var readAmount : Int = maxDataLengthToRead
         while remaining > 0 {
@@ -213,7 +218,7 @@ public class TagReader {
             guard !resp.data.isEmpty else {
                 throw NFCPassportReaderError.InvalidASN1Structure
             }
-            data += resp.data
+            data.append(contentsOf: resp.data)
             
             remaining -= resp.data.count
             amountRead += resp.data.count
@@ -275,7 +280,7 @@ public class TagReader {
             let nextSegment: Data
             // Overwrite sw1 and sw2.
             (nextSegment, sw1, sw2) = try await tag.sendCommand(apdu: getResponseCmd)
-            data += nextSegment
+            data.append(contentsOf: nextSegment)
         }
 
         var rep = ResponseAPDU(data: [UInt8](data), sw1: sw1, sw2: sw2)

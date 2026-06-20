@@ -17,9 +17,13 @@ public class CardAccess {
     private var asn1 : ASN1Item!
     public private(set) var securityInfos : [SecurityInfo] = [SecurityInfo]()
     
+    var paceInfos: [PACEInfo] {
+        securityInfos.compactMap { $0 as? PACEInfo }
+    }
+
     var paceInfo : PACEInfo? {
         get {
-            return (securityInfos.filter { ($0 as? PACEInfo) != nil }).first as? PACEInfo
+            return paceInfos.first
         }
     }
     

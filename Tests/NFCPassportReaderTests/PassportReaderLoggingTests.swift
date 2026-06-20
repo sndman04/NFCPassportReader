@@ -191,6 +191,69 @@ final class PassportReaderLoggingTests: XCTestCase {
         XCTAssertEqual(PassportScanProfile.fullVerification.dataGroups, [.COM, .SOD, .DG1, .DG2, .DG12, .DG14, .DG15])
     }
 
+    func testPACEKeyReferencesUseStandardPasswordReferenceValues() {
+        XCTAssertEqual(PassportPACEKeyReference.mrz.rawValue, 0x01)
+        XCTAssertEqual(PassportPACEKeyReference.can.rawValue, 0x02)
+        XCTAssertEqual(PassportPACEKeyReference.pin.rawValue, 0x03)
+        XCTAssertEqual(PassportPACEKeyReference.puk.rawValue, 0x04)
+    }
+
+    func testPACEMappingClassifierDistinguishesGMIMAndCAM() throws {
+        switch try PACEInfo.toMappingType(oid: SecurityInfo.ID_PACE_ECDH_GM_AES_CBC_CMAC_128) {
+        case .GM:
+            break
+        default:
+            XCTFail("Expected GM mapping")
+        }
+
+        switch try PACEInfo.toMappingType(oid: SecurityInfo.ID_PACE_ECDH_IM_AES_CBC_CMAC_128) {
+        case .IM:
+            break
+        default:
+            XCTFail("Expected IM mapping")
+        }
+
+        switch try PACEInfo.toMappingType(oid: SecurityInfo.ID_PACE_ECDH_CAM_AES_CBC_CMAC_128) {
+        case .CAM:
+            break
+        default:
+            XCTFail("Expected CAM mapping")
+        }
+    }
+
+    func testPACEInfoSelectionPrefersImplementedGMOverEarlierUnsupportedMapping() {
+        let im = PACEInfo(
+            oid: SecurityInfo.ID_PACE_ECDH_IM_AES_CBC_CMAC_128,
+            version: 2,
+            parameterId: PACEInfo.PARAM_ID_ECP_NIST_P256_R1
+        )
+        let gm = PACEInfo(
+            oid: SecurityInfo.ID_PACE_ECDH_GM_AES_CBC_CMAC_128,
+            version: 2,
+            parameterId: PACEInfo.PARAM_ID_ECP_NIST_P256_R1
+        )
+
+        XCTAssertFalse(im.isImplementedForReading)
+        XCTAssertTrue(gm.isImplementedForReading)
+
+        let infos = [im, gm]
+        let ordered = infos.filter { $0.isImplementedForReading } + infos.filter { !$0.isImplementedForReading }
+
+        XCTAssertTrue(ordered.first === gm)
+    }
+
+    func testUnknownSecurityInfoIsPreservedAsRedactedObject() throws {
+        let sequenceItem = ASN1Item(line: "0:d=1  hl=2 l=  10 cons: SEQUENCE")
+        sequenceItem.addChild(ASN1Item(line: "0:d=2  hl=2 l=   4 prim: OBJECT            :1.2.3.4"))
+        sequenceItem.addChild(ASN1Item(line: "0:d=2  hl=2 l=   1 prim: INTEGER           :02"))
+
+        let info = try XCTUnwrap(SecurityInfo.getInstance(object: sequenceItem, body: []))
+
+        XCTAssertFalse(info.isRecognized)
+        XCTAssertTrue(info is UnknownSecurityInfo)
+        XCTAssertEqual(info.getProtocolOIDString(), "Unknown security info")
+    }
+
     func testCustomScanProfileDeduplicatesWithoutReordering() {
         let profile = PassportScanProfile.custom([.DG1, .DG2, .DG1, .SOD, .DG2])
 
@@ -250,6 +313,16 @@ final class PassportReaderLoggingTests: XCTestCase {
         XCTAssertTrue(model.passportVerificationAttempted)
         XCTAssertFalse(model.masterListWasProvided)
         XCTAssertEqual(model.verificationResult.countrySigningCertificateStatus, .notChecked)
+    }
+
+    func testVerifyPassportResetsErrorsBetweenAttempts() {
+        let model = NFCPassportModel()
+
+        model.verifyPassport(masterListURL: nil)
+        XCTAssertEqual(model.verificationErrors.count, 1)
+
+        model.verifyPassport(masterListURL: nil)
+        XCTAssertEqual(model.verificationErrors.count, 1)
     }
 
     func testPhotoPolicyCanRemoveDG2FromRequestedGroups() {

@@ -14,6 +14,7 @@ import UIKit
 public class DataGroup7 : DataGroup {
     
     public private(set) var imageData : [UInt8] = []
+    public private(set) var imageDataItems : [[UInt8]] = []
 
     public override var datagroupType: DataGroupId { .DG7 }
 
@@ -38,9 +39,12 @@ public class DataGroup7 : DataGroup {
         try verifyTag(tag, equals: 0x02)
         _ = try getNextValue()
         
-        tag = try getNextTag()
-        try verifyTag(tag, equals: 0x5F43)
-        
-        imageData = try getNextValue()
+        while hasUnreadBody {
+            tag = try getNextTag()
+            try verifyTag(tag, equals: 0x5F43)
+            imageDataItems.append(try getNextValue())
+        }
+
+        imageData = imageDataItems.first ?? []
     }
 }

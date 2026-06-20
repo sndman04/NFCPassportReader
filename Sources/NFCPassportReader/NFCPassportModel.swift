@@ -88,13 +88,13 @@ public class NFCPassportModel {
         return FaceImageInfo.from(dg2: dg2)
     }()
 
-    public private(set) lazy var documentSigningCertificate : X509Wrapper? = {
+    public var documentSigningCertificate : X509Wrapper? {
         return certificateSigningGroups[.documentSigningCertificate]
-    }()
+    }
 
-    public private(set) lazy var countrySigningCertificate : X509Wrapper? = {
+    public var countrySigningCertificate : X509Wrapper? {
         return certificateSigningGroups[.issuerSigningCertificate]
-    }()
+    }
     
     // Extract data from COM
     public private(set) lazy var LDSVersion : String = {
@@ -308,6 +308,12 @@ public class NFCPassportModel {
     public func verifyPassport( masterListURL: URL?, useCMSVerification : Bool = false ) {
         passportVerificationAttempted = true
         masterListWasProvided = masterListURL != nil
+        verificationErrors = []
+        passportCorrectlySigned = false
+        documentSigningCertificateVerified = false
+        passportDataNotTampered = false
+        dataGroupHashes = [:]
+        certificateSigningGroups = [:]
 
         if let masterListURL = masterListURL {
             do {
@@ -454,11 +460,7 @@ public class NFCPassportModel {
         var signedData : Data
         documentSigningCertificateVerified = false
         do {
-            if useCMSVerification {
-                signedData = try OpenSSLUtils.verifyAndReturnSODEncapsulatedDataUsingCMS(sod: sod)
-            } else {
-                signedData = try OpenSSLUtils.verifyAndReturnSODEncapsulatedData(sod: sod)
-            }
+            signedData = try verifySODAndReturnEncapsulatedContent(sod: sod, preferCMSVerification: useCMSVerification)
             documentSigningCertificateVerified = true
         } catch {
             signedData = try sod.getEncapsulatedContent()
@@ -467,8 +469,7 @@ public class NFCPassportModel {
         // Now Verify passport data by comparing compare Hashes in SOD against
         // computed hashes to ensure data not been tampered with
         passportDataNotTampered = false
-        let asn1Data = try OpenSSLUtils.ASN1Parse( data: signedData )
-        let (sodHashAlgorythm, sodHashes) = try parseSODSignatureContent( asn1Data )
+        let (sodHashAlgorythm, sodHashes) = try parseSODSignatureContent(data: signedData)
         
         var errors : String = ""
         for (id,dgVal) in dataGroupsRead {
@@ -496,11 +497,59 @@ public class NFCPassportModel {
         }
         passportDataNotTampered = true
     }
+
+    private func verifySODAndReturnEncapsulatedContent(sod: SOD, preferCMSVerification: Bool) throws -> Data {
+        let firstVerifier: (SOD) throws -> Data = preferCMSVerification
+            ? OpenSSLUtils.verifyAndReturnSODEncapsulatedDataUsingCMS
+            : OpenSSLUtils.verifyAndReturnSODEncapsulatedData
+        let secondVerifier: (SOD) throws -> Data = preferCMSVerification
+            ? OpenSSLUtils.verifyAndReturnSODEncapsulatedData
+            : OpenSSLUtils.verifyAndReturnSODEncapsulatedDataUsingCMS
+
+        do {
+            return try firstVerifier(sod)
+        } catch {
+            return try secondVerifier(sod)
+        }
+    }
     
     
     /// Parses an text ASN1 structure, and extracts the Hash Algorythm and Hashes contained from the Octect strings
     /// - Parameter content: the text ASN1 stucure format
     /// - Returns: The Hash Algorythm used - either SHA1 or SHA256, and a dictionary of hashes for the datagroups (currently only DG1 and DG2 are handled)
+    func parseSODSignatureContent(data: Data) throws -> (String, [DataGroupId : String]) {
+        let root = try SimpleASN1Node.parse([UInt8](data))
+        guard root.tag == 0x30,
+              root.children.count >= 3,
+              let digestAlgorithmOID = root.children[1].children.first?.objectIdentifier,
+              let digestAlgorithm = hashAlgorithmName(for: digestAlgorithmOID) else {
+            throw PassiveAuthenticationError.UnableToParseSODHashes("Unable to parse structured SOD hashes")
+        }
+
+        let dataGroupHashValues = root.children[2]
+        guard dataGroupHashValues.tag == 0x30 else {
+            throw PassiveAuthenticationError.UnableToParseSODHashes("Unable to parse structured SOD hashes")
+        }
+
+        var sodHashes: [DataGroupId: String] = [:]
+        for hashValue in dataGroupHashValues.children {
+            guard hashValue.children.count >= 2,
+                  let dataGroupNumber = hashValue.children[0].integerValue,
+                  let dataGroupId = dataGroupId(forSODNumber: dataGroupNumber),
+                  hashValue.children[1].tag == 0x04 else {
+                throw PassiveAuthenticationError.UnableToParseSODHashes("Invalid data group hash structure")
+            }
+
+            sodHashes[dataGroupId] = binToHexRep(hashValue.children[1].value)
+        }
+
+        guard !sodHashes.isEmpty else {
+            throw PassiveAuthenticationError.UnableToParseSODHashes("Unable to extract hashes")
+        }
+
+        return (digestAlgorithm, sodHashes)
+    }
+
     func parseSODSignatureContent( _ content : String ) throws -> (String, [DataGroupId : String]){
         var currentDG = ""
         var sodHashAlgo = ""
@@ -556,6 +605,45 @@ public class NFCPassportModel {
         }
         
         return (sodHashAlgo, sodHashes)
+    }
+
+    private func hashAlgorithmName(for oid: String) -> String? {
+        switch oid {
+        case "1.3.14.3.2.26":
+            return "SHA1"
+        case "2.16.840.1.101.3.4.2.4":
+            return "SHA224"
+        case "2.16.840.1.101.3.4.2.1":
+            return "SHA256"
+        case "2.16.840.1.101.3.4.2.2":
+            return "SHA384"
+        case "2.16.840.1.101.3.4.2.3":
+            return "SHA512"
+        default:
+            return nil
+        }
+    }
+
+    private func dataGroupId(forSODNumber number: Int) -> DataGroupId? {
+        switch number {
+        case 1: return .DG1
+        case 2: return .DG2
+        case 3: return .DG3
+        case 4: return .DG4
+        case 5: return .DG5
+        case 6: return .DG6
+        case 7: return .DG7
+        case 8: return .DG8
+        case 9: return .DG9
+        case 10: return .DG10
+        case 11: return .DG11
+        case 12: return .DG12
+        case 13: return .DG13
+        case 14: return .DG14
+        case 15: return .DG15
+        case 16: return .DG16
+        default: return nil
+        }
     }
 }
 

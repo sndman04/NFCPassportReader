@@ -69,10 +69,25 @@ final class NFCPassportReaderTests: XCTestCase {
             XCTAssertEqual(len, 65535)
             XCTAssertEqual(offset, 3)
         }
+
+        // Test 65536, used by valid large data groups such as DG2 photos
+        XCTAssertNoThrow(try asn1Length([0x83, 0x01, 0x00, 0x00])) { (len, offset) in
+            XCTAssertEqual(len, 65536)
+            XCTAssertEqual(offset, 4)
+        }
+
+        // Test 16777216, longest supported definite length form
+        XCTAssertNoThrow(try asn1Length([0x84, 0x01, 0x00, 0x00, 0x00])) { (len, offset) in
+            XCTAssertEqual(len, 16777216)
+            XCTAssertEqual(offset, 5)
+        }
         
         XCTAssertThrowsError(try asn1Length([]))
         XCTAssertThrowsError(try asn1Length([0x81]))
         XCTAssertThrowsError(try asn1Length([0x82, 0x01]))
+        XCTAssertThrowsError(try asn1Length([0x80]))
+        XCTAssertThrowsError(try asn1Length([0x85, 0x01, 0x00, 0x00, 0x00, 0x00]))
+        XCTAssertThrowsError(try asn1Length([0x84, 0x80, 0x00, 0x00, 0x00]))
     }
     
     func testToASNLength() {
@@ -125,15 +140,42 @@ final class NFCPassportReaderTests: XCTestCase {
             XCTAssertEqual(data[1], 0xff)
             XCTAssertEqual(data[2], 0xff)
         }
+
+        // Test 65536
+        XCTAssertNoThrow(try toAsn1Length(65536)) { data in
+            XCTAssertEqual(data, [0x83, 0x01, 0x00, 0x00])
+        }
+
+        // Test 16777216
+        XCTAssertNoThrow(try toAsn1Length(16777216)) { data in
+            XCTAssertEqual(data, [0x84, 0x01, 0x00, 0x00, 0x00])
+        }
         
         // Test Too Big
-        XCTAssertThrowsError(try toAsn1Length(65536))
+        XCTAssertThrowsError(try toAsn1Length(-1))
+        XCTAssertThrowsError(try toAsn1Length(Int(Int32.max) + 1))
     }
 
     func testHexRepToBinRejectsInvalidInputWithoutTrapping() {
         XCTAssertEqual(hexRepToBin("not hex"), [])
         XCTAssertEqual(hexRepToBin("AAZ1"), [])
         XCTAssertEqual(hexRepToBin("F"), [0x0f])
+    }
+
+    func testByteIntegerHelpersUseBigEndianArithmetic() {
+        XCTAssertEqual(binToHex([0x01, 0x02, 0x03]), 0x010203)
+        XCTAssertEqual(binToHex([UInt8](repeating: 0xFF, count: 9)), 0)
+        XCTAssertEqual(binToInt([0x01, 0x2C]), 300)
+        XCTAssertEqual(intToBin(0x2C), [0x2C])
+        XCTAssertEqual(intToBin(0x012C), [0x01, 0x2C])
+        XCTAssertEqual(intToBin(0x012C, pad: 4), [0x01, 0x2C])
+    }
+
+    func testSecureMessagingSequenceCounterIncrementDoesNotUseTruncatingIntegerConversion() {
+        let sm = SecureMessaging(ksenc: [], ksmac: [], ssc: [0x00, 0x00, 0xFF])
+
+        XCTAssertEqual(sm.incSSC(), [0x00, 0x01, 0x00])
+        XCTAssertEqual(sm.incSSC(), [0x00, 0x01, 0x00])
     }
 
     func testUnpadHandlesEmptyAndZeroOnlyInputWithoutTrapping() {
@@ -279,7 +321,7 @@ final class NFCPassportReaderTests: XCTestCase {
         let ssc = hexRepToBin("73061884A0E57AAA")
 
         let sm = SecureMessaging(ksenc: KSenc, ksmac: KSmac, ssc: ssc)
-        let malformed = ResponseAPDU(data: hexRepToBin("87090156D0990290008E08D6B9C0DA21DC965F"), sw1: 0x90, sw2: 0x00)
+        let malformed = ResponseAPDU(data: hexRepToBin("87300156D0990290008E08D6B9C0DA21DC965F"), sw1: 0x90, sw2: 0x00)
 
         XCTAssertThrowsError(try sm.unprotect(rapdu: malformed)) { error in
             guard case NFCPassportReaderError.D087Malformed = error else {

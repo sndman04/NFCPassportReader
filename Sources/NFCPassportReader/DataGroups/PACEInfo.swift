@@ -119,6 +119,15 @@ public class PACEInfo : SecurityInfo {
         return try PACEInfo.toKeyLength(oid: oid); // Of the enc cipher. Either 128, 192, or 256.
     }
 
+    public var isImplementedForReading: Bool {
+        guard let mappingType = try? getMappingType(),
+              mappingType == .GM else {
+            return false
+        }
+
+        return (try? getParameterSpec()) != nil
+    }
+
     /// Caller is required to free the returned EVP_PKEY value
     public func createMappingKey( ) throws -> OpaquePointer {
         switch try getKeyAgreementAlgorithm() {

@@ -77,6 +77,10 @@ public class SecurityInfo {
     public func getProtocolOIDString() -> String {
         ""
     }
+
+    public var isRecognized: Bool {
+        true
+    }
     
     static func getInstance( object : ASN1Item, body: [UInt8] ) -> SecurityInfo? {
         guard let oid = object.getChild(0)?.value,
@@ -139,6 +143,27 @@ public class SecurityInfo {
                 return ActiveAuthenticationInfo(oid: oid, version: version)
             }
         }
-        return nil
+        return UnknownSecurityInfo(oid: oid)
+    }
+}
+
+@available(iOS 13, macOS 10.15,*)
+public final class UnknownSecurityInfo: SecurityInfo {
+    private let oid: String
+
+    init(oid: String) {
+        self.oid = oid
+    }
+
+    public override func getObjectIdentifier() -> String {
+        oid
+    }
+
+    public override func getProtocolOIDString() -> String {
+        "Unknown security info"
+    }
+
+    public override var isRecognized: Bool {
+        false
     }
 }

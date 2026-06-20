@@ -60,7 +60,11 @@ func getImage() -> UIImage? {
         // Tag should be 0x02
         tag = try getNextTag()
         try verifyTag(tag, equals: 0x02)
-        nrImages = try Int(getNextValue()[0])
+        let imageCount = try getNextValue()
+        guard let firstImageCountByte = imageCount.first else {
+            throw NFCPassportReaderError.InvalidASN1Structure
+        }
+        nrImages = Int(firstImageCountByte)
         
         // Next tag is 0x7F60
         tag = try getNextTag()
@@ -126,7 +130,7 @@ func getImage() -> UIImage? {
         // The Feature block is 8 bytes
         offset += nrFeaturePoints * 8
 
-        guard data.count >= offset + 13 else {
+        guard data.count >= offset + 12 else {
             throw NFCPassportReaderError.InvalidASN1Structure
         }
         

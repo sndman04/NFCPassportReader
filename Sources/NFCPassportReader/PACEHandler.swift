@@ -39,11 +39,6 @@ extension PACEHandlerError: LocalizedError {
 public class PACEHandler {
     
     
-    private static let MRZ_PACE_KEY_REFERENCE : UInt8 = 0x01
-    private static let CAN_PACE_KEY_REFERENCE : UInt8 = 0x02 // Not currently supported
-    private static let PIN_PACE_KEY_REFERENCE : UInt8 = 0x03 // Not currently supported
-    private static let CUK_PACE_KEY_REFERENCE : UInt8 = 0x04 // Not currently supported
-
     var tagReader : TagReader
     var paceInfo : PACEInfo
     
@@ -64,15 +59,25 @@ public class PACEHandler {
     public init(cardAccess : CardAccess, tagReader: TagReader) throws {
         self.tagReader = tagReader
         
-        guard let pi = cardAccess.paceInfo else {
+        guard let pi = cardAccess.preferredPACEInfo else {
             throw NFCPassportReaderError.NotYetSupported( "PACE not supported" )
         }
 
         self.paceInfo = pi
         isPACESupported = true
     }
+
+    public init(paceInfo: PACEInfo, tagReader: TagReader) {
+        self.tagReader = tagReader
+        self.paceInfo = paceInfo
+        isPACESupported = true
+    }
     
-    public func doPACE( mrzKey : String ) async throws {
+    public func doPACE(mrzKey: String) async throws {
+        try await doPACE(accessKey: mrzKey, keyReference: .mrz)
+    }
+
+    public func doPACE(accessKey: String, keyReference: PassportPACEKeyReference) async throws {
         guard isPACESupported else {
             throw NFCPassportReaderError.NotYetSupported( "PACE not supported" )
         }
@@ -86,8 +91,8 @@ public class PACEHandler {
         digestAlg = try paceInfo.getDigestAlgorithm()  // Either SHA-1 or SHA-256.
         keyLength = try paceInfo.getKeyLength()  // Get key length  the enc cipher. Either 128, 192, or 256.
 
-        paceKeyType = PACEHandler.MRZ_PACE_KEY_REFERENCE
-        paceKey = try createPaceKey( from: mrzKey )
+        paceKeyType = keyReference.rawValue
+        paceKey = try createPaceKey(from: accessKey, keyReference: keyReference)
         
         // Temporary logging
 
@@ -129,7 +134,7 @@ public class PACEHandler {
 */
     }
     
-    /// Performs PACE Step 1- receives an encrypted nonce from the passport and decypts it with the  PACE key - derived from MRZ, CAN (not yet supported)
+    /// Performs PACE Step 1- receives an encrypted nonce from the passport and decrypts it with the PACE key.
     func doStep1() async throws -> [UInt8] {
         let response = try await tagReader.sendGeneralAuthenticate(data: [], isLast: false)
             
@@ -165,8 +170,10 @@ public class PACEHandler {
         }
 
         switch(mappingType) {
-            case .CAM, .GM:
+            case .GM:
                 return try await doPACEStep2GM(passportNonce: passportNonce)
+            case .CAM:
+                throw NFCPassportReaderError.PACEError("Step2CAM", "PACE Chip Authentication Mapping is not implemented")
             case .IM:
                 return try await doPACEStep2IM(passportNonce: passportNonce)
         }
@@ -182,6 +189,7 @@ public class PACEHandler {
         
         let mappingKey : OpaquePointer
         mappingKey = try self.paceInfo.createMappingKey( )
+        defer { EVP_PKEY_free(mappingKey) }
 
         guard let pcdMappingEncodedPublicKey = OpenSSLUtils.getPublicKeyData(from: mappingKey) else {
             throw NFCPassportReaderError.PACEError( "Step2GM", "Unable to get public key from mapping key")
@@ -209,14 +217,11 @@ public class PACEHandler {
             throw NFCPassportReaderError.PACEError( "Step2GM", "Unsupported agreement algorithm" )
         }
 
-        // Need to free the mapping key we created now
-        EVP_PKEY_free(mappingKey)
         return ephemeralParams
     }
     
     func doPACEStep2IM( passportNonce: [UInt8] ) async throws -> OpaquePointer {
-        // Not implemented yet
-        throw NFCPassportReaderError.PACEError( "Step2IM", "IM not yet implemented" )
+        throw NFCPassportReaderError.PACEError("Step2IM", "PACE Integrated Mapping is not implemented")
     }
     
     /// Generates an ephemeral public/private key pair based on mapping parameters from step 2, and then sends
@@ -409,12 +414,12 @@ extension PACEHandler {
     /// Computes a key seed based on an MRZ key
     /// - Parameter the mrz key
     /// - Returns a encoded key based on the mrz key that can be used for PACE
-    func createPaceKey( from mrzKey: String ) throws -> [UInt8] {
-        let buf: [UInt8] = Array(mrzKey.utf8)
+    func createPaceKey(from accessKey: String, keyReference: PassportPACEKeyReference = .mrz) throws -> [UInt8] {
+        let buf: [UInt8] = Array(accessKey.utf8)
         let hash = calcSHA1Hash(buf)
         
         let smskg = SecureMessagingSessionKeyGenerator()
-        let key = try smskg.deriveKey(keySeed: hash, cipherAlgName: cipherAlg, keyLength: keyLength, nonce: nil, mode: .PACE_MODE, paceKeyReference: paceKeyType)
+        let key = try smskg.deriveKey(keySeed: hash, cipherAlgName: cipherAlg, keyLength: keyLength, nonce: nil, mode: .PACE_MODE, paceKeyReference: keyReference.rawValue)
         return key
     }
     

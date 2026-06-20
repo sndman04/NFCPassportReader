@@ -66,6 +66,9 @@ public class PassportReader : NSObject {
     private var caHandler : ChipAuthenticationHandler?
     private var paceHandler : PACEHandler?
     private var mrzKey : String = ""
+    private var paceKey : String?
+    private var paceKeyReference: PassportPACEKeyReference = .mrz
+    private var pendingPACECredential: (key: String, reference: PassportPACEKeyReference)?
     private var aaChallenge: [UInt8]?
     private var dataAmountToReadOverride : Int? = nil
     
@@ -102,17 +105,23 @@ public class PassportReader : NSObject {
     
     public func readPassport( mrzKey : String, tags : [DataGroupId] = [], aaChallenge: [UInt8]? = nil, skipSecureElements : Bool = true, skipCA : Bool = false, skipPACE : Bool = false, useExtendedMode : Bool = false, operationTimeout: TimeInterval? = nil, photoPolicy: PassportPhotoPolicy = .read, securityPolicy: PassportReaderSecurityPolicy = .default, progressHandler: PassportReaderProgressHandler? = nil, customDisplayMessage : ((NFCViewDisplayMessage) -> String?)? = nil) async throws -> NFCPassportModel {
         guard NFCNDEFReaderSession.readingAvailable else {
+            pendingPACECredential = nil
             eventLogger.log(.readFailed(.nfcNotSupported))
             throw NFCPassportReaderError.NFCNotSupported
         }
 
         guard beginScanIfPossible() else {
+            pendingPACECredential = nil
             eventLogger.log(.readFailed(.unexpectedReadFailure))
             throw NFCPassportReaderError.ScanAlreadyInProgress
         }
 
         self.passport = NFCPassportModel()
         self.mrzKey = mrzKey
+        let paceCredential = pendingPACECredential
+        pendingPACECredential = nil
+        self.paceKey = paceCredential?.key ?? mrzKey
+        self.paceKeyReference = paceCredential?.reference ?? .mrz
         self.aaChallenge = aaChallenge
         self.skipCA = skipCA
         self.skipPACE = skipPACE
@@ -179,6 +188,73 @@ public class PassportReader : NSObject {
         try await readPassport(
             mrzKey: mrzKey,
             tags: scanProfile.dataGroups,
+            aaChallenge: aaChallenge,
+            skipSecureElements: skipSecureElements,
+            skipCA: skipCA,
+            skipPACE: skipPACE,
+            useExtendedMode: useExtendedMode,
+            operationTimeout: operationTimeout,
+            photoPolicy: photoPolicy,
+            securityPolicy: securityPolicy,
+            progressHandler: progressHandler,
+            customDisplayMessage: customDisplayMessage
+        )
+    }
+
+    public func readPassport(
+        mrzKey: String,
+        tags: [DataGroupId] = [],
+        paceKey: String,
+        paceKeyReference: PassportPACEKeyReference,
+        aaChallenge: [UInt8]? = nil,
+        skipSecureElements: Bool = true,
+        skipCA: Bool = false,
+        skipPACE: Bool = false,
+        useExtendedMode: Bool = false,
+        operationTimeout: TimeInterval? = nil,
+        photoPolicy: PassportPhotoPolicy = .read,
+        securityPolicy: PassportReaderSecurityPolicy = .default,
+        progressHandler: PassportReaderProgressHandler? = nil,
+        customDisplayMessage: ((NFCViewDisplayMessage) -> String?)? = nil
+    ) async throws -> NFCPassportModel {
+        self.pendingPACECredential = (paceKey, paceKeyReference)
+        return try await readPassport(
+            mrzKey: mrzKey,
+            tags: tags,
+            aaChallenge: aaChallenge,
+            skipSecureElements: skipSecureElements,
+            skipCA: skipCA,
+            skipPACE: skipPACE,
+            useExtendedMode: useExtendedMode,
+            operationTimeout: operationTimeout,
+            photoPolicy: photoPolicy,
+            securityPolicy: securityPolicy,
+            progressHandler: progressHandler,
+            customDisplayMessage: customDisplayMessage
+        )
+    }
+
+    public func readPassport(
+        mrzKey: String,
+        scanProfile: PassportScanProfile,
+        paceKey: String,
+        paceKeyReference: PassportPACEKeyReference,
+        aaChallenge: [UInt8]? = nil,
+        skipSecureElements: Bool = true,
+        skipCA: Bool = false,
+        skipPACE: Bool = false,
+        useExtendedMode: Bool = false,
+        operationTimeout: TimeInterval? = nil,
+        photoPolicy: PassportPhotoPolicy = .read,
+        securityPolicy: PassportReaderSecurityPolicy = .default,
+        progressHandler: PassportReaderProgressHandler? = nil,
+        customDisplayMessage: ((NFCViewDisplayMessage) -> String?)? = nil
+    ) async throws -> NFCPassportModel {
+        try await readPassport(
+            mrzKey: mrzKey,
+            tags: scanProfile.dataGroups,
+            paceKey: paceKey,
+            paceKeyReference: paceKeyReference,
             aaChallenge: aaChallenge,
             skipSecureElements: skipSecureElements,
             skipCA: skipCA,
@@ -279,6 +355,8 @@ extension PassportReader : NFCTagReaderSessionDelegate {
                 
                 if let newAmount = self.dataAmountToReadOverride {
                     tagReader.overrideDataAmountToRead(newAmount: newAmount)
+                } else if self.useExtendedMode {
+                    tagReader.preferExtendedReadAmount()
                 }
                 
                 tagReader.progress = { [unowned self] (progress) in
@@ -415,8 +493,30 @@ extension PassportReader {
 
                 trackingDelegate?.readCardAccess(cardAccess: cardAccess)
                  
-                let paceHandler = try PACEHandler( cardAccess: cardAccess, tagReader: tagReader )
-                try await paceHandler.doPACE(mrzKey: mrzKey )
+                let paceInfos = cardAccess.paceInfos
+                let implementedPACEInfos = paceInfos.filter { $0.isImplementedForReading }
+                let orderedPACEInfos = implementedPACEInfos.isEmpty ? paceInfos : implementedPACEInfos
+                guard !orderedPACEInfos.isEmpty else {
+                    throw NFCPassportReaderError.NotYetSupported("PACE not supported")
+                }
+
+                var lastPACEError: Error?
+                var didPACE = false
+                for paceInfo in orderedPACEInfos {
+                    do {
+                        let paceHandler = PACEHandler(paceInfo: paceInfo, tagReader: tagReader)
+                        try await paceHandler.doPACE(accessKey: paceKey ?? mrzKey, keyReference: paceKeyReference)
+                        didPACE = true
+                        break
+                    } catch {
+                        lastPACEError = error
+                    }
+                }
+
+                if let lastPACEError, !didPACE {
+                    throw lastPACEError
+                }
+
                 passport.PACEStatus = .success
                 eventLogger.log(.paceSucceeded)
                 emitProgress(.paceSucceeded)
@@ -481,8 +581,10 @@ extension PassportReader {
         let challenge = aaChallenge ?? generateRandomUInt8Array(8)
         let response = try await tagReader.doInternalAuthentication(challenge: challenge, useExtendedMode: useExtendedMode)
         self.passport.verifyActiveAuthentication( challenge:challenge, signature:response.data )
-        eventLogger.log(.activeAuthenticationSucceeded)
-        emitProgress(.activeAuthenticationSucceeded)
+        if self.passport.activeAuthenticationPassed {
+            eventLogger.log(.activeAuthenticationSucceeded)
+            emitProgress(.activeAuthenticationSucceeded)
+        }
     }
     
 

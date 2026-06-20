@@ -286,6 +286,17 @@ public class OpenSSLUtils {
     /// NOTE THE CALLER IS RESPONSIBLE FOR FREEING THE RETURNED KEY USING
     /// EVP_PKEY_free(pemKey);
     static func readRSAPublicKey( data : [UInt8] ) throws -> OpaquePointer? {
+        guard let key = try readPublicKey(data: data) else {
+            return nil
+        }
+        guard publicKeyType(key) == EVP_PKEY_RSA else {
+            EVP_PKEY_free(key)
+            return nil
+        }
+        return key
+    }
+
+    static func readPublicKey(data : [UInt8]) throws -> OpaquePointer? {
         
         guard let inf = BIO_new(BIO_s_mem()) else { throw OpenSSLError.UnableToReadECPublicKey("Unable to allocate output buffer") }
         defer { BIO_free(inf) }
@@ -359,16 +370,18 @@ public class OpenSSLUtils {
     /// NOTE THE CALLER IS RESPONSIBLE FOR FREEING THE RETURNED KEY USING
     /// EVP_PKEY_free(pemKey);
     static func readECPublicKey( data : [UInt8] ) throws -> OpaquePointer? {
-        
-        guard let inf = BIO_new(BIO_s_mem()) else { throw OpenSSLError.UnableToReadECPublicKey("Unable to allocate output buffer") }
-        defer { BIO_free(inf) }
-        
-        let _ = data.withUnsafeBytes { (ptr) in
-            BIO_write(inf, ptr.baseAddress?.assumingMemoryBound(to: UInt8.self), Int32(data.count))
+        guard let key = try readPublicKey(data: data) else {
+            return nil
         }
-        
-        guard let key = d2i_PUBKEY_bio(inf, nil) else { throw OpenSSLError.UnableToReadECPublicKey("Failed to load") }
+        guard publicKeyType(key) == EVP_PKEY_EC else {
+            EVP_PKEY_free(key)
+            return nil
+        }
         return key
+    }
+
+    static func publicKeyType(_ key: OpaquePointer) -> Int32 {
+        EVP_PKEY_get_base_id(key)
     }
     
     

@@ -48,15 +48,12 @@ public class SecureMessaging {
         var do87 : [UInt8] = []
         var do97 : [UInt8] = []
         
-        var tmp = "Concatenate CmdHeader"
         if apdu.data != nil {
-            tmp += " and DO87"
             do87 = try self.buildD087(apdu: apdu)
         }
         
         let isMSE = apdu.instructionCode == 0x22
         if apdu.expectedResponseLength > 0 && (isMSE ? apdu.expectedResponseLength < 256 : true) {
-            tmp += " and DO97"
             do97 = try self.buildD097(apdu: apdu)
         }
         
@@ -178,14 +175,6 @@ public class SecureMessaging {
             // do8e = [UInt8](rapduBin[offset ..< offset+2+ccLength])
             
             // CheckCC
-            var tmp = ""
-            if do87.count > 0 {
-                tmp += " DO'87"
-            }
-            if do99.count > 0 {
-                tmp += " DO'99"
-            }
-            
             let K = pad(paddedSSC + do87 + do99, blockSize:padLength)
             var CCb = mac(algoName: algoName, key: self.ksmac, msg: K)
             guard !CCb.isEmpty else {
@@ -272,11 +261,15 @@ public class SecureMessaging {
     }
     
     func incSSC() -> [UInt8] {
-        let val = binToHex(self.ssc) + 1
-        
-        // This needs to be fully zero padded - to 8 bytes = i.e. if SSC is 1 it should return [0x0,0x0,0x0,0x0,0x0,0x0,0x0,0x1]
-        // NOT [0x1]
-        return withUnsafeBytes(of: val.bigEndian, Array.init)
+        var next = self.ssc
+        for index in next.indices.reversed() {
+            let (value, overflow) = next[index].addingReportingOverflow(1)
+            next[index] = value
+            if !overflow {
+                return next
+            }
+        }
+        return next
     }
     
     func buildD08E(mac : [UInt8]) -> [UInt8] {

@@ -75,16 +75,27 @@ public func binToHexRep( _ val : UInt8 ) -> String {
 }
 
 public func binToHex( _ val: UInt8 ) -> Int {
-    let hexRep = String(format:"%02X", val)
-    return Int(hexRep, radix:16)!
+    Int(val)
 }
 
 public func binToHex( _ val: [UInt8] ) -> UInt64 {
-    UInt64(binToHexRep(val), radix:16) ?? 0
+    guard val.count <= MemoryLayout<UInt64>.size else {
+        return 0
+    }
+
+    return val.reduce(UInt64(0)) { partial, byte in
+        (partial << 8) | UInt64(byte)
+    }
 }
 
 public func binToHex( _ val: ArraySlice<UInt8> ) -> UInt64 {
-    return binToHex( [UInt8](val) )
+    guard val.count <= MemoryLayout<UInt64>.size else {
+        return 0
+    }
+
+    return val.reduce(UInt64(0)) { partial, byte in
+        (partial << 8) | UInt64(byte)
+    }
 }
 
 
@@ -94,23 +105,27 @@ public func hexToBin( _ val : UInt64 ) -> [UInt8] {
 }
 
 public func binToInt( _ val: ArraySlice<UInt8> ) -> Int {
-    let hexVal = binToInt( [UInt8](val) )
-    return hexVal
+    val.reduce(0) { partial, byte in
+        (partial << 8) | Int(byte)
+    }
 }
 
 public func binToInt( _ val: [UInt8] ) -> Int {
-    Int(binToHexRep(val), radix:16) ?? 0
+    val.reduce(0) { partial, byte in
+        (partial << 8) | Int(byte)
+    }
 }
 
 public func intToBin(_ data : Int, pad : Int = 2) -> [UInt8] {
     if pad == 2 {
-        let hex = String(format:"%02x", data)
-        return hexRepToBin(hex)
-    } else {
-        let hex = String(format:"%04x", data)
-        return hexRepToBin(hex)
+        guard data > 0xFF else {
+            return [UInt8(data & 0xFF)]
+        }
 
+        return intToBytes(val: data, removePadding: true)
     }
+
+    return [UInt8((data >> 8) & 0xFF), UInt8(data & 0xFF)]
 }
 
 /// 'AABB' --> \xaa\xbb'"""
@@ -293,25 +308,26 @@ public func asn1Length(_ data : [UInt8]) throws -> (Int, Int)  {
     }
 
     if firstByte < 0x80 {
-        return (Int(binToHex(firstByte)), 1)
+        return (Int(firstByte), 1)
     }
-    if firstByte == 0x81 {
-        guard data.count >= 2 else {
-            throw NFCPassportReaderError.CannotDecodeASN1Length
-        }
 
-        return (Int(binToHex(data[1])), 2)
+    let lengthByteCount = Int(firstByte & 0x7F)
+    guard lengthByteCount > 0,
+          lengthByteCount <= 4,
+          data.count >= lengthByteCount + 1 else {
+        throw NFCPassportReaderError.CannotDecodeASN1Length
     }
-    if firstByte == 0x82 {
-        guard data.count >= 3 else {
-            throw NFCPassportReaderError.CannotDecodeASN1Length
-        }
 
-        let val = binToHex([UInt8](data[1..<3]))
-        return (Int(val), 3)
+    var value = 0
+    for byte in data[1 ... lengthByteCount] {
+        value = (value << 8) | Int(byte)
     }
-    
-    throw NFCPassportReaderError.CannotDecodeASN1Length
+
+    guard value <= Int(Int32.max) else {
+        throw NFCPassportReaderError.CannotDecodeASN1Length
+    }
+
+    return (value, lengthByteCount + 1)
     
 }
 
@@ -323,14 +339,24 @@ public func asn1Length(_ data : [UInt8]) throws -> (Int, Int)  {
 /// @raise asn1Exception: If the parameter is too big, must be >= 0 and <= FFFF
 @available(iOS 13, macOS 10.15, *)
 public func toAsn1Length(_ data : Int) throws -> [UInt8] {
+    guard data >= 0 else {
+        throw NFCPassportReaderError.InvalidASN1Value
+    }
+
     if data < 0x80 {
-        return hexRepToBin(String(format:"%02x", data))
+        return [UInt8(data)]
     }
     if data >= 0x80 && data <= 0xFF {
-        return [0x81] + hexRepToBin( String(format:"%02x",data))
+        return [0x81, UInt8(data)]
     }
     if data >= 0x0100 && data <= 0xFFFF {
-        return [0x82] + hexRepToBin( String(format:"%04x",data))
+        return [0x82, UInt8((data >> 8) & 0xFF), UInt8(data & 0xFF)]
+    }
+    if data >= 0x010000 && data <= 0xFFFFFF {
+        return [0x83, UInt8((data >> 16) & 0xFF), UInt8((data >> 8) & 0xFF), UInt8(data & 0xFF)]
+    }
+    if data >= 0x01000000 && data <= 0x7FFFFFFF {
+        return [0x84, UInt8((data >> 24) & 0xFF), UInt8((data >> 16) & 0xFF), UInt8((data >> 8) & 0xFF), UInt8(data & 0xFF)]
     }
     
     throw NFCPassportReaderError.InvalidASN1Value

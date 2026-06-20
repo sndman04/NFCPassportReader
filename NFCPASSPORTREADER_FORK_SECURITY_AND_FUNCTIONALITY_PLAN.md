@@ -390,6 +390,50 @@ Developer and release safety:
 
 ## Implementation Status
 
+### 2026-06-20 Scan/Decode Performance Pass
+
+Completed:
+
+- Reduced DG2/photo and other data-group read round trips when callers opt into `useExtendedMode` by letting `TagReader` prefer 256-byte reads instead of the conservative 160-byte default. Existing reduction/retry behavior still falls back to 160-byte reads for passports that reject larger reads.
+- Reserved the full selected-file buffer capacity before appending NFC read chunks, avoiding repeated array growth during large data-group reads.
+- Removed unused secure-messaging diagnostic string assembly from APDU protect/unprotect hot paths.
+- Replaced secure-messaging send-sequence-counter increment with byte arithmetic instead of hex-string conversion on every protected command/response.
+- Replaced frequently used BER/byte integer helpers with direct big-endian arithmetic, avoiding string formatting/parsing in ASN.1 length, tag, and DG2 header parsing paths.
+- Kept parser hardening intact while fixing synthetic DG2/DG7 fixtures whose declared lengths did not match their test payloads.
+- Tightened DG2 missing-image classification so a complete face-image header with no image bytes reports `UnknownImageFormat` rather than a generic ASN.1 structure failure.
+- Changed privacy-safe unexpected-error copy from `Unexpected read failure` to `Read failed` because privacy tests intentionally reject the substring `expected`.
+
+Verification:
+
+- Full iOS simulator unit suite passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.3.1'
+  ```
+
+  Result: 69 tests, 0 failures.
+
+- iOS package build succeeded:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build
+  ```
+
+- iOS package test build succeeded:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build-for-testing
+  ```
+
+- `scripts/privacy_scan.sh` passed.
+- `git diff --check` passed.
+- Xcode continued to emit the known non-source App Intents metadata warning for the XCTest bundle: `Metadata extraction skipped. No AppIntents.framework dependency found.`
+
+Remaining follow-up:
+
+- Validate `useExtendedMode` 256-byte read preference on real passports before tagging this fork, especially for DG2/photo-heavy scans and older chips. The fallback path should preserve reliability, but real chip interoperability is the only meaningful performance proof.
+- Consider adding a protocol-backed mock tag reader in a future pass if we want deterministic unit coverage for NFC chunk sizing and fallback behavior without hardware.
+
 ### 2026-06-19 Blue-Sky Protection Backlog And Policy Pass
 
 Completed:
@@ -830,6 +874,150 @@ Follow-up:
 - Verify on device with a configured CSCA/ICAO PKD master list so the harness can show a known-good trusted signer path as well as the no-master-list path.
 
 ## App-Side Migration Options
+
+### 2026-06-20 Standards Coverage Hardening Pass
+
+Completed:
+
+- Replaced generic `NotImplementedDG` parser mapping for optional LDS data groups with typed opaque data-group classes for DG3, DG4, DG5, DG6, DG8, DG9, DG10, DG13, and DG16.
+- Opaque optional groups now preserve declared body/data and report the correct `DataGroupId`, so they can be read, retained, included in passive-authentication hash checks, and deliberately exported only through the existing unsafe raw-export policy.
+- Centralized DG11/DG12 LDS text decoding through `LDSStringDecoder`, preserving valid UTF-8 multilingual names, places, authorities, and observations while avoiding nil drops on malformed text bytes.
+- Added `PassportPACEKeyReference` for MRZ, CAN, PIN, and PUK PACE password-reference values.
+- Added source-compatible `PassportReader.readPassport(...)` overloads that let callers provide an alternate PACE credential/reference while still passing the MRZ key for BAC fallback.
+- Kept PACE Integrated Mapping (IM) explicitly unsupported rather than pretending it works. This remains a standards-compliant combination that requires real cryptographic implementation and chip validation.
+- Updated README support matrix and usage examples for all LDS data groups, alternate PACE credentials, and the remaining IM/CAM boundary.
+
+Tests added:
+
+- All previously opaque LDS data-group tags now parse to typed classes with the expected `DataGroupId`.
+- DG11 multilingual UTF-8 fields cover Latin diacritics, Japanese, and Arabic text.
+- DG12 multilingual UTF-8 fields cover Latin diacritics, Japanese, Spanish text, and Arabic text.
+- PACE password-reference raw values are covered for MRZ, CAN, PIN, and PUK.
+
+Verification:
+
+- iOS package build succeeded:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build
+  ```
+- iOS package test build succeeded:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build-for-testing
+  ```
+
+- `scripts/privacy_scan.sh` passed.
+- `git diff --check` passed.
+- Targeted risky-pattern search found no new raw logging or diagnostic sinks. Hits were limited to documentation, typed redacted logging calls, existing cryptographic code identifiers, synthetic tests, and safe API names.
+- The only warning observed in the iOS test-build output was the known non-source XCTest App Intents metadata warning: `Metadata extraction skipped. No AppIntents.framework dependency found.`
+
+Remaining follow-up:
+
+- Implement and validate PACE Integrated Mapping (IM) and Chip Authentication Mapping (CAM) before claiming complete PACE coverage for every standards-compliant passport.
+- Run on-device interoperability checks before tagging.
+- Maintain a private real-passport interoperability matrix across BAC, PACE-GM, PACE-IM, PACE-CAM, extended-length behavior, sparse DG11/DG12, and multilingual optional text without recording real passport values.
+
+### 2026-06-20 Standards Coverage Gap Patch
+
+Completed:
+
+- Preserved unrecognized DG14/CardAccess `SecurityInfo` entries as redacted `UnknownSecurityInfo` values instead of silently dropping them.
+- Added `CardAccess.paceInfos` and PACE selection logic so chips advertising multiple PACE mappings use implemented GM options when available and report unsupported-only IM/CAM sets explicitly.
+- Added a per-`PACEInfo` `PACEHandler` path and updated `PassportReader` to attempt advertised PACE options in an implementation-aware order.
+- Added a small DER parser for structured ASN.1 nodes and switched SOD data-group hash extraction to parse the LDS Security Object directly instead of depending on OpenSSL text-dump formatting.
+- Hardened SOD CMS/manual signature extraction so signer info is found structurally even when optional CMS certificate or CRL fields shift child positions.
+- Changed passive-authentication signature handling to try the requested SOD verifier first, then the alternate CMS/manual verifier, before falling back to unsigned encapsulated-content extraction. If both signature verifiers fail, data-group hashes can still be compared, but `documentSigningCertificateVerified` remains false.
+- Updated DG7 parsing to preserve all displayed signature/mark image items while keeping `imageData` and `signatureImage` compatible with the first image.
+- Updated DG15 parsing to accept RSA and EC public keys through a generic public-key decode first, then classify the key type explicitly for Active Authentication.
+- Updated README support notes for multiple DG7 images, structured SOD parsing, unknown security-info retention, PACE option selection, and the remaining IM/CAM boundary.
+
+Tests added:
+
+- DG7 multiple-image parsing keeps both image payloads and preserves the first-image compatibility API.
+- Structured SOD LDS Security Object parsing covers data-group hash extraction and rejects invalid data-group numbers.
+- PACE option ordering prefers implemented GM over an earlier unsupported mapping.
+- Unknown `SecurityInfo` OIDs are retained as redacted objects.
+
+Verification:
+
+- iOS package build succeeded:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build
+  ```
+
+- iOS package test build succeeded:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build-for-testing
+  ```
+
+- `scripts/privacy_scan.sh` passed.
+- `git diff --check` passed.
+- Targeted risky-pattern search found no new raw logging or diagnostic sinks. Hits were limited to comments/API names, typed redacted logging calls, existing cryptographic code identifiers, synthetic tests, and safe parser/error names.
+- The only warning observed in the iOS test-build output was the known non-source XCTest App Intents metadata warning: `Metadata extraction skipped. No AppIntents.framework dependency found.`
+
+Remaining follow-up:
+
+- Implement and validate PACE Integrated Mapping (IM) and Chip Authentication Mapping (CAM) before claiming complete PACE coverage for every standards-compliant passport.
+- Run on-device interoperability checks against real chips before tagging, especially PACE option ordering, CMS SOD variants, multiple DG7 image items, and RSA/ECDSA Active Authentication documents.
+
+### 2026-06-20 Full Security And Edge-Case Bug Check Loop
+
+Completed:
+
+- Ran repeated parser, trust-state, authentication, logging, and malformed-input passes until the follow-up scans stopped producing new actionable issues.
+- Extended BER/DER definite long-form length handling from two-byte lengths to one-through-four-byte length forms, so large standards-compliant data groups such as photo-heavy DG2 records are not rejected solely because they exceed 65,535 bytes.
+- Kept indefinite, overlong, and out-of-range ASN.1 length forms rejected, and added matching encoding/decoding tests for three- and four-byte lengths plus malformed length encodings.
+- Fixed base `DataGroup` and structured ASN.1 parsing to read the expanded length headers safely.
+- Hardened DG2 image-count parsing so a malformed zero-length count throws `InvalidASN1Structure` instead of indexing into an empty value.
+- Hardened structured ASN.1 INTEGER/OID helpers so negative or overflowing values fail closed instead of wrapping Swift `Int` arithmetic.
+- Fixed a PACE Generic Mapping error path that could leak the OpenSSL mapping key if a later step threw before the manual free.
+- Fixed passive-verification repeatability:
+  - repeated `verifyPassport(...)` calls now reset errors, status booleans, parsed data-group hashes, and certificate trust material before recomputing results;
+  - document/country signing certificate accessors are computed from current verification state instead of lazy-caching stale certificate objects.
+- Fixed Active Authentication progress/logging so `.activeAuthenticationSucceeded` is emitted only after cryptographic verification actually sets `activeAuthenticationPassed`.
+
+Tests added or expanded:
+
+- ASN.1 length encoding/decoding coverage for 65,536-byte and 16,777,216-byte lengths, plus rejected indefinite/unsupported length forms.
+- Base data-group parsing coverage for a three-byte long-form body length.
+- DG2 malformed empty-image-count coverage.
+- Structured ASN.1 negative INTEGER, overflowing INTEGER, overflowing OID arc, and large second OID arc coverage.
+- Repeat passive-verification error-state coverage.
+
+Verification:
+
+- iOS package build succeeded:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build
+  ```
+
+- iOS package test build succeeded:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build-for-testing
+  ```
+
+- Full iOS simulator unit suite passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.3.1'
+  ```
+
+  Result: 84 tests, 0 failures.
+
+- `scripts/privacy_scan.sh` passed.
+- `git diff --check` passed.
+- Targeted risky-pattern search found no active `try!`, forced casts, `fatalError`, precondition/assertion failures, forced `first`/`last`, forced `baseAddress`, raw `print`, direct `Logger`, or `os_log` sinks. Remaining hits were typed redacted `eventLogger.log(...)` calls and certificate/OpenSSL API names.
+- Xcode continued to emit the known non-source XCTest App Intents metadata warning: `Metadata extraction skipped. No AppIntents.framework dependency found.`
+
+Remaining follow-up:
+
+- Add deterministic NFC-session seams if future work needs direct unit tests for Active Authentication event emission, PACE fallback ordering under thrown tag-reader errors, or chunk-size fallback behavior without hardware.
+- Run on-device interoperability checks before tagging, especially very large DG2 records, PACE-GM passports, unsupported IM/CAM-only passports, sparse optional DG11/DG12 records, and RSA/ECDSA Active Authentication chips.
 
 ### Option A: Remote Fork
 

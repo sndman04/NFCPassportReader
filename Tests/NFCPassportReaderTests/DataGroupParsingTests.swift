@@ -33,7 +33,7 @@ final class DataGroupParsingTests: XCTestCase {
         // This is a cut down version of the DG2 record. It contains everything up to the end of the image header - no actuall image data as its way too big to include here
         // I've also adjusted the record lengths accordingly
         
-        let dg2 = hexRepToBin("75617F61570201017F6082203FA1128002010081010282010087020101880200085F2E38464143003031300000002026000100002018000000000000000000010000000000000001000000000000000000000000000C6A5020200D0A")
+        let dg2 = hexRepToBin("755A7F61570201017F6082203FA1128002010081010282010087020101880200085F2E38464143003031300000002026000100002018000000000000000000010000000000000001000000000000000000000000000C6A5020200D0A")
         
         let dgp = DataGroupParser()
         XCTAssertNoThrow(try dgp.parseDG(data: dg2)) { dg in
@@ -48,7 +48,7 @@ final class DataGroupParsingTests: XCTestCase {
         // This is a cut down version of the DG2 record. It contains everything up to the begininnig of what would be the image data - no actual image data as its way too big to include here
         // I've also adjusted the record lengths accordingly
         
-        let dg2 = hexRepToBin("75617F618220470201017F6082203FA1128002010081010282010087020101880200085F2E3846414300303130000000202600010000201800000000000000000001000000000000000100000000000000000000FFD8FFE000104A464946")
+        let dg2 = hexRepToBin("755C7F618220470201017F6082203FA1128002010081010282010087020101880200085F2E3846414300303130000000202600010000201800000000000000000001000000000000000100000000000000000000FFD8FFE000104A464946")
         let dgp = DataGroupParser()
         XCTAssertNoThrow(try dgp.parseDG(data: dg2)) { dg in
             XCTAssertNotNil(dg)
@@ -57,7 +57,7 @@ final class DataGroupParsingTests: XCTestCase {
     }
 
     func testDataGroup2RejectsMissingImagePayloadWithoutTrapping() throws {
-        let validDG2 = hexRepToBin("75617F618220470201017F6082203FA1128002010081010282010087020101880200085F2E3846414300303130000000202600010000201800000000000000000001000000000000000100000000000000000000FFD8FFE000104A464946")
+        let validDG2 = hexRepToBin("755C7F618220470201017F6082203FA1128002010081010282010087020101880200085F2E3846414300303130000000202600010000201800000000000000000001000000000000000100000000000000000000FFD8FFE000104A464946")
         let dg2 = try XCTUnwrap(try DataGroupParser().parseDG(data: validDG2) as? DataGroup2)
 
         let isoHeaderWithoutImage = hexRepToBin(
@@ -90,17 +90,62 @@ final class DataGroupParsingTests: XCTestCase {
             }
         }
     }
+
+    func testDatagroup2RejectsEmptyImageCountWithoutTrapping() throws {
+        let body = try [0x7F, 0x61] + toAsn1Length(2) + [0x02, 0x00]
+        let data = try [UInt8]([0x75]) + toAsn1Length(body.count) + body
+
+        XCTAssertThrowsError(try DataGroupParser().parseDG(data: data)) { error in
+            guard case NFCPassportReaderError.InvalidASN1Structure = error else {
+                return XCTFail("Expected InvalidASN1Structure, got \(error)")
+            }
+        }
+    }
     
     func testDatagroup7ParsingJPEG() {
         
         // This is a cut down version of the DG7 record. It contains everything up to the end of the image header - no actuall image data as its way too big to include here
         // I've also adjusted the record lengths accordingly
         
-        let dg7 = hexRepToBin("678220060201015F4300")
+        let dg7 = hexRepToBin("67060201015F4300")
         let dgp = DataGroupParser()
         XCTAssertNoThrow(try dgp.parseDG(data: dg7)) { dg in
             XCTAssertNotNil(dg)
             XCTAssertTrue( dg is DataGroup7 )
+        }
+    }
+
+    func testDatagroup7PreservesMultipleImageItems() throws {
+        let body = try [0x02] + toAsn1Length(1) + [0x02] +
+            tlv(tag: [0x5F, 0x43], value: [0x01, 0x02]) +
+            tlv(tag: [0x5F, 0x43], value: [0x03, 0x04, 0x05])
+        let data = try [UInt8]([0x67]) + toAsn1Length(body.count) + body
+
+        let dg7 = try XCTUnwrap(try DataGroupParser().parseDG(data: data) as? DataGroup7)
+
+        XCTAssertEqual(dg7.imageData, [0x01, 0x02])
+        XCTAssertEqual(dg7.imageDataItems, [[0x01, 0x02], [0x03, 0x04, 0x05]])
+    }
+
+    func testAllLDSDataGroupTagsParseToTypedGroups() throws {
+        let cases: [(UInt8, DataGroupId, DataGroup.Type)] = [
+            (0x63, .DG3, DataGroup3.self),
+            (0x76, .DG4, DataGroup4.self),
+            (0x65, .DG5, DataGroup5.self),
+            (0x66, .DG6, DataGroup6.self),
+            (0x68, .DG8, DataGroup8.self),
+            (0x69, .DG9, DataGroup9.self),
+            (0x6A, .DG10, DataGroup10.self),
+            (0x6D, .DG13, DataGroup13.self),
+            (0x70, .DG16, DataGroup16.self)
+        ]
+
+        for (tag, id, expectedType) in cases {
+            let dg = try DataGroupParser().parseDG(data: [tag, 0x00])
+
+            XCTAssertTrue(type(of: dg) == expectedType, "Expected \(expectedType) for \(id.getName())")
+            XCTAssertEqual(dg.datagroupType, id)
+            XCTAssertEqual(dg.body, [])
         }
     }
 
@@ -126,6 +171,21 @@ final class DataGroupParsingTests: XCTestCase {
         }
     }
 
+    func testDataGroup11ParsesMultilingualUTF8Text() throws {
+        let name = "MULLER<<山田"
+        let birthplace = "Zürich القاهرة"
+        let tagList: [UInt8] = [0x5F, 0x0E, 0x5F, 0x11]
+        let body = try tlv(tag: [0x5C], value: tagList) +
+            tlv(tag: [0x5F, 0x0E], value: Array(name.utf8)) +
+            tlv(tag: [0x5F, 0x11], value: Array(birthplace.utf8))
+        let data = try [UInt8]([0x6B]) + toAsn1Length(body.count) + body
+
+        let dg11 = try XCTUnwrap(try DataGroupParser().parseDG(data: data) as? DataGroup11)
+
+        XCTAssertEqual(dg11.fullName, name)
+        XCTAssertEqual(dg11.placeOfBirth, birthplace)
+    }
+
     func testDatagroup12Parsing() {
         
         // This is a cut down version of the DG7 record. It contains everything up to the end of the image header - no actuall image data as its way too big to include here
@@ -145,6 +205,21 @@ final class DataGroupParsingTests: XCTestCase {
             XCTAssertEqual(dg12.issuingAuthority, "TESTER")
             XCTAssertEqual(dg12.dateOfIssue, "20180326")
         }
+    }
+
+    func testDataGroup12ParsesMultilingualUTF8Text() throws {
+        let issuingAuthority = "Préfecture 東京"
+        let observations = "Validación القاهرة"
+        let tagList: [UInt8] = [0x5F, 0x19, 0x5F, 0x1B]
+        let body = try tlv(tag: [0x5C], value: tagList) +
+            tlv(tag: [0x5F, 0x19], value: Array(issuingAuthority.utf8)) +
+            tlv(tag: [0x5F, 0x1B], value: Array(observations.utf8))
+        let data = try [UInt8]([0x6C]) + toAsn1Length(body.count) + body
+
+        let dg12 = try XCTUnwrap(try DataGroupParser().parseDG(data: data) as? DataGroup12)
+
+        XCTAssertEqual(dg12.issuingAuthority, issuingAuthority)
+        XCTAssertEqual(dg12.endorsementsOrObservations, observations)
     }
 
     func testOptionalDG11FieldsCanBeAbsentAfterTagList() {
@@ -242,6 +317,62 @@ final class DataGroupParsingTests: XCTestCase {
         XCTAssertEqual(hashes[.DG1], "00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF")
     }
 
+    func testStructuredSODSignatureContentParsesDataGroupHashes() throws {
+        let hash = [UInt8](repeating: 0xA5, count: 32)
+        let digestAlgorithm = try sequence(
+            asn1OID([0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01]) +
+            [0x05, 0x00]
+        )
+        let dataGroupHash = try sequence(
+            asn1Integer([0x01]) +
+            tlv(tag: [0x04], value: hash)
+        )
+        let content = try sequence(
+            asn1Integer([0x00]) +
+            digestAlgorithm +
+            sequence(dataGroupHash)
+        )
+
+        let (algorithm, hashes) = try NFCPassportModel().parseSODSignatureContent(data: Data(content))
+
+        XCTAssertEqual(algorithm, "SHA256")
+        XCTAssertEqual(hashes[.DG1], binToHexRep(hash))
+    }
+
+    func testStructuredSODSignatureContentRejectsInvalidDataGroupNumber() throws {
+        let digestAlgorithm = try sequence(
+            asn1OID([0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01]) +
+            [0x05, 0x00]
+        )
+        let dataGroupHash = try sequence(
+            asn1Integer([0x20]) +
+            tlv(tag: [0x04], value: [UInt8](repeating: 0xA5, count: 32))
+        )
+        let content = try sequence(
+            asn1Integer([0x00]) +
+            digestAlgorithm +
+            sequence(dataGroupHash)
+        )
+
+        XCTAssertThrowsError(try NFCPassportModel().parseSODSignatureContent(data: Data(content)))
+    }
+
+    func testSimpleASN1NodeRejectsNegativeIntegerAndParsesLargeOIDSecondArc() throws {
+        let negativeInteger = try SimpleASN1Node.parse(asn1Integer([0x80]))
+        XCTAssertNil(negativeInteger.integerValue)
+
+        let oid = try SimpleASN1Node.parse(asn1OID([0x88, 0x37, 0x03]))
+        XCTAssertEqual(oid.objectIdentifier, "2.999.3")
+    }
+
+    func testSimpleASN1NodeRejectsOverflowingIntegerAndOIDArc() throws {
+        let overflowingInteger = try SimpleASN1Node.parse(asn1Integer([0x00] + [UInt8](repeating: 0xFF, count: 8)))
+        XCTAssertNil(overflowingInteger.integerValue)
+
+        let overflowingOID = try SimpleASN1Node.parse(asn1OID([UInt8](repeating: 0xFF, count: 10) + [0x7F]))
+        XCTAssertNil(overflowingOID.objectIdentifier)
+    }
+
     func testItShouldThrowAnErrorWhenActualTagDoesNotMatchExpectedTag() throws {
         let sut = try DataGroup([1, 0])
         let expected = 1
@@ -262,6 +393,15 @@ final class DataGroupParsingTests: XCTestCase {
         let sut = try DataGroup([0x61, 0x01, 0x5F, 0x00])
 
         XCTAssertEqual(sut.body, [0x5F])
+    }
+
+    func testBaseDataGroupAcceptsThreeByteLongFormLength() throws {
+        let payload = [UInt8](repeating: 0x5F, count: 65_536)
+        let sut = try DataGroup([0x61, 0x83, 0x01, 0x00, 0x00] + payload)
+
+        XCTAssertEqual(sut.body.count, payload.count)
+        XCTAssertEqual(sut.body.first, 0x5F)
+        XCTAssertEqual(sut.body.last, 0x5F)
     }
 
     func testItShouldNotThrowAnErrorWhenActualTagMatchesExpectedTag() throws {
@@ -297,4 +437,20 @@ final class DataGroupParsingTests: XCTestCase {
         ("testCOMDatagroupParsing", testCOMDatagroupParsing),
     ]
     
+}
+
+private func tlv(tag: [UInt8], value: [UInt8]) throws -> [UInt8] {
+    try tag + toAsn1Length(value.count) + value
+}
+
+private func sequence(_ value: [UInt8]) throws -> [UInt8] {
+    try tlv(tag: [0x30], value: value)
+}
+
+private func asn1Integer(_ value: [UInt8]) throws -> [UInt8] {
+    try tlv(tag: [0x02], value: value)
+}
+
+private func asn1OID(_ value: [UInt8]) throws -> [UInt8] {
+    try tlv(tag: [0x06], value: value)
 }

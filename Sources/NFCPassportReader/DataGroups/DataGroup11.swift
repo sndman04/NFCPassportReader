@@ -35,7 +35,7 @@ public class DataGroup11 : DataGroup {
         
         while hasUnreadBody {
             tag = try getNextTag()
-            let val = String(bytes: try getNextValue(), encoding:.utf8)
+            let val = LDSStringDecoder.decode(try getNextValue())
             if tag == 0x5F0E {
                 fullName = val
             } else if tag == 0x5F10 {

@@ -36,23 +36,23 @@ public class DataGroup12 : DataGroup {
             let val = try getNextValue()
             
             if tag == 0x5F19 {
-                issuingAuthority = String( bytes:val, encoding:.utf8)
+                issuingAuthority = LDSStringDecoder.decode(val)
             } else if tag == 0x5F26 {
                 dateOfIssue = parseDateOfIssue(value: val)
             } else if tag == 0xA0 {
                 // Not yet handled
             } else if tag == 0x5F1B {
-                endorsementsOrObservations = String( bytes:val, encoding:.utf8)
+                endorsementsOrObservations = LDSStringDecoder.decode(val)
             } else if tag == 0x5F1C {
-                taxOrExitRequirements = String( bytes:val, encoding:.utf8)
+                taxOrExitRequirements = LDSStringDecoder.decode(val)
             } else if tag == 0x5F1D {
                 frontImage = val
             } else if tag == 0x5F1E {
                 rearImage = val
             } else if tag == 0x5F55 {
-                personalizationTime = String( bytes:val, encoding:.utf8)
+                personalizationTime = LDSStringDecoder.decode(val)
             } else if tag == 0x5F56 {
-                personalizationDeviceSerialNr = String( bytes:val, encoding:.utf8)
+                personalizationDeviceSerialNr = LDSStringDecoder.decode(val)
             }
         }
     }
@@ -66,7 +66,7 @@ public class DataGroup12 : DataGroup {
     }
     
     private func decodeASCII(value: [UInt8]) -> String? {
-        return String(bytes:value, encoding:.utf8)
+        return LDSStringDecoder.decode(value)
     }
     
     private func decodeBCD(value: [UInt8]) -> String? {

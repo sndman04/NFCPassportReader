@@ -115,6 +115,71 @@ class SOD : DataGroup {
 
         return Data(bytes)
     }
+
+    private func signedDataItem() throws -> ASN1Item {
+        guard let signedData = asn1.getChild(1)?.getChild(0) else {
+            throw OpenSSLError.UnableToExtractSignedDataFromPKCS7("Data in invalid format")
+        }
+        return signedData
+    }
+
+    private func signerInfoItem() throws -> ASN1Item {
+        let signedData = try signedDataItem()
+        guard let signerInfos = signedData.getChild(signedData.getNumberOfChildren() - 1),
+              signerInfos.type == "SET",
+              let signerInfo = signerInfos.getChild(0) else {
+            throw OpenSSLError.UnableToExtractSignedDataFromPKCS7("Data in invalid format")
+        }
+        return signerInfo
+    }
+
+    private func signedAttributesItem(in signerInfo: ASN1Item) throws -> ASN1Item {
+        for index in 0 ..< signerInfo.getNumberOfChildren() {
+            if let child = signerInfo.getChild(index),
+               child.type.hasPrefix("cont [ 0 ]") {
+                return child
+            }
+        }
+        throw OpenSSLError.UnableToExtractSignedDataFromPKCS7("Data in invalid format")
+    }
+
+    private func signatureAlgorithmItem(in signerInfo: ASN1Item) throws -> ASN1Item {
+        for index in 0 ..< signerInfo.getNumberOfChildren() {
+            guard let child = signerInfo.getChild(index),
+                  child.type.hasPrefix("cont [ 0 ]") else {
+                continue
+            }
+
+            guard let signatureAlgorithm = signerInfo.getChild(index + 1) else {
+                break
+            }
+            return signatureAlgorithm
+        }
+
+        guard let signatureAlgorithm = signerInfo.getChild(3) else {
+            throw OpenSSLError.UnableToExtractSignedDataFromPKCS7("Data in invalid format")
+        }
+        return signatureAlgorithm
+    }
+
+    private func signatureItem(in signerInfo: ASN1Item) throws -> ASN1Item {
+        for index in 0 ..< signerInfo.getNumberOfChildren() {
+            guard let child = signerInfo.getChild(index),
+                  child.type.hasPrefix("cont [ 0 ]") else {
+                continue
+            }
+
+            guard let signature = signerInfo.getChild(index + 2) else {
+                break
+            }
+            return signature
+        }
+
+        guard let signature = signerInfo.getChild(4) else {
+            throw OpenSSLError.UnableToExtractSignedDataFromPKCS7("Data in invalid format")
+        }
+        return signature
+    }
     
     /// Returns the public key from the embedded X509 certificate
     /// - Returns pointer to the public key
@@ -142,8 +207,8 @@ class SOD : DataGroup {
     /// - Returns: The encapsulated content from a PKCS7 container if we could read it
     /// - Throws: Error if we can't find or read the encapsulated content
     func getEncapsulatedContent() throws -> Data {
-        guard let signedData = asn1.getChild(1)?.getChild(0),
-              let encContent = signedData.getChild(2)?.getChild(1),
+        let signedData = try signedDataItem()
+        guard let encContent = signedData.getChild(2)?.getChild(1),
               let content = encContent.getChild(0) else {
             
             throw OpenSSLError.UnableToExtractSignedDataFromPKCS7("Data in invalid format")
@@ -156,8 +221,8 @@ class SOD : DataGroup {
     /// - Returns: The digest algorithm used to hash the encapsulated content in the signed data section
     /// - Throws: Error if we can't find or read the digest algorithm
     func getEncapsulatedContentDigestAlgorithm() throws -> String {
-        guard let signedData = asn1.getChild(1)?.getChild(0),
-              let digestAlgo = signedData.getChild(1)?.getChild(0)?.getChild(0) else {
+        let signedData = try signedDataItem()
+        guard let digestAlgo = signedData.getChild(1)?.getChild(0)?.getChild(0) else {
             throw OpenSSLError.UnableToExtractSignedDataFromPKCS7("Data in invalid format")
         }
         
@@ -168,14 +233,8 @@ class SOD : DataGroup {
     /// - Returns: the signed attributes section
     /// - Throws: Error if we can't find or read the signed attributes
     func getSignedAttributes( ) throws -> Data {
-        
-        // Get the SignedAttributes section.
-        guard let signedData = asn1.getChild(1)?.getChild(0),
-              let signerInfo = signedData.getChild(4),
-              let signedAttrs = signerInfo.getChild(0)?.getChild(3) else {
-            
-            throw OpenSSLError.UnableToExtractSignedDataFromPKCS7("Data in invalid format")
-        }
+        let signerInfo = try signerInfoItem()
+        let signedAttrs = try signedAttributesItem(in: signerInfo)
         
         var bytes = try itemBytes(signedAttrs)
         guard !bytes.isEmpty else {
@@ -204,12 +263,8 @@ class SOD : DataGroup {
         // A messageDigest Object which has the message digest as it value
         // We want the messageDigest value
         
-        guard let signedData = asn1.getChild(1)?.getChild(0),
-              let signerInfo = signedData.getChild(4),
-              let signedAttrs = signerInfo.getChild(0)?.getChild(3) else {
-            
-            throw OpenSSLError.UnableToExtractSignedDataFromPKCS7("Data in invalid format")
-        }
+        let signerInfo = try signerInfoItem()
+        let signedAttrs = try signedAttributesItem(in: signerInfo)
         
         // Find the messageDigest in the signedAttributes section
         var sigData : Data?
@@ -233,13 +288,8 @@ class SOD : DataGroup {
     /// - Returns: the signature
     /// - Throws: Error if we can't find or read the signature
     func getSignature( ) throws -> Data {
-        
-        guard let signedData = asn1.getChild(1)?.getChild(0),
-              let signerInfo = signedData.getChild(4),
-              let signature = signerInfo.getChild(0)?.getChild(5) else {
-            
-            throw OpenSSLError.UnableToExtractSignedDataFromPKCS7("Data in invalid format")
-        }
+        let signerInfo = try signerInfoItem()
+        let signature = try signatureItem(in: signerInfo)
         
         return try octetStringData(signature)
     }
@@ -248,11 +298,9 @@ class SOD : DataGroup {
     /// - Returns: the signature algorithm used
     /// - Throws: Error if we can't find or read the signature algorithm
     func getSignatureAlgorithm( ) throws -> String {
-        
-        guard let signedData = asn1.getChild(1)?.getChild(0),
-              let signerInfo = signedData.getChild(4),
-              let signatureAlgo = signerInfo.getChild(0)?.getChild(4)?.getChild(0) else {
-            
+        let signerInfo = try signerInfoItem()
+        let signatureAlgorithm = try signatureAlgorithmItem(in: signerInfo)
+        guard let signatureAlgo = signatureAlgorithm.getChild(0) else {
             throw OpenSSLError.UnableToExtractSignedDataFromPKCS7("Data in invalid format")
         }
         

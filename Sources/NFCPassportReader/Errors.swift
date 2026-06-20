@@ -94,7 +94,7 @@ public enum NFCPassportReaderError: Error {
                 return "Passport chip response error"
             case .InvalidResponse(let dataGroupId, _, _):
                 return "Invalid response in \(dataGroupId.getName())"
-            case .UnexpectedError: return "Unexpected read failure"
+            case .UnexpectedError: return "Read failed"
             case .NFCNotSupported: return "NFC not supported"
             case .NoConnectedTag: return "No connected NFC tag"
             case .D087Malformed: return "Malformed secure messaging response"
@@ -126,7 +126,7 @@ public enum NFCPassportReaderError: Error {
             case .ChipAuthenticationFailed: return "Chip authentication failed"
             case .InvalidDataPassed: return "Invalid data passed"
             case .NotYetSupported: return "Passport feature is not supported"
-            case .Unknown: return "Unexpected read failure"
+            case .Unknown: return "Read failed"
         }
     }
 }
