@@ -26,24 +26,15 @@ public class COM : DataGroup {
         // AA is major number, BB is minor number
         // e.g.  48 49 48 55 -> 01 07 -> 1.7
         var versionBytes = try getNextValue()
-        if versionBytes.count == 4 {
-            let aa = Int( String(cString: Array(versionBytes[0..<2] + [0]) )) ?? -1
-            let bb = Int( String(cString: Array(versionBytes[2...] + [0])) ) ?? -1
-            if aa != -1 && bb != -1 {
-                version = "\(aa).\(bb)"
-            }
+        if let parsedVersion = Self.versionString(from: versionBytes, componentWidths: [2, 2]) {
+            version = parsedVersion
         }
         tag = try getNextTag()
         try verifyTag(tag, equals: 0x5F36)
         
         versionBytes = try getNextValue()
-        if versionBytes.count == 6 {
-            let aa = Int( String(cString: Array(versionBytes[0..<2] + [0])) ) ?? -1
-            let bb = Int( String(cString: Array(versionBytes[2..<4] + [0])) ) ?? -1
-            let cc = Int( String(cString: Array(versionBytes[4...]) + [0]) ) ?? -1
-            if aa != -1 && bb != -1 && cc != -1 {
-                unicodeVersion = "\(aa).\(bb).\(cc)"
-            }
+        if let parsedUnicodeVersion = Self.versionString(from: versionBytes, componentWidths: [2, 2, 2]) {
+            unicodeVersion = parsedUnicodeVersion
         }
         
         tag = try getNextTag()
@@ -55,5 +46,34 @@ public class COM : DataGroup {
                 dataGroupsPresent.append(name)
             }
         }
+    }
+
+    private static func versionString(from bytes: [UInt8], componentWidths: [Int]) -> String? {
+        guard bytes.count == componentWidths.reduce(0, +) else {
+            return nil
+        }
+
+        var offset = 0
+        var components: [String] = []
+        components.reserveCapacity(componentWidths.count)
+        for width in componentWidths {
+            guard let value = decimalValue(bytes[offset ..< offset + width]) else {
+                return nil
+            }
+            components.append(String(value))
+            offset += width
+        }
+        return components.joined(separator: ".")
+    }
+
+    private static func decimalValue(_ bytes: ArraySlice<UInt8>) -> Int? {
+        var value = 0
+        for byte in bytes {
+            guard byte >= 0x30, byte <= 0x39 else {
+                return nil
+            }
+            value = (value * 10) + Int(byte - 0x30)
+        }
+        return value
     }
 }

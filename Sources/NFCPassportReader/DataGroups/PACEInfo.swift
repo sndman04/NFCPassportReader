@@ -44,7 +44,7 @@ public class PACEInfo : SecurityInfo {
     public static let PARAM_ID_ECP_BRAINPOOL_P512_R1 = 17
     public static let PARAM_ID_ECP_NIST_P521_R1 = 18
 
-    static let allowedIdentifiers = [
+    static let allowedIdentifiers: Set<String> = [
         ID_PACE_DH_GM_3DES_CBC_CBC,
         ID_PACE_DH_GM_AES_CBC_CMAC_128,
         ID_PACE_DH_GM_AES_CBC_CMAC_192,
@@ -64,6 +64,138 @@ public class PACEInfo : SecurityInfo {
         ID_PACE_ECDH_CAM_AES_CBC_CMAC_128,
         ID_PACE_ECDH_CAM_AES_CBC_CMAC_192,
         ID_PACE_ECDH_CAM_AES_CBC_CMAC_256]
+
+    private static let mappingTypes: [String: PACEMappingType] = [
+        ID_PACE_DH_GM_3DES_CBC_CBC: .GM,
+        ID_PACE_DH_GM_AES_CBC_CMAC_128: .GM,
+        ID_PACE_DH_GM_AES_CBC_CMAC_192: .GM,
+        ID_PACE_DH_GM_AES_CBC_CMAC_256: .GM,
+        ID_PACE_ECDH_GM_3DES_CBC_CBC: .GM,
+        ID_PACE_ECDH_GM_AES_CBC_CMAC_128: .GM,
+        ID_PACE_ECDH_GM_AES_CBC_CMAC_192: .GM,
+        ID_PACE_ECDH_GM_AES_CBC_CMAC_256: .GM,
+        ID_PACE_DH_IM_3DES_CBC_CBC: .IM,
+        ID_PACE_DH_IM_AES_CBC_CMAC_128: .IM,
+        ID_PACE_DH_IM_AES_CBC_CMAC_192: .IM,
+        ID_PACE_DH_IM_AES_CBC_CMAC_256: .IM,
+        ID_PACE_ECDH_IM_3DES_CBC_CBC: .IM,
+        ID_PACE_ECDH_IM_AES_CBC_CMAC_128: .IM,
+        ID_PACE_ECDH_IM_AES_CBC_CMAC_192: .IM,
+        ID_PACE_ECDH_IM_AES_CBC_CMAC_256: .IM,
+        ID_PACE_ECDH_CAM_AES_CBC_CMAC_128: .CAM,
+        ID_PACE_ECDH_CAM_AES_CBC_CMAC_192: .CAM,
+        ID_PACE_ECDH_CAM_AES_CBC_CMAC_256: .CAM
+    ]
+
+    private static let keyAgreementAlgorithms: [String: String] = [
+        ID_PACE_DH_GM_3DES_CBC_CBC: "DH",
+        ID_PACE_DH_GM_AES_CBC_CMAC_128: "DH",
+        ID_PACE_DH_GM_AES_CBC_CMAC_192: "DH",
+        ID_PACE_DH_GM_AES_CBC_CMAC_256: "DH",
+        ID_PACE_DH_IM_3DES_CBC_CBC: "DH",
+        ID_PACE_DH_IM_AES_CBC_CMAC_128: "DH",
+        ID_PACE_DH_IM_AES_CBC_CMAC_192: "DH",
+        ID_PACE_DH_IM_AES_CBC_CMAC_256: "DH",
+        ID_PACE_ECDH_GM_3DES_CBC_CBC: "ECDH",
+        ID_PACE_ECDH_GM_AES_CBC_CMAC_128: "ECDH",
+        ID_PACE_ECDH_GM_AES_CBC_CMAC_192: "ECDH",
+        ID_PACE_ECDH_GM_AES_CBC_CMAC_256: "ECDH",
+        ID_PACE_ECDH_IM_3DES_CBC_CBC: "ECDH",
+        ID_PACE_ECDH_IM_AES_CBC_CMAC_128: "ECDH",
+        ID_PACE_ECDH_IM_AES_CBC_CMAC_192: "ECDH",
+        ID_PACE_ECDH_IM_AES_CBC_CMAC_256: "ECDH",
+        ID_PACE_ECDH_CAM_AES_CBC_CMAC_128: "ECDH",
+        ID_PACE_ECDH_CAM_AES_CBC_CMAC_192: "ECDH",
+        ID_PACE_ECDH_CAM_AES_CBC_CMAC_256: "ECDH"
+    ]
+
+    private static let cipherAlgorithms: [String: String] = [
+        ID_PACE_DH_GM_3DES_CBC_CBC: "DESede",
+        ID_PACE_DH_IM_3DES_CBC_CBC: "DESede",
+        ID_PACE_ECDH_GM_3DES_CBC_CBC: "DESede",
+        ID_PACE_ECDH_IM_3DES_CBC_CBC: "DESede",
+        ID_PACE_DH_GM_AES_CBC_CMAC_128: "AES",
+        ID_PACE_DH_GM_AES_CBC_CMAC_192: "AES",
+        ID_PACE_DH_GM_AES_CBC_CMAC_256: "AES",
+        ID_PACE_DH_IM_AES_CBC_CMAC_128: "AES",
+        ID_PACE_DH_IM_AES_CBC_CMAC_192: "AES",
+        ID_PACE_DH_IM_AES_CBC_CMAC_256: "AES",
+        ID_PACE_ECDH_GM_AES_CBC_CMAC_128: "AES",
+        ID_PACE_ECDH_GM_AES_CBC_CMAC_192: "AES",
+        ID_PACE_ECDH_GM_AES_CBC_CMAC_256: "AES",
+        ID_PACE_ECDH_IM_AES_CBC_CMAC_128: "AES",
+        ID_PACE_ECDH_IM_AES_CBC_CMAC_192: "AES",
+        ID_PACE_ECDH_IM_AES_CBC_CMAC_256: "AES",
+        ID_PACE_ECDH_CAM_AES_CBC_CMAC_128: "AES",
+        ID_PACE_ECDH_CAM_AES_CBC_CMAC_192: "AES",
+        ID_PACE_ECDH_CAM_AES_CBC_CMAC_256: "AES"
+    ]
+
+    private static let digestAlgorithms: [String: String] = [
+        ID_PACE_DH_GM_3DES_CBC_CBC: "SHA-1",
+        ID_PACE_DH_IM_3DES_CBC_CBC: "SHA-1",
+        ID_PACE_ECDH_GM_3DES_CBC_CBC: "SHA-1",
+        ID_PACE_ECDH_IM_3DES_CBC_CBC: "SHA-1",
+        ID_PACE_DH_GM_AES_CBC_CMAC_128: "SHA-1",
+        ID_PACE_DH_IM_AES_CBC_CMAC_128: "SHA-1",
+        ID_PACE_ECDH_GM_AES_CBC_CMAC_128: "SHA-1",
+        ID_PACE_ECDH_IM_AES_CBC_CMAC_128: "SHA-1",
+        ID_PACE_ECDH_CAM_AES_CBC_CMAC_128: "SHA-1",
+        ID_PACE_DH_GM_AES_CBC_CMAC_192: "SHA-256",
+        ID_PACE_DH_IM_AES_CBC_CMAC_192: "SHA-256",
+        ID_PACE_ECDH_GM_AES_CBC_CMAC_192: "SHA-256",
+        ID_PACE_ECDH_IM_AES_CBC_CMAC_192: "SHA-256",
+        ID_PACE_ECDH_CAM_AES_CBC_CMAC_192: "SHA-256",
+        ID_PACE_DH_GM_AES_CBC_CMAC_256: "SHA-256",
+        ID_PACE_DH_IM_AES_CBC_CMAC_256: "SHA-256",
+        ID_PACE_ECDH_GM_AES_CBC_CMAC_256: "SHA-256",
+        ID_PACE_ECDH_IM_AES_CBC_CMAC_256: "SHA-256",
+        ID_PACE_ECDH_CAM_AES_CBC_CMAC_256: "SHA-256"
+    ]
+
+    private static let keyLengths: [String: Int] = [
+        ID_PACE_DH_GM_3DES_CBC_CBC: 128,
+        ID_PACE_DH_IM_3DES_CBC_CBC: 128,
+        ID_PACE_ECDH_GM_3DES_CBC_CBC: 128,
+        ID_PACE_ECDH_IM_3DES_CBC_CBC: 128,
+        ID_PACE_DH_GM_AES_CBC_CMAC_128: 128,
+        ID_PACE_DH_IM_AES_CBC_CMAC_128: 128,
+        ID_PACE_ECDH_GM_AES_CBC_CMAC_128: 128,
+        ID_PACE_ECDH_IM_AES_CBC_CMAC_128: 128,
+        ID_PACE_ECDH_CAM_AES_CBC_CMAC_128: 128,
+        ID_PACE_DH_GM_AES_CBC_CMAC_192: 192,
+        ID_PACE_ECDH_GM_AES_CBC_CMAC_192: 192,
+        ID_PACE_DH_IM_AES_CBC_CMAC_192: 192,
+        ID_PACE_ECDH_IM_AES_CBC_CMAC_192: 192,
+        ID_PACE_ECDH_CAM_AES_CBC_CMAC_192: 192,
+        ID_PACE_DH_GM_AES_CBC_CMAC_256: 256,
+        ID_PACE_DH_IM_AES_CBC_CMAC_256: 256,
+        ID_PACE_ECDH_GM_AES_CBC_CMAC_256: 256,
+        ID_PACE_ECDH_IM_AES_CBC_CMAC_256: 256,
+        ID_PACE_ECDH_CAM_AES_CBC_CMAC_256: 256
+    ]
+
+    private static let protocolOIDStrings: [String: String] = [
+        ID_PACE_DH_GM_3DES_CBC_CBC: "id-PACE-DH-GM-3DES-CBC-CBC",
+        ID_PACE_DH_GM_AES_CBC_CMAC_128: "id-PACE-DH-GM-AES-CBC-CMAC-128",
+        ID_PACE_DH_GM_AES_CBC_CMAC_192: "id-PACE-DH-GM-AES-CBC-CMAC-192",
+        ID_PACE_DH_GM_AES_CBC_CMAC_256: "id-PACE-DH-GM-AES-CBC-CMAC-256",
+        ID_PACE_DH_IM_3DES_CBC_CBC: "id-PACE-DH-IM-3DES-CBC-CBC",
+        ID_PACE_DH_IM_AES_CBC_CMAC_128: "id-PACE-DH-IM-AES-CBC-CMAC-128",
+        ID_PACE_DH_IM_AES_CBC_CMAC_192: "id-PACE-DH-IM-AES-CBC-CMAC-192",
+        ID_PACE_DH_IM_AES_CBC_CMAC_256: "id-PACE_DH-IM-AES-CBC-CMAC-256",
+        ID_PACE_ECDH_GM_3DES_CBC_CBC: "id-PACE-ECDH-GM-3DES-CBC-CBC",
+        ID_PACE_ECDH_GM_AES_CBC_CMAC_128: "id-PACE-ECDH-GM-AES-CBC-CMAC-128",
+        ID_PACE_ECDH_GM_AES_CBC_CMAC_192: "id-PACE-ECDH-GM-AES-CBC-CMAC-192",
+        ID_PACE_ECDH_GM_AES_CBC_CMAC_256: "id-PACE-ECDH-GM-AES-CBC-CMAC-256",
+        ID_PACE_ECDH_IM_3DES_CBC_CBC: "id-PACE-ECDH-IM_3DES-CBC-CBC",
+        ID_PACE_ECDH_IM_AES_CBC_CMAC_128: "id-PACE-ECDH-IM-AES-CBC-CMAC-128",
+        ID_PACE_ECDH_IM_AES_CBC_CMAC_192: "id-PACE-ECDH-IM-AES-CBC-CMAC-192",
+        ID_PACE_ECDH_IM_AES_CBC_CMAC_256: "id-PACE-ECDH-IM-AES-CBC-CMAC-256",
+        ID_PACE_ECDH_CAM_AES_CBC_CMAC_128: "id-PACE-ECDH-CAM-AES-CBC-CMAC-128",
+        ID_PACE_ECDH_CAM_AES_CBC_CMAC_192: "id-PACE-ECDH-CAM-AES-CBC-CMAC-192",
+        ID_PACE_ECDH_CAM_AES_CBC_CMAC_256: "id-PACE-ECDH-CAM-AES-CBC-CMAC-256"
+    ]
 
     var oid : String
     var version : Int
@@ -186,30 +318,10 @@ public class PACEInfo : SecurityInfo {
     }
     
     public static func toMappingType( oid : String ) throws -> PACEMappingType {
-        if ID_PACE_DH_GM_3DES_CBC_CBC == oid
-                || ID_PACE_DH_GM_AES_CBC_CMAC_128 == oid
-                || ID_PACE_DH_GM_AES_CBC_CMAC_192 == oid
-                || ID_PACE_DH_GM_AES_CBC_CMAC_256 == oid
-                || ID_PACE_ECDH_GM_3DES_CBC_CBC == oid
-                || ID_PACE_ECDH_GM_AES_CBC_CMAC_128 == oid
-                || ID_PACE_ECDH_GM_AES_CBC_CMAC_192 == oid
-                || ID_PACE_ECDH_GM_AES_CBC_CMAC_256 == oid {
-            return PACEMappingType.GM
-        } else if ID_PACE_DH_IM_3DES_CBC_CBC == oid
-                    || ID_PACE_DH_IM_AES_CBC_CMAC_128 == oid
-                    || ID_PACE_DH_IM_AES_CBC_CMAC_192 == oid
-                    || ID_PACE_DH_IM_AES_CBC_CMAC_256 == oid
-                    || ID_PACE_ECDH_IM_3DES_CBC_CBC == oid
-                    || ID_PACE_ECDH_IM_AES_CBC_CMAC_128 == oid
-                    || ID_PACE_ECDH_IM_AES_CBC_CMAC_192 == oid
-                    || ID_PACE_ECDH_IM_AES_CBC_CMAC_256 == oid {
-            return PACEMappingType.IM
-        } else if ID_PACE_ECDH_CAM_AES_CBC_CMAC_128 == oid
-                    || ID_PACE_ECDH_CAM_AES_CBC_CMAC_192 == oid
-                    || ID_PACE_ECDH_CAM_AES_CBC_CMAC_256 == oid {
-            return PACEMappingType.CAM
+        if let mappingType = mappingTypes[oid] {
+            return mappingType
         }
-        
+
         throw NFCPassportReaderError.InvalidDataPassed( "Unable to lookup mapping type - invalid oid" )
     }
 
@@ -219,27 +331,8 @@ public class PACEInfo : SecurityInfo {
     /// - Returns: key agreement algorithm
     /// - Throws: InvalidDataPassed error if invalid oid specified
     public static func toKeyAgreementAlgorithm( oid : String ) throws -> String {
-        if ID_PACE_DH_GM_3DES_CBC_CBC == oid
-                || ID_PACE_DH_GM_AES_CBC_CMAC_128 == oid
-                || ID_PACE_DH_GM_AES_CBC_CMAC_192 == oid
-                || ID_PACE_DH_GM_AES_CBC_CMAC_256 == oid
-                || ID_PACE_DH_IM_3DES_CBC_CBC == oid
-                || ID_PACE_DH_IM_AES_CBC_CMAC_128 == oid
-                || ID_PACE_DH_IM_AES_CBC_CMAC_192 == oid
-                || ID_PACE_DH_IM_AES_CBC_CMAC_256 == oid {
-            return "DH"
-        } else if ID_PACE_ECDH_GM_3DES_CBC_CBC == oid
-                    || ID_PACE_ECDH_GM_AES_CBC_CMAC_128 == oid
-                    || ID_PACE_ECDH_GM_AES_CBC_CMAC_192 == oid
-                    || ID_PACE_ECDH_GM_AES_CBC_CMAC_256 == oid
-                    || ID_PACE_ECDH_IM_3DES_CBC_CBC == oid
-                    || ID_PACE_ECDH_IM_AES_CBC_CMAC_128 == oid
-                    || ID_PACE_ECDH_IM_AES_CBC_CMAC_192 == oid
-                    || ID_PACE_ECDH_IM_AES_CBC_CMAC_256 == oid
-                    || ID_PACE_ECDH_CAM_AES_CBC_CMAC_128 == oid
-                    || ID_PACE_ECDH_CAM_AES_CBC_CMAC_192 == oid
-                    || ID_PACE_ECDH_CAM_AES_CBC_CMAC_256 == oid {
-            return "ECDH"
+        if let algorithm = keyAgreementAlgorithms[oid] {
+            return algorithm
         }
         throw NFCPassportReaderError.InvalidDataPassed( "Unable to lookup key agreement algorithm - invalid oid" )
     }
@@ -249,53 +342,15 @@ public class PACEInfo : SecurityInfo {
     /// - Returns: the cipher algorithm type
     /// - Throws: InvalidDataPassed error if invalid oid specified
     public static func toCipherAlgorithm( oid : String ) throws -> String {
-        if ID_PACE_DH_GM_3DES_CBC_CBC == oid
-                || ID_PACE_DH_IM_3DES_CBC_CBC == oid
-                || ID_PACE_ECDH_GM_3DES_CBC_CBC == oid
-                || ID_PACE_ECDH_IM_3DES_CBC_CBC == oid {
-            return "DESede"
-        } else if ID_PACE_DH_GM_AES_CBC_CMAC_128 == oid
-                    || ID_PACE_DH_GM_AES_CBC_CMAC_192 == oid
-                    || ID_PACE_DH_GM_AES_CBC_CMAC_256 == oid
-                    || ID_PACE_DH_IM_AES_CBC_CMAC_128 == oid
-                    || ID_PACE_DH_IM_AES_CBC_CMAC_192 == oid
-                    || ID_PACE_DH_IM_AES_CBC_CMAC_256 == oid
-                    || ID_PACE_ECDH_GM_AES_CBC_CMAC_128 == oid
-                    || ID_PACE_ECDH_GM_AES_CBC_CMAC_192 == oid
-                    || ID_PACE_ECDH_GM_AES_CBC_CMAC_256 == oid
-                    || ID_PACE_ECDH_IM_AES_CBC_CMAC_128 == oid
-                    || ID_PACE_ECDH_IM_AES_CBC_CMAC_192 == oid
-                    || ID_PACE_ECDH_IM_AES_CBC_CMAC_256 == oid
-                    || ID_PACE_ECDH_CAM_AES_CBC_CMAC_128 == oid
-                    || ID_PACE_ECDH_CAM_AES_CBC_CMAC_192 == oid
-                    || ID_PACE_ECDH_CAM_AES_CBC_CMAC_256 == oid {
-            return "AES"
+        if let algorithm = cipherAlgorithms[oid] {
+            return algorithm
         }
         throw NFCPassportReaderError.InvalidDataPassed( "Unable to lookup cipher algorithm - invalid oid" )
     }
     
     public static func toDigestAlgorithm( oid : String ) throws -> String {
-        if ID_PACE_DH_GM_3DES_CBC_CBC == oid
-                || ID_PACE_DH_IM_3DES_CBC_CBC == oid
-                || ID_PACE_ECDH_GM_3DES_CBC_CBC == oid
-                || ID_PACE_ECDH_IM_3DES_CBC_CBC == oid
-                || ID_PACE_DH_GM_AES_CBC_CMAC_128 == oid
-                || ID_PACE_DH_IM_AES_CBC_CMAC_128 == oid
-                || ID_PACE_ECDH_GM_AES_CBC_CMAC_128 == oid
-                || ID_PACE_ECDH_IM_AES_CBC_CMAC_128 == oid
-                || ID_PACE_ECDH_CAM_AES_CBC_CMAC_128 == oid {
-            return "SHA-1"
-        } else if ID_PACE_DH_GM_AES_CBC_CMAC_192 == oid
-                    || ID_PACE_DH_IM_AES_CBC_CMAC_192 == oid
-                    || ID_PACE_ECDH_GM_AES_CBC_CMAC_192 == oid
-                    || ID_PACE_ECDH_IM_AES_CBC_CMAC_192 == oid
-                    || ID_PACE_ECDH_CAM_AES_CBC_CMAC_192 == oid
-                    || ID_PACE_DH_GM_AES_CBC_CMAC_256 == oid
-                    || ID_PACE_DH_IM_AES_CBC_CMAC_256 == oid
-                    || ID_PACE_ECDH_GM_AES_CBC_CMAC_256 == oid
-                    || ID_PACE_ECDH_IM_AES_CBC_CMAC_256 == oid
-                    || ID_PACE_ECDH_CAM_AES_CBC_CMAC_256 == oid {
-            return "SHA-256"
+        if let algorithm = digestAlgorithms[oid] {
+            return algorithm
         }
 
         throw NFCPassportReaderError.InvalidDataPassed( "Unable to lookup digest algorithm - invalid oid" )
@@ -306,91 +361,13 @@ public class PACEInfo : SecurityInfo {
     /// - Returns: the key length in bits
     /// - Throws: InvalidDataPassed error if invalid oid specified
     public static func toKeyLength( oid : String ) throws -> Int {
-        if ID_PACE_DH_GM_3DES_CBC_CBC == oid
-                || ID_PACE_DH_IM_3DES_CBC_CBC == oid
-                || ID_PACE_ECDH_GM_3DES_CBC_CBC == oid
-                || ID_PACE_ECDH_IM_3DES_CBC_CBC == oid
-                || ID_PACE_DH_GM_AES_CBC_CMAC_128 == oid
-                || ID_PACE_DH_IM_AES_CBC_CMAC_128 == oid
-                || ID_PACE_ECDH_GM_AES_CBC_CMAC_128 == oid
-                || ID_PACE_ECDH_IM_AES_CBC_CMAC_128 == oid
-                || ID_PACE_ECDH_CAM_AES_CBC_CMAC_128 == oid {
-            return 128
-        } else if ID_PACE_DH_GM_AES_CBC_CMAC_192 == oid
-                    || ID_PACE_ECDH_GM_AES_CBC_CMAC_192 == oid
-                    || ID_PACE_DH_IM_AES_CBC_CMAC_192 == oid
-                    || ID_PACE_ECDH_IM_AES_CBC_CMAC_192 == oid
-                    || ID_PACE_ECDH_CAM_AES_CBC_CMAC_192 == oid {
-            return 192
-        } else if ID_PACE_DH_GM_AES_CBC_CMAC_256 == oid
-                    || ID_PACE_DH_IM_AES_CBC_CMAC_256 == oid
-                    || ID_PACE_ECDH_GM_AES_CBC_CMAC_256 == oid
-                    || ID_PACE_ECDH_IM_AES_CBC_CMAC_256 == oid
-                    || ID_PACE_ECDH_CAM_AES_CBC_CMAC_256 == oid {
-            return 256
+        if let keyLength = keyLengths[oid] {
+            return keyLength
         }
         throw NFCPassportReaderError.InvalidDataPassed( "Unable to get key length - invalid oid" )
     }
     
     private static func toProtocolOIDString(oid : String) -> String {
-        if ID_PACE_DH_GM_3DES_CBC_CBC == oid {
-            return "id-PACE-DH-GM-3DES-CBC-CBC"
-        }
-        if ID_PACE_DH_GM_AES_CBC_CMAC_128 == oid {
-            return "id-PACE-DH-GM-AES-CBC-CMAC-128"
-        }
-        if ID_PACE_DH_GM_AES_CBC_CMAC_192 == oid {
-            return "id-PACE-DH-GM-AES-CBC-CMAC-192"
-        }
-        if ID_PACE_DH_GM_AES_CBC_CMAC_256 == oid {
-            return "id-PACE-DH-GM-AES-CBC-CMAC-256"
-        }
-        if ID_PACE_DH_IM_3DES_CBC_CBC == oid {
-            return "id-PACE-DH-IM-3DES-CBC-CBC"
-        }
-        if ID_PACE_DH_IM_AES_CBC_CMAC_128 == oid {
-            return "id-PACE-DH-IM-AES-CBC-CMAC-128"
-        }
-        if ID_PACE_DH_IM_AES_CBC_CMAC_192 == oid {
-            return "id-PACE-DH-IM-AES-CBC-CMAC-192"
-        }
-        if ID_PACE_DH_IM_AES_CBC_CMAC_256 == oid {
-            return "id-PACE_DH-IM-AES-CBC-CMAC-256"
-        }
-        if ID_PACE_ECDH_GM_3DES_CBC_CBC == oid {
-            return "id-PACE-ECDH-GM-3DES-CBC-CBC"
-        }
-        if ID_PACE_ECDH_GM_AES_CBC_CMAC_128 == oid {
-            return "id-PACE-ECDH-GM-AES-CBC-CMAC-128"
-        }
-        if ID_PACE_ECDH_GM_AES_CBC_CMAC_192 == oid {
-            return "id-PACE-ECDH-GM-AES-CBC-CMAC-192"
-        }
-        if ID_PACE_ECDH_GM_AES_CBC_CMAC_256 == oid {
-            return "id-PACE-ECDH-GM-AES-CBC-CMAC-256"
-        }
-        if ID_PACE_ECDH_IM_3DES_CBC_CBC == oid {
-            return "id-PACE-ECDH-IM_3DES-CBC-CBC"
-        }
-        if ID_PACE_ECDH_IM_AES_CBC_CMAC_128 == oid {
-            return "id-PACE-ECDH-IM-AES-CBC-CMAC-128"
-        }
-        if ID_PACE_ECDH_IM_AES_CBC_CMAC_192 == oid {
-            return "id-PACE-ECDH-IM-AES-CBC-CMAC-192"
-        }
-        if ID_PACE_ECDH_IM_AES_CBC_CMAC_256 == oid {
-            return "id-PACE-ECDH-IM-AES-CBC-CMAC-256"
-        }
-        if ID_PACE_ECDH_CAM_AES_CBC_CMAC_128 == oid {
-            return "id-PACE-ECDH-CAM-AES-CBC-CMAC-128"
-        }
-        if ID_PACE_ECDH_CAM_AES_CBC_CMAC_192 == oid {
-            return "id-PACE-ECDH-CAM-AES-CBC-CMAC-192"
-        }
-        if ID_PACE_ECDH_CAM_AES_CBC_CMAC_256 == oid {
-            return "id-PACE-ECDH-CAM-AES-CBC-CMAC-256"
-        }
-        
-        return oid
+        protocolOIDStrings[oid] ?? oid
     }
 }

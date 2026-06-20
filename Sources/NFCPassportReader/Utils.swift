@@ -251,13 +251,15 @@ public func desMAC(key : [UInt8], msg : [UInt8]) -> [UInt8]{
     
     let size = msg.count / 8
     var y : [UInt8] = [0,0,0,0,0,0,0,0]
+    let leftKey = [UInt8](key[0..<8])
+    let rightKey = [UInt8](key[8..<16])
     for i in 0 ..< size {
         let tmp = [UInt8](msg[i*8 ..< i*8+8])
-        y = DESEncrypt(key: [UInt8](key[0..<8]), message: tmp, iv: y)
+        y = DESEncrypt(key: leftKey, message: tmp, iv: y)
     }
     let iv : [UInt8] = [0,0,0,0,0,0,0,0]
-    let b = DESDecrypt(key: [UInt8](key[8..<16]), message: y, iv: iv, options:UInt32(kCCOptionECBMode))
-    let a = DESEncrypt(key: [UInt8](key[0..<8]), message: b, iv: iv, options:UInt32(kCCOptionECBMode))
+    let b = DESDecrypt(key: rightKey, message: y, iv: iv, options:UInt32(kCCOptionECBMode))
+    let a = DESEncrypt(key: leftKey, message: b, iv: iv, options:UInt32(kCCOptionECBMode))
     
     return a
 }
@@ -270,18 +272,46 @@ public func aesMAC( key: [UInt8], msg : [UInt8] ) -> [UInt8] {
 
 @available(iOS 13, macOS 10.15, *)
 public func wrapDO( b : UInt8, arr : [UInt8] ) -> [UInt8] {
-    let tag = TKBERTLVRecord(tag: TKTLVTag(b), value: Data(arr))
-    let result = [UInt8](tag.data)
-    return result;
+    let length = asn1LengthBytes(for: arr.count)
+    var result: [UInt8] = []
+    result.reserveCapacity(1 + length.count + arr.count)
+    result.append(b)
+    result.append(contentsOf: length)
+    result.append(contentsOf: arr)
+    return result
 }
 
 @available(iOS 13, macOS 10.15, *)
 public func unwrapDO( tag : UInt8, wrappedData : [UInt8]) throws -> [UInt8] {
-    guard let rec = TKBERTLVRecord(from: Data(wrappedData)),
-          rec.tag == tag else {
+    guard wrappedData.count >= 2,
+          wrappedData[0] == tag else {
         throw NFCPassportReaderError.InvalidASN1Value
     }
-    return [UInt8](rec.value);
+
+    let (length, lengthByteCount) = try asn1Length(wrappedData[1...])
+    let valueOffset = 1 + lengthByteCount
+    let valueEnd = valueOffset + length
+    guard valueEnd == wrappedData.count else {
+        throw NFCPassportReaderError.InvalidASN1Value
+    }
+
+    return [UInt8](wrappedData[valueOffset ..< valueEnd])
+}
+
+private func asn1LengthBytes(for length: Int) -> [UInt8] {
+    if length < 0x80 {
+        return [UInt8(length)]
+    }
+    if length <= 0xFF {
+        return [0x81, UInt8(length)]
+    }
+    if length <= 0xFFFF {
+        return [0x82, UInt8((length >> 8) & 0xFF), UInt8(length & 0xFF)]
+    }
+    if length <= 0xFFFFFF {
+        return [0x83, UInt8((length >> 16) & 0xFF), UInt8((length >> 8) & 0xFF), UInt8(length & 0xFF)]
+    }
+    return [0x84, UInt8((length >> 24) & 0xFF), UInt8((length >> 16) & 0xFF), UInt8((length >> 8) & 0xFF), UInt8(length & 0xFF)]
 }
 
 

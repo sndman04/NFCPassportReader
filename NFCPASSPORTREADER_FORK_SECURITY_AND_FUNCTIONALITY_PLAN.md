@@ -473,6 +473,12 @@ Completed:
   - DG2 image-format validation now checks the image slice before copying the full photo payload into `imageData`.
   - READ BINARY offsets and secure-messaging checksum lengths now use direct byte arithmetic.
   - Tag status-word descriptions are cached instead of rebuilding the dictionary on each response error.
+- Added a second cleanup pass for less obvious speed and maintainability wins:
+  - Replaced simple DO wrap/unwrap helpers with direct BER-TLV byte assembly/parsing, avoiding `TKBERTLVRecord` allocation on PACE, chip-authentication, and general-authenticate command paths.
+  - Hoisted DES MAC left/right key slices out of the per-block loop used by secure messaging.
+  - Factored COM version parsing into a direct ASCII-decimal helper instead of temporary C-string arrays.
+  - Factored DG2 fixed-width image-header integer parsing into one bounds-checked reader, removing repeated slice conversions and making offset handling easier to audit.
+  - Replaced PACE and chip-authentication OID classification chains with static lookup tables for mapping type, agreement/cipher/digest algorithm, key length, and display string.
 - Kept parser hardening intact while fixing synthetic DG2/DG7 fixtures whose declared lengths did not match their test payloads.
 - Tightened DG2 missing-image classification so a complete face-image header with no image bytes reports `UnknownImageFormat` rather than a generic ASN.1 structure failure.
 - Changed privacy-safe unexpected-error copy from `Unexpected read failure` to `Read failed` because privacy tests intentionally reject the substring `expected`.
@@ -522,6 +528,25 @@ Follow-up verification on the allocation pass:
 - `scripts/privacy_scan.sh` passed.
 - `git diff --check` passed.
 - Targeted scan of changed scan/decode files found no new logging sinks or raw byte diagnostics. Hits were limited to internal APDU/status-word code paths and comments already covered by sanitized `LocalizedError`/failure mapping.
+
+Follow-up verification on the second cleanup pass:
+
+- The original `iPhone 16`, iOS 18.3.1 simulator destination was unavailable in the current environment, so the full iOS simulator unit suite was run against an installed simulator:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5'
+  ```
+
+  Result: 89 tests, 0 failures.
+
+- iOS package build succeeded:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build
+  ```
+
+- `scripts/privacy_scan.sh` passed.
+- `git diff --check` passed.
 
 Remaining follow-up:
 
@@ -1228,6 +1253,8 @@ After patching the fork and updating the app:
 
 ## Notes
 
+- Repo hygiene update: `.gitignore` now covers standard Swift/Xcode build artifacts, local editor/agent state, scratch directories, dependency build outputs, and sensitive local passport/NFC fixtures or downloaded certificate material. The paired Notary Journal app repo already had a `.gitignore`; it was updated only to ignore local `.claude/` agent state.
+- CI workflow note: `.github/workflows/ios-package.yml` should be tracked with the fork. Its Actions trigger key is quoted as `"on"` so local YAML tooling does not misparse it as a boolean while preserving GitHub Actions behavior.
 - The app must not use backend code or backend routes as a source of truth for this work.
 - Preserve user privacy and avoid logging PII, ID details, signatures, thumbprints, keys, tokens, or decrypted sensitive artifacts.
 - If changing returned request/response behavior or app contract mappings, review `JOURNAL_API_CONTRACT_v1.md` and related contract docs first.

@@ -99,31 +99,19 @@ func getImage() -> UIImage? {
         }
         
         var offset = 4
-        versionNumber = binToInt(data[offset..<offset+4])
-        offset += 4
-        lengthOfRecord = binToInt(data[offset..<offset+4])
-        offset += 4
-        numberOfFacialImages = binToInt(data[offset..<offset+2])
-        offset += 2
-        
-        facialRecordDataLength = binToInt(data[offset..<offset+4])
-        offset += 4
-        nrFeaturePoints = binToInt(data[offset..<offset+2])
-        offset += 2
-        gender = binToInt(data[offset..<offset+1])
-        offset += 1
-        eyeColor = binToInt(data[offset..<offset+1])
-        offset += 1
-        hairColor = binToInt(data[offset..<offset+1])
-        offset += 1
-        featureMask = binToInt(data[offset..<offset+3])
-        offset += 3
-        expression = binToInt(data[offset..<offset+2])
-        offset += 2
-        poseAngle = binToInt(data[offset..<offset+3])
-        offset += 3
-        poseAngleUncertainty = binToInt(data[offset..<offset+3])
-        offset += 3
+        versionNumber = try readInteger(from: data, offset: &offset, byteCount: 4)
+        lengthOfRecord = try readInteger(from: data, offset: &offset, byteCount: 4)
+        numberOfFacialImages = try readInteger(from: data, offset: &offset, byteCount: 2)
+
+        facialRecordDataLength = try readInteger(from: data, offset: &offset, byteCount: 4)
+        nrFeaturePoints = try readInteger(from: data, offset: &offset, byteCount: 2)
+        gender = try readInteger(from: data, offset: &offset, byteCount: 1)
+        eyeColor = try readInteger(from: data, offset: &offset, byteCount: 1)
+        hairColor = try readInteger(from: data, offset: &offset, byteCount: 1)
+        featureMask = try readInteger(from: data, offset: &offset, byteCount: 3)
+        expression = try readInteger(from: data, offset: &offset, byteCount: 2)
+        poseAngle = try readInteger(from: data, offset: &offset, byteCount: 3)
+        poseAngleUncertainty = try readInteger(from: data, offset: &offset, byteCount: 3)
         
         // Features (not handled). There shouldn't be any but if for some reason there were,
         // then we are going to skip over them
@@ -134,22 +122,14 @@ func getImage() -> UIImage? {
             throw NFCPassportReaderError.InvalidASN1Structure
         }
         
-        faceImageType = binToInt(data[offset..<offset+1])
-        offset += 1
-        imageDataType = binToInt(data[offset..<offset+1])
-        offset += 1
-        imageWidth = binToInt(data[offset..<offset+2])
-        offset += 2
-        imageHeight = binToInt(data[offset..<offset+2])
-        offset += 2
-        imageColorSpace = binToInt(data[offset..<offset+1])
-        offset += 1
-        sourceType = binToInt(data[offset..<offset+1])
-        offset += 1
-        deviceType = binToInt(data[offset..<offset+2])
-        offset += 2
-        quality = binToInt(data[offset..<offset+2])
-        offset += 2
+        faceImageType = try readInteger(from: data, offset: &offset, byteCount: 1)
+        imageDataType = try readInteger(from: data, offset: &offset, byteCount: 1)
+        imageWidth = try readInteger(from: data, offset: &offset, byteCount: 2)
+        imageHeight = try readInteger(from: data, offset: &offset, byteCount: 2)
+        imageColorSpace = try readInteger(from: data, offset: &offset, byteCount: 1)
+        sourceType = try readInteger(from: data, offset: &offset, byteCount: 1)
+        deviceType = try readInteger(from: data, offset: &offset, byteCount: 2)
+        quality = try readInteger(from: data, offset: &offset, byteCount: 2)
         
         
         // Make sure that the image data at least has a valid header
@@ -172,5 +152,19 @@ func getImage() -> UIImage? {
         }
         
         imageData = Array(imageBytes)
+    }
+
+    private func readInteger(from data: [UInt8], offset: inout Int, byteCount: Int) throws -> Int {
+        guard byteCount > 0,
+              offset + byteCount <= data.count else {
+            throw NFCPassportReaderError.InvalidASN1Structure
+        }
+
+        var value = 0
+        for byte in data[offset ..< offset + byteCount] {
+            value = (value << 8) | Int(byte)
+        }
+        offset += byteCount
+        return value
     }
 }

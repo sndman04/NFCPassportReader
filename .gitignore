@@ -1,29 +1,19 @@
-tmp
-old
-working
-.vscode
-scripts
-!scripts/
-scripts/*
-!scripts/privacy_scan.sh
-test_sod.der
-passport.json
-passport*.json
-Example/Pods
-*.pem
-*.pem_
-.swiftpm
-**masterlist.pem
+# macOS filesystem noise
+.DS_Store
+.AppleDouble
+.LSOverride
+.localized
 
-# Xcode
-#
-# gitignore contributors: remember to update Global/Xcode.gitignore, Objective-C.gitignore & Swift.gitignore
-
-## Build generated
+# Xcode build outputs and bundles
 build/
 DerivedData/
+*.ipa
+*.xcarchive
+*.xcresult
+*.dSYM
+*.dSYM.zip
 
-## Various settings
+# Xcode user-specific state
 *.pbxuser
 !default.pbxuser
 *.mode1v3
@@ -32,60 +22,61 @@ DerivedData/
 !default.mode2v3
 *.perspectivev3
 !default.perspectivev3
+*.xcuserstate
+*.xccheckout
+*.moved-aside
+*.xcscmblueprint
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
 xcuserdata/
 
-## Other
-*.moved-aside
-*.xccheckout
-*.xcscmblueprint
-
-## Obj-C/Swift specific
-*.hmap
-*.ipa
-*.dSYM.zip
-*.dSYM
-
-## Playgrounds
-timeline.xctimeline
-playground.xcworkspace
-
-# Swift Package Manager
-#
-# Add this line if you want to avoid checking in source code from Swift Package Manager dependencies.
- Packages/
-# Package.pins
-# Package.resolved
+# Swift Package Manager generated files
 .build/
+.swiftpm/
+Packages/
+Package.pins
+/Package.resolved
 
-# Carthage
-#
-# Add this line if you want to avoid checking in source code from Carthage dependencies.
-# Carthage/Checkouts
-
-Carthage/Build
+# CocoaPods and Carthage build artifacts
+Pods/
+Example/Pods/
+Carthage/Build/
 
 # Accio dependency management
 Dependencies/
 .accio/
 
-# fastlane
-#
-# It is recommended to not store the screenshots in the git repo. Instead, use fastlane to re-generate the
-# screenshots whenever they are needed.
-# For more information about the recommended setup visit:
-# https://docs.fastlane.tools/best-practices/source-control/#source-control
-
+# fastlane generated artifacts
 fastlane/report.xml
 fastlane/Preview.html
-fastlane/screenshots/**/*.png
-fastlane/test_output
+fastlane/screenshots/
+fastlane/test_output/
 
-# Code Injection
-#
-# After new code Injection tools there's a generated folder /iOSInjectionProject
-# https://github.com/johnno1962/injectionforxcode
-
+# Code injection tooling
 iOSInjectionProject/
-/.DS_Store
-/Package.resolved
-/Sources/.DS_Store
+
+# Editor/IDE and local agent state
+.idea/
+.vscode/
+.claude/
+*.swp
+*.swo
+
+# Local scratch and migration workspaces
+tmp/
+old/
+working/
+
+# Keep the privacy scanner tracked, but ignore ad hoc script outputs.
+scripts/*
+!scripts/
+!scripts/privacy_scan.sh
+
+# Sensitive local passport/NFC fixtures and downloaded certificate material
+test_sod.der
+passport.json
+passport*.json
+*.pem
+*.pem_
+**masterlist.pem
+**/ICAO_ML_*.ml

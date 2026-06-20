@@ -13,16 +13,64 @@ public class ChipAuthenticationInfo : SecurityInfo {
     var oid : String
     var version : Int
     var keyId : Int?
+
+    private static let supportedIdentifiers: Set<String> = [
+        ID_CA_DH_3DES_CBC_CBC_OID,
+        ID_CA_ECDH_3DES_CBC_CBC_OID,
+        ID_CA_DH_AES_CBC_CMAC_128_OID,
+        ID_CA_DH_AES_CBC_CMAC_192_OID,
+        ID_CA_DH_AES_CBC_CMAC_256_OID,
+        ID_CA_ECDH_AES_CBC_CMAC_128_OID,
+        ID_CA_ECDH_AES_CBC_CMAC_192_OID,
+        ID_CA_ECDH_AES_CBC_CMAC_256_OID
+    ]
+
+    private static let keyAgreementAlgorithms: [String: String] = [
+        ID_CA_DH_3DES_CBC_CBC_OID: "DH",
+        ID_CA_DH_AES_CBC_CMAC_128_OID: "DH",
+        ID_CA_DH_AES_CBC_CMAC_192_OID: "DH",
+        ID_CA_DH_AES_CBC_CMAC_256_OID: "DH",
+        ID_CA_ECDH_3DES_CBC_CBC_OID: "ECDH",
+        ID_CA_ECDH_AES_CBC_CMAC_128_OID: "ECDH",
+        ID_CA_ECDH_AES_CBC_CMAC_192_OID: "ECDH",
+        ID_CA_ECDH_AES_CBC_CMAC_256_OID: "ECDH"
+    ]
+
+    private static let cipherAlgorithms: [String: String] = [
+        ID_CA_DH_3DES_CBC_CBC_OID: "DESede",
+        ID_CA_ECDH_3DES_CBC_CBC_OID: "DESede",
+        ID_CA_DH_AES_CBC_CMAC_128_OID: "AES",
+        ID_CA_DH_AES_CBC_CMAC_192_OID: "AES",
+        ID_CA_DH_AES_CBC_CMAC_256_OID: "AES",
+        ID_CA_ECDH_AES_CBC_CMAC_128_OID: "AES",
+        ID_CA_ECDH_AES_CBC_CMAC_192_OID: "AES",
+        ID_CA_ECDH_AES_CBC_CMAC_256_OID: "AES"
+    ]
+
+    private static let keyLengths: [String: Int] = [
+        ID_CA_DH_3DES_CBC_CBC_OID: 128,
+        ID_CA_ECDH_3DES_CBC_CBC_OID: 128,
+        ID_CA_DH_AES_CBC_CMAC_128_OID: 128,
+        ID_CA_ECDH_AES_CBC_CMAC_128_OID: 128,
+        ID_CA_DH_AES_CBC_CMAC_192_OID: 192,
+        ID_CA_ECDH_AES_CBC_CMAC_192_OID: 192,
+        ID_CA_DH_AES_CBC_CMAC_256_OID: 256,
+        ID_CA_ECDH_AES_CBC_CMAC_256_OID: 256
+    ]
+
+    private static let protocolOIDStrings: [String: String] = [
+        ID_CA_DH_3DES_CBC_CBC_OID: "id-CA-DH-3DES-CBC-CBC",
+        ID_CA_DH_AES_CBC_CMAC_128_OID: "id-CA-DH-AES-CBC-CMAC-128",
+        ID_CA_DH_AES_CBC_CMAC_192_OID: "id-CA-DH-AES-CBC-CMAC-192",
+        ID_CA_DH_AES_CBC_CMAC_256_OID: "id-CA-DH-AES-CBC-CMAC-256",
+        ID_CA_ECDH_3DES_CBC_CBC_OID: "id-CA-ECDH-3DES-CBC-CBC",
+        ID_CA_ECDH_AES_CBC_CMAC_128_OID: "id-CA-ECDH-AES-CBC-CMAC-128",
+        ID_CA_ECDH_AES_CBC_CMAC_192_OID: "id-CA-ECDH-AES-CBC-CMAC-192",
+        ID_CA_ECDH_AES_CBC_CMAC_256_OID: "id-CA-ECDH-AES-CBC-CMAC-256"
+    ]
     
     static func checkRequiredIdentifier(_ oid : String) -> Bool {
-        return ID_CA_DH_3DES_CBC_CBC_OID == oid
-            || ID_CA_ECDH_3DES_CBC_CBC_OID == oid
-            || ID_CA_DH_AES_CBC_CMAC_128_OID == oid
-            || ID_CA_DH_AES_CBC_CMAC_192_OID == oid
-            || ID_CA_DH_AES_CBC_CMAC_256_OID == oid
-            || ID_CA_ECDH_AES_CBC_CMAC_128_OID == oid
-            || ID_CA_ECDH_AES_CBC_CMAC_192_OID == oid
-            || ID_CA_ECDH_AES_CBC_CMAC_256_OID == oid
+        supportedIdentifiers.contains(oid)
     }
     
     init(oid: String, version: Int, keyId: Int? = nil) {
@@ -49,18 +97,10 @@ public class ChipAuthenticationInfo : SecurityInfo {
     /// - Returns: key agreement algorithm
     /// - Throws: InvalidDataPassed error if invalid oid specified
     public static func toKeyAgreementAlgorithm( oid : String ) throws -> String {
-        if ID_CA_DH_3DES_CBC_CBC_OID == oid
-            || ID_CA_DH_AES_CBC_CMAC_128_OID == oid
-            || ID_CA_DH_AES_CBC_CMAC_192_OID == oid
-            || ID_CA_DH_AES_CBC_CMAC_256_OID == oid {
-            return "DH";
-        } else if ID_CA_ECDH_3DES_CBC_CBC_OID == oid
-                    || ID_CA_ECDH_AES_CBC_CMAC_128_OID == oid
-                    || ID_CA_ECDH_AES_CBC_CMAC_192_OID == oid
-                    || ID_CA_ECDH_AES_CBC_CMAC_256_OID == oid {
-            return "ECDH";
+        if let algorithm = keyAgreementAlgorithms[oid] {
+            return algorithm
         }
-        
+
         throw NFCPassportReaderError.InvalidDataPassed( "Unable to lookup key agreement algorithm - invalid oid" )
     }
     
@@ -69,16 +109,8 @@ public class ChipAuthenticationInfo : SecurityInfo {
     /// - Returns: the cipher algorithm type
     /// - Throws: InvalidDataPassed error if invalid oid specified
     public static func toCipherAlgorithm( oid : String ) throws -> String {
-        if ID_CA_DH_3DES_CBC_CBC_OID == oid
-            || ID_CA_ECDH_3DES_CBC_CBC_OID == oid {
-            return "DESede";
-        } else if ID_CA_DH_AES_CBC_CMAC_128_OID == oid
-                    || ID_CA_DH_AES_CBC_CMAC_192_OID == oid
-                    || ID_CA_DH_AES_CBC_CMAC_256_OID == oid
-                    || ID_CA_ECDH_AES_CBC_CMAC_128_OID == oid
-                    || ID_CA_ECDH_AES_CBC_CMAC_192_OID == oid
-                    || ID_CA_ECDH_AES_CBC_CMAC_256_OID == oid {
-            return "AES";
+        if let algorithm = cipherAlgorithms[oid] {
+            return algorithm
         }
         throw NFCPassportReaderError.InvalidDataPassed( "Unable to lookup cipher algorithm - invalid oid" )
     }
@@ -88,48 +120,14 @@ public class ChipAuthenticationInfo : SecurityInfo {
     /// - Returns: the key length in bits
     /// - Throws: InvalidDataPassed error if invalid oid specified
     public static func toKeyLength( oid : String ) throws -> Int {
-        if ID_CA_DH_3DES_CBC_CBC_OID == oid
-            || ID_CA_ECDH_3DES_CBC_CBC_OID == oid
-            || ID_CA_DH_AES_CBC_CMAC_128_OID == oid
-            || ID_CA_ECDH_AES_CBC_CMAC_128_OID == oid {
-            return 128;
-        } else if ID_CA_DH_AES_CBC_CMAC_192_OID == oid
-                    || ID_CA_ECDH_AES_CBC_CMAC_192_OID == oid {
-            return 192;
-        } else if ID_CA_DH_AES_CBC_CMAC_256_OID == oid
-                    || ID_CA_ECDH_AES_CBC_CMAC_256_OID == oid {
-            return 256;
+        if let keyLength = keyLengths[oid] {
+            return keyLength
         }
-        
+
         throw NFCPassportReaderError.InvalidDataPassed( "Unable to get key length - invalid oid" )
     }
     
     private static func toProtocolOIDString(oid : String) -> String {
-        if ID_CA_DH_3DES_CBC_CBC_OID == oid {
-            return "id-CA-DH-3DES-CBC-CBC"
-        }
-        if ID_CA_DH_AES_CBC_CMAC_128_OID == oid {
-            return "id-CA-DH-AES-CBC-CMAC-128"
-        }
-        if ID_CA_DH_AES_CBC_CMAC_192_OID == oid {
-            return "id-CA-DH-AES-CBC-CMAC-192"
-        }
-        if ID_CA_DH_AES_CBC_CMAC_256_OID == oid {
-            return "id-CA-DH-AES-CBC-CMAC-256"
-        }
-        if ID_CA_ECDH_3DES_CBC_CBC_OID == oid {
-            return "id-CA-ECDH-3DES-CBC-CBC"
-        }
-        if ID_CA_ECDH_AES_CBC_CMAC_128_OID == oid {
-            return "id-CA-ECDH-AES-CBC-CMAC-128"
-        }
-        if ID_CA_ECDH_AES_CBC_CMAC_192_OID == oid {
-            return "id-CA-ECDH-AES-CBC-CMAC-192"
-        }
-        if ID_CA_ECDH_AES_CBC_CMAC_256_OID == oid {
-            return "id-CA-ECDH-AES-CBC-CMAC-256"
-        }
-        
-        return oid
+        protocolOIDStrings[oid] ?? oid
     }
 }
