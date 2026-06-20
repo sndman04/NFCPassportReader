@@ -133,7 +133,7 @@ public class NFCPassportModel {
             sodSignatureStatus: passportVerificationAttempted ? documentSigningCertificateVerified.verificationStatus : .notChecked,
             dataGroupHashStatus: passportVerificationAttempted ? passportDataNotTampered.verificationStatus : .notChecked,
             documentSignerCertificateStatus: passportVerificationAttempted ? documentSigningCertificateVerified.verificationStatus : .notChecked,
-            countrySigningCertificateStatus: passportVerificationAttempted ? passportCorrectlySigned.verificationStatus : .notChecked,
+            countrySigningCertificateStatus: passportVerificationAttempted && masterListWasProvided ? passportCorrectlySigned.verificationStatus : .notChecked,
             activeAuthenticationStatus: activeAuthenticationSupported ? activeAuthenticationPassed.verificationStatus : .notChecked,
             chipAuthenticationStatus: chipAuthenticationStatus.verificationStatus
         )

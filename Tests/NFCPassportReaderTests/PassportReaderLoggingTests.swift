@@ -242,6 +242,16 @@ final class PassportReaderLoggingTests: XCTestCase {
         XCTAssertEqual(result.overallStatus, .notChecked)
     }
 
+    func testCountrySigningCertificateStatusIsNotCheckedWithoutMasterList() {
+        let model = NFCPassportModel()
+
+        model.verifyPassport(masterListURL: nil)
+
+        XCTAssertTrue(model.passportVerificationAttempted)
+        XCTAssertFalse(model.masterListWasProvided)
+        XCTAssertEqual(model.verificationResult.countrySigningCertificateStatus, .notChecked)
+    }
+
     func testPhotoPolicyCanRemoveDG2FromRequestedGroups() {
         let requested: [DataGroupId] = [.COM, .SOD, .DG1, .DG2, .DG12]
 

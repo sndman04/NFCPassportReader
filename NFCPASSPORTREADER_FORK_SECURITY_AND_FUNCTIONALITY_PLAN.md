@@ -811,6 +811,24 @@ Release checklist:
 - Include OpenSSL-Package/OpenSSL Apache-2.0 notices when distributing an app or binary built with this package.
 - If adding new copied third-party code, add its license file or attribution before release.
 
+### 2026-06-19 Master-List Trust Status Clarification
+
+Decision:
+
+- Treat country signer trust as `.notChecked` when passive authentication is attempted without a CSCA master list. This distinguishes "data integrity checked but signer trust anchor unavailable" from a real trust-chain failure.
+- Keep SOD signature and data-group hash results independent so apps can safely show that chip data matched the signed SOD even when signer trust cannot be established.
+- Update app-facing documentation to tell host apps not to present a missing master list as evidence that a USA or other passport failed verification.
+
+Implementation status:
+
+- Updated `NFCPassportModel.verificationResult.countrySigningCertificateStatus` to require both a verification attempt and a provided master list before returning pass/fail.
+- Added a focused test for the no-master-list branch.
+- Updated README passive-authentication guidance.
+
+Follow-up:
+
+- Verify on device with a configured CSCA/ICAO PKD master list so the harness can show a known-good trusted signer path as well as the no-master-list path.
+
 ## App-Side Migration Options
 
 ### Option A: Remote Fork

@@ -103,6 +103,8 @@ Security policies can disallow passport photo reads even when a broader scan pro
 
 For app-facing data, prefer `passport.identityResult`. It contains normalized identity fields, verification status, trust level, and certificate-trust metadata, and intentionally omits MRZ text, raw data-group bytes, APDUs, certificates, keys, and image bytes.
 
+If passive authentication runs without a CSCA master list, SOD signature and data-group hash checks can still report that the read data is internally consistent, but country signer trust is reported as not checked. A trusted signer result requires a master list from the issuing country or ICAO PKD.
+
 For support diagnostics, use `PassportReaderDiagnosticsSummary`. It records the scan profile, photo policy, security policy, safe failure reason, verification summary, trust level, and data-group names read. It does not include identity fields, MRZ text, APDUs, certificates, keys, raw data groups, or images.
 
 `PassportReaderPrivacyCopy` provides short suggested consent and diagnostics copy for host apps that want package-owned wording.
@@ -181,6 +183,8 @@ See `THREAT_MODEL.md` for the fork's privacy and verification assumptions.
 Passive Authentication is now part of the main library and can be used to ensure that an E-Passport is valid and hasn't been tampered with.
 
 It requires a set of CSCA certificates in PEM format from a master list, either from a country that publishes its master list or from the ICAO PKD repository. See `scripts/README.md` for helper-script notes.
+
+When no master list is supplied, signer-chain trust is not checked rather than failed. Apps should present that as an incomplete trust-anchor configuration, not as evidence that the passport or chip data is bad.
 
 ## Troubleshooting
 * If when doing the initial Mutual Authenticate challenge, you get an error with and SW1 code 0x63, SW2 code 0x00, reason: No information given, then this is usualy because your MRZ key is incorrect, and possibly because your passport number is not quite right.  If your passport number in the MRZ contains a '<' then you need to include this in the MRZKey - the checksum should work out correct too.  For more details, check out App-D2 in the ICAO 9303 Part 11 document (https://www.icao.int/publications/Documents/9303_p11_cons_en.pdf)
