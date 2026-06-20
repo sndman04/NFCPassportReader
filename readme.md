@@ -59,6 +59,7 @@ let passport = try await passportReader.readPassport(
     scanProfile: .identityWithPhoto,
     operationTimeout: 60,
     photoPolicy: .read,
+    securityPolicy: .default,
     progressHandler: { event in
         switch event {
         case .waitingForPassport:
@@ -87,6 +88,25 @@ Supported scan profiles are `.identityOnly`, `.identityWithPhoto`, `.fullVerific
 Prefer the smallest profile that supports the app workflow.
 Use `photoPolicy: .skip` to remove DG2 from the requested data groups when the app does not need passport face image data.
 
+Use `PassportReaderSecurityPolicy` to centralize privacy and verification decisions:
+
+```swift
+let passport = try await passportReader.readPassport(
+    mrzKey: mrzKey,
+    scanProfile: .fullVerification,
+    photoPolicy: .read,
+    securityPolicy: .notaryRecommended
+)
+```
+
+Security policies can disallow passport photo reads even when a broader scan profile requests DG2, block raw export by default, and require verification strictness such as `.passiveAuthentication`, `.trustedPassiveAuthentication`, or `.fullVerificationWhenSupported`.
+
+For app-facing data, prefer `passport.identityResult`. It contains normalized identity fields, verification status, trust level, and certificate-trust metadata, and intentionally omits MRZ text, raw data-group bytes, APDUs, certificates, keys, and image bytes.
+
+For support diagnostics, use `PassportReaderDiagnosticsSummary`. It records the scan profile, photo policy, security policy, safe failure reason, verification summary, trust level, and data-group names read. It does not include identity fields, MRZ text, APDUs, certificates, keys, raw data groups, or images.
+
+`PassportReaderPrivacyCopy` provides short suggested consent and diagnostics copy for host apps that want package-owned wording.
+
 Errors can be mapped to privacy-safe app copy and retry decisions:
 
 ```swift
@@ -112,7 +132,7 @@ This will increase the number of bytes that can be read in a call and may be req
 
 A custom Active Authentiion challenge can be provided to the PassportReader to ensure that the challenge/response was specifically executed in the session and not replayed. The app could then send the activeAuthenticationSignature to a backend, along with the rest of the chip data to perform validation.
 
-`NFCPassportModel.dumpPassportData(...)` is deprecated in this fork because it returns raw Base64-encoded passport chip data. Prefer normalized model fields, `verificationResult`, and privacy-safe failure/progress diagnostics.
+`NFCPassportModel.dumpPassportData(...)` is deprecated in this fork because it returns raw Base64-encoded passport chip data. Prefer `identityResult`, `verificationResult`, and privacy-safe failure/progress diagnostics. Rare raw export workflows should use `UnsafePassportRawDataExporter` with a `PassportReaderSecurityPolicy` that explicitly sets `allowsUnsafeRawDataExport: true`.
 
 
 ## Logging
@@ -152,6 +172,8 @@ git diff --check
 `swift test` may fail in this environment because SwiftPM evaluates the package against macOS while the OpenSSL dependency requires a newer macOS target. Use the iOS/Xcode path above unless the package manifest is deliberately changed to support macOS tests.
 
 Run at least one manual on-device passport scan before releasing a fork tag, because PACE/BAC/Chip Authentication behavior depends on real chip interoperability.
+
+See `THREAT_MODEL.md` for the fork's privacy and verification assumptions.
 
 ## Other info
 

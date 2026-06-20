@@ -34,6 +34,8 @@ public enum NFCPassportReaderError: Error {
     case TimeOutError
     case UserCanceled
     case ScanAlreadyInProgress
+    case SecurityPolicyViolation
+    case RawDataExportNotAllowed
     case InvalidMRZKey
     case MoreThanOneTagFound
     case InvalidHashAlgorithmSpecified
@@ -71,6 +73,8 @@ public enum NFCPassportReaderError: Error {
             case .TimeOutError: return "TimeOutError"
             case .UserCanceled: return "UserCanceled"
             case .ScanAlreadyInProgress: return "ScanAlreadyInProgress"
+            case .SecurityPolicyViolation: return "SecurityPolicyViolation"
+            case .RawDataExportNotAllowed: return "RawDataExportNotAllowed"
             case .InvalidMRZKey: return "InvalidMRZKey"
             case .MoreThanOneTagFound: return "MoreThanOneTagFound"
             case .InvalidHashAlgorithmSpecified: return "InvalidHashAlgorithmSpecified"
@@ -111,6 +115,8 @@ public enum NFCPassportReaderError: Error {
             case .TimeOutError: return "NFC session timed out"
             case .UserCanceled: return "NFC session canceled"
             case .ScanAlreadyInProgress: return "A passport scan is already in progress"
+            case .SecurityPolicyViolation: return "Passport verification did not satisfy the configured security policy"
+            case .RawDataExportNotAllowed: return "Raw passport data export is not allowed by the configured security policy"
             case .InvalidMRZKey: return "Access key rejected"
             case .MoreThanOneTagFound: return "More than one NFC tag found"
             case .InvalidHashAlgorithmSpecified: return "Unsupported verification hash algorithm"

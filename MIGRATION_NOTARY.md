@@ -27,6 +27,7 @@ let passport = try await reader.readPassport(
     useExtendedMode: true,
     operationTimeout: 60,
     photoPolicy: .read,
+    securityPolicy: .notaryRecommended,
     progressHandler: { event in
         // Map to app UI state. Do not log event values together with identity data.
     },
@@ -45,6 +46,12 @@ let passport = try await reader.readPassport(
 
 Use `.identityOnly` or `.identityWithPhoto` only after confirming Notary Journal does not need optional details or chip-authentication groups for its workflow.
 
+`PassportReaderSecurityPolicy.notaryRecommended` currently allows passport photo review, blocks unsafe raw export, and requires passive-authentication integrity checks to pass when verification is attempted. If Notary Journal needs a softer rollout while validating real passports, use `.default` temporarily and document the reason in this file before tagging.
+
+Prefer `passport.identityResult` for app-facing mapping where possible. It omits MRZ text, raw data-group bytes, APDU data, certificates, cryptographic material, and image bytes while preserving normalized fields, verification status, trust level, and certificate-trust metadata.
+
+Use `PassportReaderDiagnosticsSummary` for support flows that need safe scan metadata. Do not attach raw model dumps, screenshots of identity fields, console logs, or passport photos to support diagnostics.
+
 ## Failure Handling
 
 ```swift
@@ -62,7 +69,7 @@ Depend on `PassportChipReading` in app services and inject `PassportReaderFixtur
 
 ## Sensitive Export API
 
-`NFCPassportModel.dumpPassportData(...)` is deprecated in this fork because it returns raw Base64-encoded chip data. Notary Journal should use normalized model fields, `verificationResult`, and app-owned in-memory photo review data instead.
+`NFCPassportModel.dumpPassportData(...)` is deprecated in this fork because it returns raw Base64-encoded chip data. Notary Journal should use `identityResult`, `verificationResult`, and app-owned in-memory photo review data instead. Raw export should remain unused; if a future workflow truly requires it, use `UnsafePassportRawDataExporter` only with explicit user consent, written retention rules, and `PassportReaderSecurityPolicy(allowsUnsafeRawDataExport: true)`.
 
 ## Release Checklist
 

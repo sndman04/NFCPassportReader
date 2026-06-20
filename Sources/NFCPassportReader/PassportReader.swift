@@ -45,6 +45,7 @@ public class PassportReader : NSObject {
     private let eventLogger: PassportReaderEventLogger
     private var progressHandler: PassportReaderProgressHandler?
     private var scanTimeoutTask: Task<Void, Never>?
+    private var securityPolicy: PassportReaderSecurityPolicy = .default
 
     public weak var trackingDelegate: PassportReaderTrackingDelegate?
     private var passport : NFCPassportModel = NFCPassportModel()
@@ -99,16 +100,27 @@ public class PassportReader : NSObject {
         dataAmountToReadOverride = amount
     }
     
-    public func readPassport( mrzKey : String, tags : [DataGroupId] = [], aaChallenge: [UInt8]? = nil, skipSecureElements : Bool = true, skipCA : Bool = false, skipPACE : Bool = false, useExtendedMode : Bool = false, operationTimeout: TimeInterval? = nil, photoPolicy: PassportPhotoPolicy = .read, progressHandler: PassportReaderProgressHandler? = nil, customDisplayMessage : ((NFCViewDisplayMessage) -> String?)? = nil) async throws -> NFCPassportModel {
+    public func readPassport( mrzKey : String, tags : [DataGroupId] = [], aaChallenge: [UInt8]? = nil, skipSecureElements : Bool = true, skipCA : Bool = false, skipPACE : Bool = false, useExtendedMode : Bool = false, operationTimeout: TimeInterval? = nil, photoPolicy: PassportPhotoPolicy = .read, securityPolicy: PassportReaderSecurityPolicy = .default, progressHandler: PassportReaderProgressHandler? = nil, customDisplayMessage : ((NFCViewDisplayMessage) -> String?)? = nil) async throws -> NFCPassportModel {
+        guard NFCNDEFReaderSession.readingAvailable else {
+            eventLogger.log(.readFailed(.nfcNotSupported))
+            throw NFCPassportReaderError.NFCNotSupported
+        }
+
+        guard beginScanIfPossible() else {
+            eventLogger.log(.readFailed(.unexpectedReadFailure))
+            throw NFCPassportReaderError.ScanAlreadyInProgress
+        }
+
         self.passport = NFCPassportModel()
         self.mrzKey = mrzKey
         self.aaChallenge = aaChallenge
         self.skipCA = skipCA
         self.skipPACE = skipPACE
         self.useExtendedMode = useExtendedMode
+        self.securityPolicy = securityPolicy
         
         self.dataGroupsToRead.removeAll()
-        self.dataGroupsToRead.append( contentsOf: photoPolicy.apply(to: tags))
+        self.dataGroupsToRead.append( contentsOf: securityPolicy.apply(to: photoPolicy).apply(to: tags))
         self.nfcViewDisplayMessageHandler = customDisplayMessage
         self.progressHandler = progressHandler
         self.skipSecureElements = skipSecureElements
@@ -126,17 +138,7 @@ public class PassportReader : NSObject {
             // We are reading specific datagroups
             self.readAllDatagroups = false
         }
-        
-        guard NFCNDEFReaderSession.readingAvailable else {
-            eventLogger.log(.readFailed(.nfcNotSupported))
-            throw NFCPassportReaderError.NFCNotSupported
-        }
 
-        guard beginScanIfPossible() else {
-            eventLogger.log(.readFailed(.unexpectedReadFailure))
-            throw NFCPassportReaderError.ScanAlreadyInProgress
-        }
-        
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation({ (continuation: NFCCheckedContinuation) in
                 guard self.storeActiveScanContinuation(continuation) else {
@@ -170,6 +172,7 @@ public class PassportReader : NSObject {
         useExtendedMode: Bool = false,
         operationTimeout: TimeInterval? = nil,
         photoPolicy: PassportPhotoPolicy = .read,
+        securityPolicy: PassportReaderSecurityPolicy = .default,
         progressHandler: PassportReaderProgressHandler? = nil,
         customDisplayMessage: ((NFCViewDisplayMessage) -> String?)? = nil
     ) async throws -> NFCPassportModel {
@@ -183,6 +186,7 @@ public class PassportReader : NSObject {
             useExtendedMode: useExtendedMode,
             operationTimeout: operationTimeout,
             photoPolicy: photoPolicy,
+            securityPolicy: securityPolicy,
             progressHandler: progressHandler,
             customDisplayMessage: customDisplayMessage
         )
@@ -456,6 +460,7 @@ extension PassportReader {
         eventLogger.log(.verificationStarted)
         emitProgress(.verifyingSOD)
         self.passport.verifyPassport(masterListURL: self.masterListURL, useCMSVerification: self.passiveAuthenticationUsesOpenSSL)
+        try self.securityPolicy.validate(self.passport)
         eventLogger.log(.readSucceeded)
         emitProgress(.verifyingDataGroups)
         emitProgress(.complete)

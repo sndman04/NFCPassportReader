@@ -24,7 +24,7 @@ public class TagReader {
     }
     
     func overrideDataAmountToRead( newAmount : Int ) {
-        maxDataLengthToRead = newAmount
+        maxDataLengthToRead = min(max(newAmount, 1), 65_535)
     }
     
     func reduceDataReadingAmount() {
@@ -195,6 +195,9 @@ public class TagReader {
             if maxDataLengthToRead != 256 && remaining < maxDataLengthToRead {
                 readAmount = remaining
             }
+            guard readAmount > 0 else {
+                throw NFCPassportReaderError.InvalidASN1Structure
+            }
 
             self.progress?( Int(Float(amountRead) / Float(remaining+amountRead ) * 100))
             let offset = intToBin(amountRead, pad:4)
@@ -207,6 +210,9 @@ public class TagReader {
                 expectedResponseLength: readAmount
             )
             resp = try await self.send( cmd: cmd )
+            guard !resp.data.isEmpty else {
+                throw NFCPassportReaderError.InvalidASN1Structure
+            }
             data += resp.data
             
             remaining -= resp.data.count

@@ -33,9 +33,9 @@ public class DataGroup11 : DataGroup {
         try verifyTag(tag, equals: 0x5C)
         _ = try getNextValue()
         
-        repeat {
+        while hasUnreadBody {
             tag = try getNextTag()
-            let val = try String( bytes:getNextValue(), encoding:.utf8)
+            let val = String(bytes: try getNextValue(), encoding:.utf8)
             if tag == 0x5F0E {
                 fullName = val
             } else if tag == 0x5F10 {
@@ -61,6 +61,6 @@ public class DataGroup11 : DataGroup {
             } else if tag == 0x5F18 {
                 custodyInfo = val
             }
-        } while hasUnreadBody
+        }
     }
 }

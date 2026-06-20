@@ -126,6 +126,7 @@ public class NFCPassportModel {
     public private(set) var activeAuthenticationSignature : [UInt8] = []
     public private(set) var verificationErrors : [Error] = []
     public private(set) var passportVerificationAttempted : Bool = false
+    public private(set) var masterListWasProvided : Bool = false
 
     public var verificationResult: PassportVerificationResult {
         PassportVerificationResult(
@@ -247,8 +248,15 @@ public class NFCPassportModel {
     ///    selectedDataGroups - the Data Groups to be exported (if they are present in the passport)
     ///    includeActiveAutheticationData - Whether to include the Active Authentication challenge and response (if supported and retrieved)
     /// - Returns: dictionary of DataGroup ids and Base64 encoded data
-    @available(*, deprecated, message: "This returns sensitive raw passport data. Prefer normalized NFCPassportModel fields, verificationResult, and privacy-safe diagnostics.")
+    @available(*, deprecated, message: "This returns sensitive raw passport data. Prefer identityResult, verificationResult, and UnsafePassportRawDataExporter for deliberate raw export.")
     public func dumpPassportData( selectedDataGroups : [DataGroupId], includeActiveAuthenticationData : Bool = false) -> [String:String] {
+        unsafeDumpPassportData(
+            selectedDataGroups: selectedDataGroups,
+            includeActiveAuthenticationData: includeActiveAuthenticationData
+        )
+    }
+
+    func unsafeDumpPassportData(selectedDataGroups: [DataGroupId], includeActiveAuthenticationData: Bool = false) -> [String:String] {
         var ret = [String:String]()
         for dg in selectedDataGroups {
             if let dataGroup = self.dataGroupsRead[dg] {
@@ -299,6 +307,7 @@ public class NFCPassportModel {
     ///         CMS Verification currently there just in case
     public func verifyPassport( masterListURL: URL?, useCMSVerification : Bool = false ) {
         passportVerificationAttempted = true
+        masterListWasProvided = masterListURL != nil
 
         if let masterListURL = masterListURL {
             do {
@@ -492,7 +501,7 @@ public class NFCPassportModel {
     /// Parses an text ASN1 structure, and extracts the Hash Algorythm and Hashes contained from the Octect strings
     /// - Parameter content: the text ASN1 stucure format
     /// - Returns: The Hash Algorythm used - either SHA1 or SHA256, and a dictionary of hashes for the datagroups (currently only DG1 and DG2 are handled)
-    private func parseSODSignatureContent( _ content : String ) throws -> (String, [DataGroupId : String]){
+    func parseSODSignatureContent( _ content : String ) throws -> (String, [DataGroupId : String]){
         var currentDG = ""
         var sodHashAlgo = ""
         var sodHashes :  [DataGroupId : String] = [:]
@@ -525,7 +534,13 @@ public class NFCPassportModel {
             } else if line.contains("d=3" ) && line.contains( "OCTET STRING" ) {
                 if let range = line.range(of: "[HEX DUMP]:") {
                     let val = line[range.upperBound..<line.endIndex]
-                    if currentDG != "", let id = Int(currentDG, radix:16) {
+                    if currentDG != "", let id = Int(currentDG.trimmingCharacters(in: .whitespacesAndNewlines), radix:16) {
+                        guard id > 0,
+                              id <= 16,
+                              dgList.indices.contains(id) else {
+                            throw PassiveAuthenticationError.UnableToParseSODHashes("Invalid data group id")
+                        }
+
                         sodHashes[dgList[id]] = String(val)
                         currentDG = ""
                     }

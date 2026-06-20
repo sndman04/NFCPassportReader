@@ -55,6 +55,41 @@ final class DataGroupParsingTests: XCTestCase {
             XCTAssertTrue( dg is DataGroup2 )
         }
     }
+
+    func testDataGroup2RejectsMissingImagePayloadWithoutTrapping() throws {
+        let validDG2 = hexRepToBin("75617F618220470201017F6082203FA1128002010081010282010087020101880200085F2E3846414300303130000000202600010000201800000000000000000001000000000000000100000000000000000000FFD8FFE000104A464946")
+        let dg2 = try XCTUnwrap(try DataGroupParser().parseDG(data: validDG2) as? DataGroup2)
+
+        let isoHeaderWithoutImage = hexRepToBin(
+            "46414300" + // FAC marker
+            "30313000" + // version
+            "00000020" + // record length
+            "0001" +     // one facial image
+            "00000020" + // facial record length
+            "0000" +     // feature points
+            "00" +       // gender
+            "00" +       // eye color
+            "00" +       // hair color
+            "000000" +   // feature mask
+            "0000" +     // expression
+            "000000" +   // pose angle
+            "000000" +   // pose uncertainty
+            "00" +       // image type
+            "00" +       // image data type
+            "0000" +     // width
+            "0000" +     // height
+            "00" +       // color space
+            "00" +       // source type
+            "0000" +     // device type
+            "0000"       // quality
+        )
+
+        XCTAssertThrowsError(try dg2.parseISO19794_5(data: isoHeaderWithoutImage)) { error in
+            guard case NFCPassportReaderError.UnknownImageFormat = error else {
+                return XCTFail("Expected UnknownImageFormat, got \(error)")
+            }
+        }
+    }
     
     func testDatagroup7ParsingJPEG() {
         
@@ -112,6 +147,22 @@ final class DataGroupParsingTests: XCTestCase {
         }
     }
 
+    func testOptionalDG11FieldsCanBeAbsentAfterTagList() {
+        let dg11Val: [UInt8] = [0x6B, 0x03, 0x5C, 0x01, 0x5F]
+
+        XCTAssertNoThrow(try DataGroupParser().parseDG(data: dg11Val)) { dg in
+            XCTAssertTrue(dg is DataGroup11)
+        }
+    }
+
+    func testOptionalDG12FieldsCanBeAbsentAfterTagList() {
+        let dg12Val: [UInt8] = [0x6C, 0x03, 0x5C, 0x01, 0x5F]
+
+        XCTAssertNoThrow(try DataGroupParser().parseDG(data: dg12Val)) { dg in
+            XCTAssertTrue(dg is DataGroup12)
+        }
+    }
+
     func testDatagroup15Parsing() {
         
         // This is a cut down version of the DG7 record. It contains everything up to the end of the image header - no actuall image data as its way too big to include here
@@ -148,6 +199,47 @@ final class DataGroupParsingTests: XCTestCase {
             XCTAssertEqual( com.dataGroupsPresent,["DG1", "DG2", "DG3", "DG7", "DG11", "DG12", "DG14", "DG15"])
 
         }
+    }
+
+    func testSODSignatureContentRejectsOutOfRangeDataGroupIdWithoutTrapping() {
+        let content = """
+        0:d=2  hl=2 l=   9 prim: OBJECT            :sha256
+        0:d=3  hl=2 l=   1 prim: INTEGER           :20
+        0:d=3  hl=2 l=  32 prim: OCTET STRING      [HEX DUMP]:00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF
+        """
+
+        XCTAssertThrowsError(try NFCPassportModel().parseSODSignatureContent(content)) { error in
+            guard case PassiveAuthenticationError.UnableToParseSODHashes = error else {
+                return XCTFail("Expected UnableToParseSODHashes, got \(error)")
+            }
+        }
+    }
+
+    func testSODSignatureContentRejectsZeroDataGroupId() {
+        let content = """
+        0:d=2  hl=2 l=   9 prim: OBJECT            :sha256
+        0:d=3  hl=2 l=   1 prim: INTEGER           :00
+        0:d=3  hl=2 l=  32 prim: OCTET STRING      [HEX DUMP]:00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF
+        """
+
+        XCTAssertThrowsError(try NFCPassportModel().parseSODSignatureContent(content)) { error in
+            guard case PassiveAuthenticationError.UnableToParseSODHashes = error else {
+                return XCTFail("Expected UnableToParseSODHashes, got \(error)")
+            }
+        }
+    }
+
+    func testSODSignatureContentParsesWhitespacePaddedDataGroupId() throws {
+        let content = """
+        0:d=2  hl=2 l=   9 prim: OBJECT            :sha256
+        0:d=3  hl=2 l=   1 prim: INTEGER           : 01
+        0:d=3  hl=2 l=  32 prim: OCTET STRING      [HEX DUMP]:00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF
+        """
+
+        let (algorithm, hashes) = try NFCPassportModel().parseSODSignatureContent(content)
+
+        XCTAssertEqual(algorithm, "SHA256")
+        XCTAssertEqual(hashes[.DG1], "00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF")
     }
 
     func testItShouldThrowAnErrorWhenActualTagDoesNotMatchExpectedTag() throws {

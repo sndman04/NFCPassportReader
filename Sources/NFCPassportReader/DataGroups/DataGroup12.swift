@@ -31,7 +31,7 @@ public class DataGroup12 : DataGroup {
         // Skip the taglist - ideally we would check this but...
         let _ = try getNextValue()
         
-        repeat {
+        while hasUnreadBody {
             tag = try getNextTag()
             let val = try getNextValue()
             
@@ -54,7 +54,7 @@ public class DataGroup12 : DataGroup {
             } else if tag == 0x5F56 {
                 personalizationDeviceSerialNr = String( bytes:val, encoding:.utf8)
             }
-        } while hasUnreadBody
+        }
     }
     
     private func parseDateOfIssue(value: [UInt8]) -> String? {

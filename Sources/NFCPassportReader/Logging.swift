@@ -200,6 +200,10 @@ extension NFCPassportReaderError {
             return .connectionLost
         case .ScanAlreadyInProgress:
             return .unexpectedReadFailure
+        case .SecurityPolicyViolation:
+            return .verificationFailed
+        case .RawDataExportNotAllowed:
+            return .unexpectedReadFailure
         case .InvalidMRZKey:
             return .accessKeyRejected
         case .UnsupportedDataGroup, .NotImplemented, .NotYetSupported, .UnsupportedCipherAlgorithm, .UnsupportedMappingType:

@@ -350,7 +350,91 @@ Lower priority:
 3. Broader verification result structure.
 4. Test fixture reader API.
 
+## Future Protection Backlog
+
+This section tracks additional blue-sky protections that remain relevant to this fork's privacy, security, correctness, and Notary Journal integration goals. Items may go beyond the original logging-focused remediation, but should still preserve compatibility unless a breaking change is deliberate and documented.
+
+Highest-value additions:
+
+1. Add explicit sensitive-data lifetime controls so raw data groups, MRZ-derived values, passport photo bytes, cryptographic intermediates, and low-level parse buffers are released as soon as the package has produced the normalized app-facing result.
+2. Split raw-data capabilities from normal app-facing APIs. Deprecated APIs such as `NFCPassportModel.dumpPassportData(...)` should become harder to call accidentally, either through an explicitly unsafe namespace, a separate exporter type, compile-time gating, or a future major-version removal.
+3. Add a privacy-safe projected result model for host apps that need identity fields, optional photo data, and verification summaries without directly depending on raw `NFCPassportModel` internals.
+4. Add an explicit `PassportReaderSecurityPolicy` that centralizes privacy and verification decisions such as photo access, raw export permission, logging policy, passive-authentication requirements, and chip-authentication requirements.
+5. Add verification strictness modes so a caller can distinguish "read chip data" from "require passive authentication" and "require chip/active authentication when advertised".
+6. Add result trust labels that summarize read and verification outcomes in a way downstream apps can use without reinterpreting low-level booleans.
+7. Return safe certificate/master-list freshness metadata, such as whether a master list was present and whether signer trust could be established, without exposing certificate dumps or sensitive metadata.
+8. Expand privacy-scanning into an audit-grade release gate covering sources, tests, docs, migration notes, and build logs where available.
+9. Add fuzz-style/property tests for untrusted chip data parsers, especially ASN.1, TLV, DG1, DG2, COM, SOD, and SecurityInfo.
+10. Maintain a private on-device interoperability matrix by country/feature class without recording real passport values.
+
+Product and app-integration protections:
+
+1. Provide an app-facing "do not persist" result wrapper with no `Codable` conformance and clear documentation warning against storage, upload, clipboard, and logging.
+2. Harden passport photo handling with image-size limits, decode limits, and memory-pressure behavior.
+3. Keep NFC sheet display copy centralized and test that low-level errors cannot leak into user-visible strings.
+4. Coordinate with Notary Journal to obscure scanned identity data when the app backgrounds or appears in the app switcher.
+5. Coordinate with Notary Journal on a redacted review mode that masks sensitive fields unless the user is actively reviewing them.
+6. Provide suggested privacy-safe consent copy explaining that the chip scan reads identity data and may read the passport photo.
+
+Developer and release safety:
+
+1. Use explicit dangerous API names and doc comments for unsafe/raw operations.
+2. Consider compile-time privacy defaults that make unsafe diagnostics and raw export unavailable unless deliberately enabled.
+3. Add CI execution for local privacy scanning once GitHub workflow permissions allow committing workflow files.
+4. Add public API compatibility tests or a small compile-only integration target for Notary Journal's intended call shape.
+5. Isolate OpenSSL behind a narrow internal boundary so future crypto-backend changes are localized.
+6. Add `THREAT_MODEL.md` covering sensitive assets, attacker capabilities, logging, memory retention, malformed chip data, verification trust assumptions, and app-integration risks.
+7. Add a privacy-safe diagnostics summary bundle for support that includes only scan stage, package version, safe failure reason, scan profile, and verification summary.
+8. Add safe verification explanation copy so apps can explain successful, partial, inconclusive, and failed verification without exposing low-level details.
+9. Plan a future major-version cleanup to remove or quarantine raw byte access, stringly errors, and compatibility APIs that make unsafe use easy.
+
 ## Implementation Status
+
+### 2026-06-19 Blue-Sky Protection Backlog And Policy Pass
+
+Completed:
+
+- Added a dedicated Future Protection Backlog to this plan covering the blue-sky recommendations: sensitive-data lifetime controls, raw API quarantine, safe result projection, security policy, verification strictness, trust labels, certificate/master-list metadata, expanded privacy scanning, parser fuzzing, on-device interoperability, app-side privacy protections, dangerous API naming, compile-time privacy defaults, CI, crypto isolation, threat modeling, safe diagnostics, verification explanations, and future major-version cleanup.
+- Added `PassportReaderSecurityPolicy` and `PassportVerificationRequirement`:
+  - `.default` preserves source-compatible behavior.
+  - `.identityOnly` disallows DG2/photo reads and raw export.
+  - `.notaryRecommended` allows photo review, blocks unsafe raw export, and requires passive-authentication integrity checks when verification is attempted.
+  - Reader APIs now accept `securityPolicy:` and apply it before NFC reads and after verification.
+- Added `PassportIdentityResult` as an app-facing projection that intentionally omits MRZ text, raw data-group bytes, APDUs, certificates, keys, and image bytes while preserving normalized fields, verification result, trust level, certificate metadata, and data-group names.
+- Added `PassportTrustLevel`, `privacySafeExplanation`, and `PassportCertificateTrustMetadata`, including whether a master list was provided during verification.
+- Added `UnsafePassportRawDataExporter`, requiring an explicit `PassportReaderSecurityPolicy(allowsUnsafeRawDataExport: true)` opt-in for deliberate raw export workflows.
+- Kept `NFCPassportModel.dumpPassportData(...)` deprecated for source compatibility, but routed it through an internal `unsafeDumpPassportData(...)` helper and updated docs to steer callers away from it.
+- Added `PassportReaderDiagnosticsSummary` for support-safe scan metadata without identity fields, MRZ text, APDUs, certificates, keys, raw data groups, or images.
+- Added `PassportReaderPrivacyCopy` with short package-owned consent and diagnostics copy.
+- Added `THREAT_MODEL.md` covering sensitive assets, attacker/failure assumptions, verification trust assumptions, app-integration risks, and release checks.
+- Updated README and Notary migration notes for `securityPolicy`, `.notaryRecommended`, `identityResult`, `UnsafePassportRawDataExporter`, `PassportReaderDiagnosticsSummary`, `PassportReaderPrivacyCopy`, and the threat model.
+- Expanded `scripts/privacy_scan.sh` to fail on accidental legacy raw-export usage outside the deprecated compatibility declaration.
+- Added focused tests for security-policy photo blocking, verification policy failure redaction, safe identity projection, unsafe raw export opt-in, safe diagnostics summaries, suggested privacy copy, and fixture-reader policy enforcement.
+
+Verification:
+
+- iOS package build succeeded:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build
+  ```
+
+- iOS package test build succeeded:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build-for-testing
+  ```
+
+- `scripts/privacy_scan.sh` passed.
+- `git diff --check` passed.
+- Broad runtime/logging/raw-export search found no new runtime traps or raw diagnostics. Hits were limited to approved typed `eventLogger.log(...)` calls, the deprecated `dumpPassportData(...)` declaration, and OpenSSL's `ASN1_TIME_print` C API name.
+- `swift build` remains unsuitable in this environment for the same SwiftPM/macOS/toolchain reasons previously documented; the iOS Xcode path was used.
+
+Remaining follow-up:
+
+- The new `.notaryRecommended` policy should be validated with real passports before making it mandatory in Notary Journal, because passive-authentication behavior depends on master-list availability and chip/certificate interoperability.
+- Sensitive-memory zeroization is still only partially addressed by safer APIs and reduced retention surfaces; Swift does not provide a complete guarantee for wiping all value copies.
+- Parser fuzz/property tests, CI workflow enablement, crypto backend isolation, screenshot/background redaction, and on-device interoperability matrix remain future backlog items.
 
 ### 2026-06-19 Privacy-Safe Logging And Modernization Pass
 
@@ -661,6 +745,52 @@ Verification:
 Remaining follow-up:
 
 - Consider a future major-version API break to remove raw dump import/export APIs entirely. This pass kept those deprecated compatibility surfaces because downstream users may still compile against them.
+
+### 2026-06-19 Top-To-Bottom Edge-Case Bug Audit
+
+Completed:
+
+- Audited parser, NFC read-loop, scan state, SOD parsing, OpenSSL bridge, certificate wrapper, and logging-adjacent code for malformed input, invalid ranges, empty responses, concurrent calls, and C-boundary failure cases.
+- Hardened DG2 image parsing so malformed ISO 19794-5 facial records with no image payload throw `UnknownImageFormat` instead of slicing at `data.endIndex`.
+- Hardened SOD signature-content parsing so zero, negative, whitespace-padded, and out-of-range data-group identifiers are handled explicitly. Invalid ids now throw a passive-authentication parse error instead of indexing outside the fixed hash list.
+- Hardened NFC binary reads:
+  - `overrideNFCDataAmountToRead(amount:)` now clamps non-positive and oversized values into a safe APDU read-size range.
+  - `selectFileAndRead` now fails closed if a read amount is non-positive or the tag returns an empty chunk, preventing zero-progress read loops.
+- Fixed optional DG11/DG12 field parsing so records containing only a tag list, or only a subset of optional fields, stop cleanly at the declared body boundary instead of forcing another value read.
+- Fixed a scan-concurrency state bug where a rejected concurrent scan could overwrite the active scan's passport model, MRZ key, tag list, security policy, or diagnostics callback before `ScanAlreadyInProgress` was returned.
+- Hardened OpenSSL bridge edges:
+  - Empty BIO output now returns an empty string without allocating an invalid buffer.
+  - Empty PKCS7 certificate stacks now return an empty array instead of creating an invalid Swift range.
+  - CMS verification with no returned encapsulated content now throws a typed OpenSSL error instead of constructing invalid data.
+- Hardened `X509Wrapper` ownership and nil handling:
+  - `X509_dup` failure now throws instead of storing a nil certificate pointer.
+  - Duplicated certificates are released in `deinit`.
+  - Missing certificate public-key structures now return empty key metadata instead of crossing the C boundary with nil.
+- Added focused regression tests for DG2 missing image payload, SOD invalid/zero/whitespace-padded data-group ids, and absent optional DG11/DG12 fields.
+
+Verification:
+
+- iOS package build succeeded:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build
+  ```
+
+- iOS package test build succeeded:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build-for-testing
+  ```
+
+- `scripts/privacy_scan.sh` passed.
+- `git diff --check` passed.
+- Targeted risky-pattern search found no active `try!`, forced casts, `fatalError`, precondition/assertion failures, forced `first`/`last`, forced `baseAddress`, raw `print`, direct `Logger`, or `os_log` sinks in `Sources` or `Tests`. Expected remaining hits are the deprecated raw export API declaration, typed redacted `eventLogger.log(...)` calls, and OpenSSL's `ASN1_TIME_print` API use.
+- The final iOS test-build log had no warning or error lines.
+
+Remaining follow-up:
+
+- Run a manual on-device scan against real NFC chips before tagging, especially passports with sparse DG11/DG12 data, PACE-capable chips, and chips that return short or empty RAPDU chunks under connection stress.
+- Keep `swift test` out of the release signal unless the package manifest is deliberately changed for macOS testing; the iOS/Xcode verification path remains the source of truth for this fork.
 
 ### 2026-06-19 License Compliance Check
 

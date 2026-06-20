@@ -19,6 +19,7 @@ public protocol PassportChipReading {
         useExtendedMode: Bool,
         operationTimeout: TimeInterval?,
         photoPolicy: PassportPhotoPolicy,
+        securityPolicy: PassportReaderSecurityPolicy,
         progressHandler: PassportReaderProgressHandler?,
         customDisplayMessage: ((NFCViewDisplayMessage) -> String?)?
     ) async throws -> NFCPassportModel
@@ -36,6 +37,7 @@ extension PassportChipReading {
         useExtendedMode: Bool = false,
         operationTimeout: TimeInterval? = nil,
         photoPolicy: PassportPhotoPolicy = .read,
+        securityPolicy: PassportReaderSecurityPolicy = .default,
         progressHandler: PassportReaderProgressHandler? = nil,
         customDisplayMessage: ((NFCViewDisplayMessage) -> String?)? = nil
     ) async throws -> NFCPassportModel {
@@ -49,6 +51,7 @@ extension PassportChipReading {
             useExtendedMode: useExtendedMode,
             operationTimeout: operationTimeout,
             photoPolicy: photoPolicy,
+            securityPolicy: securityPolicy,
             progressHandler: progressHandler,
             customDisplayMessage: customDisplayMessage
         )
@@ -76,6 +79,7 @@ public struct PassportReaderFixture: PassportChipReading {
         useExtendedMode: Bool = false,
         operationTimeout: TimeInterval? = nil,
         photoPolicy: PassportPhotoPolicy = .read,
+        securityPolicy: PassportReaderSecurityPolicy = .default,
         progressHandler: PassportReaderProgressHandler? = nil,
         customDisplayMessage: ((NFCViewDisplayMessage) -> String?)? = nil
     ) async throws -> NFCPassportModel {
@@ -83,6 +87,7 @@ public struct PassportReaderFixture: PassportChipReading {
 
         switch result {
         case .success(let model):
+            try securityPolicy.validate(model)
             progressHandler?(.complete)
             return model
         case .failure(let error):
@@ -90,4 +95,3 @@ public struct PassportReaderFixture: PassportChipReading {
         }
     }
 }
-

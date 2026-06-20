@@ -24,4 +24,10 @@ if rg -n "MRZ KEY|Kseed:|KSenc:|KSmac:|RND\\.IFD:|RND\\.ICC:|Unprotected APDU|RA
   exit 1
 fi
 
+echo "Checking for accidental legacy raw export usage..."
+if rg -n "dumpPassportData\\(" Sources Tests --glob '!Sources/NFCPassportReader/NFCPassportModel.swift'; then
+  echo "Legacy raw passport export usage found. Use PassportIdentityResult or UnsafePassportRawDataExporter with an explicit policy." >&2
+  exit 1
+fi
+
 echo "Privacy scan passed."

@@ -30,9 +30,14 @@ public class X509Wrapper {
     public let cert : OpaquePointer
     
     public init?( with cert: OpaquePointer? ) {
-        guard let cert = cert else { return nil }
+        guard let cert = cert,
+              let duplicatedCert = X509_dup(cert) else { return nil }
         
-        self.cert = X509_dup(cert)
+        self.cert = duplicatedCert
+    }
+
+    deinit {
+        X509_free(cert)
     }
     
     public func getItemsAsDict() -> [CertificateItem:String] {
@@ -110,7 +115,7 @@ public class X509Wrapper {
     }
     
     public func getPublicKeyAlgorithm() -> String? {
-        let pubKey = X509_get_X509_PUBKEY(cert)
+        guard let pubKey = X509_get_X509_PUBKEY(cert) else { return nil }
         var ptr : OpaquePointer?
         X509_PUBKEY_get0_param(&ptr, nil, nil, nil, pubKey)
         let algo = getAlgorithm(ptr)

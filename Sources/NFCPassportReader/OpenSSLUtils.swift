@@ -29,6 +29,10 @@ public class OpenSSLUtils {
     static func bioToString( bio : OpaquePointer ) -> String {
         
         let len = BIO_ctrl(bio, BIO_CTRL_PENDING, 0, nil)
+        guard len > 0 else {
+            return ""
+        }
+
         var buffer = [CChar](repeating: 0, count: len+1)
         BIO_read(bio, &buffer, Int32(len))
         
@@ -95,6 +99,9 @@ public class OpenSSLUtils {
         var ret = [X509Wrapper]()
         if let certs = certs  {
             let certCount = sk_X509_num(certs)
+            guard certCount > 0 else {
+                return ret
+            }
             for i in 0 ..< certCount {
                 let x = sk_X509_value(certs, i);
                 if let x509 = X509Wrapper(with:x) {
@@ -209,6 +216,10 @@ public class OpenSSLUtils {
             throw OpenSSLError.VerifyAndReturnSODEncapsulatedData("CMS - Verification of P7 failed - unable to verify signature")
         }
         let len = BIO_ctrl(out, BIO_CTRL_PENDING, 0, nil)
+        guard len > 0 else {
+            throw OpenSSLError.VerifyAndReturnSODEncapsulatedData("CMS - Verification returned no content")
+        }
+
         var buffer = [UInt8](repeating: 0, count: len)
         BIO_read(out, &buffer, Int32(len))
         let sigData = Data(buffer)
