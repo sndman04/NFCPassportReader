@@ -692,6 +692,55 @@ Remaining follow-up:
 
 - Keep the physical-device harness NFC smoke test as the final check before publishing app-consumption tags. The static guard prevents the exact queue-regression shape, but it does not replace real CoreNFC interoperability testing.
 
+### 2026-06-21 NFC Boundary Bug-Check Pass
+
+Completed:
+
+- Re-reviewed the NFC boundary guardrail and surrounding reader session startup, cancellation, timeout, invalidation, and continuation-resume paths for edge-case and interruption handling.
+- Fixed an edge case where `PassportNFCSessionFactory.makeTagReaderSession(...)` could return `nil`; `PassportReader` now fails the active scan immediately with a privacy-safe unexpected-read error instead of leaving the continuation pending until timeout, or indefinitely when no timeout was configured.
+- Changed session startup to hold a non-optional local `readerSession` before assigning it and calling `begin()`, making the startup path deterministic.
+- Re-tested `scripts/nfc_boundary_check.sh` on both the normal `rg` path and the fallback `grep` path. The first fallback check failed because its regex was too strict for portable ERE matching; simplified the patterns so minimal environments run the guard correctly.
+- Tightened the factory check so every `NFCTagReaderSession` initializer in the factory must pass `queue: delegateQueue`, preventing a future second initializer from bypassing the audited queue while another good initializer keeps the script green.
+- Confirmed cancellation, timeout, did-invalidate, multiple-tag, invalid-tag, connection-loss, and successful-read paths still converge through `failActiveScan(...)`, `completeActiveScan(...)`, or the intentional post-success invalidation suppression, each of which clears timeout/state or avoids double-resuming the continuation.
+
+Verification:
+
+- `scripts/nfc_boundary_check.sh` passed with `rg`.
+- `PATH=/usr/bin:/bin:/usr/sbin:/sbin scripts/nfc_boundary_check.sh` passed, exercising the fallback `grep` path.
+- `scripts/privacy_scan.sh` passed.
+- `git diff --check` passed.
+- Required generic iOS package build passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build
+  ```
+
+- Full iOS simulator suite passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5'
+  ```
+
+  Result: 148 tests, 0 failures.
+
+- Consolidated release check passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer scripts/release_check.sh
+  ```
+
+- External Passport Chip Harness build passed against the local fork:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -project "/Users/dougalvey/Documents/Passport Chip Fork Test App/PassportChipHarness.xcodeproj" -scheme PassportChipHarness -destination generic/platform=iOS -derivedDataPath "/Users/dougalvey/Documents/Passport Chip Fork Test App/.codex-deriveddata" CODE_SIGNING_ALLOWED=NO build
+  ```
+
+- Xcode still emits the known non-source OpenSSL binary-artifact note and harness AppIntents metadata warning. No warnings came from changed fork source.
+
+Remaining follow-up:
+
+- Real-device harness testing remains required for physical NFC interruptions such as removing the phone from the chip during connect/read and user/system cancellation while CoreNFC is presenting its sheet.
+
 ### 2026-06-20 Scan/Decode Performance Pass
 
 Completed:

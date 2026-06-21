@@ -24,12 +24,17 @@ if scan "NFCTagReaderSession[[:space:]]*\\(" Sources | grep -v "$FACTORY"; then
   exit 1
 fi
 
-if scan "NFCTagReaderSession[[:space:]]*\\([^\\n]*queue:[[:space:]]*nil" "$FACTORY"; then
+if scan "NFCTagReaderSession.*queue:[[:space:]]*nil" "$FACTORY"; then
   echo "PassportNFCSessionFactory must not create CoreNFC sessions with queue: nil." >&2
   exit 1
 fi
 
-if ! scan "NFCTagReaderSession[[:space:]]*\\([^\\n]*queue:[[:space:]]*delegateQueue" "$FACTORY" >/dev/null; then
+if scan "NFCTagReaderSession[[:space:]]*\\(" "$FACTORY" | grep -v "queue:[[:space:]]*delegateQueue"; then
+  echo "Every NFCTagReaderSession factory initializer must pass the audited delegateQueue." >&2
+  exit 1
+fi
+
+if ! scan "NFCTagReaderSession.*queue:[[:space:]]*delegateQueue" "$FACTORY" >/dev/null; then
   echo "PassportNFCSessionFactory must pass its audited delegateQueue into NFCTagReaderSession." >&2
   exit 1
 fi

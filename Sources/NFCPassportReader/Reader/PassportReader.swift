@@ -176,11 +176,16 @@ public class PassportReader : NSObject {
                     return
                 }
 
-                self.readerSession = PassportNFCSessionFactory.makeTagReaderSession(delegate: self)
+                guard let readerSession = PassportNFCSessionFactory.makeTagReaderSession(delegate: self) else {
+                    self.failActiveScan(error: .UnexpectedError)
+                    return
+                }
+
+                self.readerSession = readerSession
                 self.updateReaderSessionMessage( alertMessage: NFCViewDisplayMessage.requestPresentPassport )
                 self.emitProgress(.waitingForPassport)
                 self.startTimeoutTask(operationTimeout)
-                self.readerSession?.begin()
+                readerSession.begin()
             })
         } onCancel: {
             Task { @MainActor in
