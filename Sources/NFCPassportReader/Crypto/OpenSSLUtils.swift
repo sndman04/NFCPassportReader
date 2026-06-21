@@ -40,7 +40,9 @@ class OpenSSLUtils {
         var buffer = [CChar](repeating: 0, count: len+1)
         BIO_read(bio, &buffer, Int32(len))
         
-        return String(decoding: buffer.prefix(len).map(UInt8.init(bitPattern:)), as: UTF8.self)
+        return buffer.withUnsafeBufferPointer { pointer in
+            String(decoding: UnsafeRawBufferPointer(start: pointer.baseAddress, count: len), as: UTF8.self)
+        }
     }
     
 

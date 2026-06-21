@@ -41,6 +41,7 @@ class DataGroup7 : DataGroup {
         try verifyTag(tag, equals: 0x02)
         _ = try getNextValue()
         
+        var totalImageDataLength = 0
         while hasUnreadBody {
             tag = try getNextTag()
             try verifyTag(tag, equals: 0x5F43)
@@ -48,8 +49,8 @@ class DataGroup7 : DataGroup {
             guard item.count <= Self.maxImageDataLength else {
                 throw NFCPassportReaderError.UnknownImageFormat
             }
-            let currentTotal = imageDataItems.reduce(0) { $0 + $1.count }
-            guard currentTotal + item.count <= Self.maxTotalImageDataLength else {
+            totalImageDataLength += item.count
+            guard totalImageDataLength <= Self.maxTotalImageDataLength else {
                 throw NFCPassportReaderError.UnknownImageFormat
             }
             imageDataItems.append(item)

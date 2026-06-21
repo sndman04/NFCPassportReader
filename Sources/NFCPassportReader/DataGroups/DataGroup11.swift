@@ -36,30 +36,33 @@ class DataGroup11 : DataGroup {
         while hasUnreadBody {
             tag = try getNextTag()
             let val = LDSStringDecoder.decode(try getNextValue())
-            if tag == 0x5F0E {
+            switch tag {
+            case 0x5F0E:
                 fullName = val
-            } else if tag == 0x5F10 {
+            case 0x5F10:
                 personalNumber = val
-            } else if tag == 0x5F11 {
+            case 0x5F11:
                 placeOfBirth = val
-            } else if tag == 0x5F2B {
+            case 0x5F2B:
                 dateOfBirth = val
-            } else if tag == 0x5F42 {
+            case 0x5F42:
                 address = val
-            } else if tag == 0x5F12 {
+            case 0x5F12:
                 telephone = val
-            } else if tag == 0x5F13 {
+            case 0x5F13:
                 profession = val
-            } else if tag == 0x5F14 {
+            case 0x5F14:
                 title = val
-            } else if tag == 0x5F15 {
+            case 0x5F15:
                 personalSummary = val
-            } else if tag == 0x5F16 {
+            case 0x5F16:
                 proofOfCitizenship = val
-            } else if tag == 0x5F17 {
+            case 0x5F17:
                 tdNumbers = val
-            } else if tag == 0x5F18 {
+            case 0x5F18:
                 custodyInfo = val
+            default:
+                break
             }
         }
     }

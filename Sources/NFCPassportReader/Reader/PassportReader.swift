@@ -53,6 +53,7 @@ public class PassportReader : NSObject {
     
     private var readerSession: NFCTagReaderSession?
     private var currentlyReadingDataGroup : DataGroupId?
+    private var progressRenderGeneration = 0
     
     private var dataGroupsToRead : [DataGroupId] = []
     private var readAllDatagroups = false
@@ -345,12 +346,7 @@ public class PassportReader : NSObject {
             progressHandler: progressHandler,
             customDisplayMessage: customDisplayMessage
         )
-        let result = PassportChipReadResult(
-            passport: passport,
-            photoPolicy: securityPolicy.apply(to: photoPolicy)
-        )
-        passport.removeSensitiveDataForPrivacy()
-        return result
+        return makeIdentityResultAndScrubPassport(passport, photoPolicy: securityPolicy.apply(to: photoPolicy))
     }
 
     public func readPassportIdentity(
@@ -387,12 +383,7 @@ public class PassportReader : NSObject {
             progressHandler: progressHandler,
             customDisplayMessage: customDisplayMessage
         )
-        let result = PassportChipReadResult(
-            passport: passport,
-            photoPolicy: securityPolicy.apply(to: photoPolicy)
-        )
-        passport.removeSensitiveDataForPrivacy()
-        return result
+        return makeIdentityResultAndScrubPassport(passport, photoPolicy: securityPolicy.apply(to: photoPolicy))
     }
 
     func readPassportIdentity(
@@ -425,12 +416,7 @@ public class PassportReader : NSObject {
             progressHandler: progressHandler,
             customDisplayMessage: customDisplayMessage
         )
-        let result = PassportChipReadResult(
-            passport: passport,
-            photoPolicy: securityPolicy.apply(to: photoPolicy)
-        )
-        passport.removeSensitiveDataForPrivacy()
-        return result
+        return makeIdentityResultAndScrubPassport(passport, photoPolicy: securityPolicy.apply(to: photoPolicy))
     }
 
     public func readPassportIdentity(
@@ -447,12 +433,10 @@ public class PassportReader : NSObject {
             progressHandler: progressHandler,
             customDisplayMessage: customDisplayMessage
         )
-        let result = PassportChipReadResult(
-            passport: passport,
+        return makeIdentityResultAndScrubPassport(
+            passport,
             photoPolicy: options.securityPolicy.apply(to: options.photoPolicy)
         )
-        passport.removeSensitiveDataForPrivacy()
-        return result
     }
 
     public func cancelRead() {
@@ -551,13 +535,29 @@ extension PassportReader : @preconcurrency NFCTagReaderSessionDelegate {
                     tagReader.preferExtendedReadAmount()
                 }
                 
+                var lastRenderedProgress: Int?
+                var lastRenderedDataGroup: DataGroupId?
+                var lastRenderedGeneration = self.progressRenderGeneration
                 tagReader.progress = { [unowned self] (progress) in
-                    let normalizedProgress = Double(progress) / 100.0
+                    let clampedProgress = min(max(progress, 0), 100)
+                    let currentDataGroup = self.currentlyReadingDataGroup
+                    let currentGeneration = self.progressRenderGeneration
+                    let shouldRenderProgress = currentGeneration != lastRenderedGeneration
+                        || currentDataGroup != lastRenderedDataGroup
+                        || lastRenderedProgress == nil
+                        || clampedProgress == 100
+                        || clampedProgress - (lastRenderedProgress ?? 0) >= 5
+                    guard shouldRenderProgress else { return }
+
+                    lastRenderedGeneration = currentGeneration
+                    lastRenderedProgress = clampedProgress
+                    lastRenderedDataGroup = currentDataGroup
+                    let normalizedProgress = Double(clampedProgress) / 100.0
                     if let dgId = self.currentlyReadingDataGroup {
-                        self.updateReaderSessionMessage( alertMessage: NFCViewDisplayMessage.readingDataGroupProgress(dgId, progress) )
+                        self.updateReaderSessionMessage( alertMessage: NFCViewDisplayMessage.readingDataGroupProgress(dgId, clampedProgress) )
                         self.emitProgress(.readingDataGroup(dgId, progress: normalizedProgress))
                     } else {
-                        self.updateReaderSessionMessage( alertMessage: NFCViewDisplayMessage.authenticatingWithPassport(progress) )
+                        self.updateReaderSessionMessage( alertMessage: NFCViewDisplayMessage.authenticatingWithPassport(clampedProgress) )
                         self.emitProgress(.authenticating(progress: normalizedProgress))
                     }
                 }
@@ -593,6 +593,15 @@ extension PassportReader : @preconcurrency NFCTagReaderSessionDelegate {
 
     func emitProgress(_ event: PassportReaderProgressEvent) {
         progressHandler?(event)
+    }
+
+    private func makeIdentityResultAndScrubPassport(
+        _ passport: NFCPassportModel,
+        photoPolicy: PassportPhotoPolicy
+    ) -> PassportChipReadResult {
+        let result = PassportChipReadResult(passport: passport, photoPolicy: photoPolicy)
+        passport.removeSensitiveDataForPrivacy()
+        return result
     }
 
     func startTimeoutTask(_ operationTimeout: TimeInterval?) {
@@ -968,7 +977,6 @@ extension PassportReader {
         ).apply(to: DGsToRead)
         recordSkippedDataGroups(advertised: advertisedDataGroups, selected: DGsToRead)
         for dgId in DGsToRead {
-            self.updateReaderSessionMessage( alertMessage: NFCViewDisplayMessage.readingDataGroupProgress(dgId, 0) )
             if let dg = try await readDataGroup(tagReader:tagReader, dgId:dgId) {
                 self.passport.addDataGroup( dgId, dataGroup:dg )
             }
@@ -978,6 +986,7 @@ extension PassportReader {
     func readDataGroup( tagReader : TagReader, dgId : DataGroupId ) async throws -> DataGroup?  {
 
         self.currentlyReadingDataGroup = dgId
+        progressRenderGeneration += 1
         eventLogger.log(.readingDataGroup(dgId))
         emitProgress(.readingDataGroup(dgId, progress: 0))
         var readAttempts = 0
@@ -1058,13 +1067,10 @@ extension PassportReader {
 
     private func recordSkippedDataGroups(advertised: [DataGroupId], selected: [DataGroupId]) {
         let selectedSet = Set(selected)
-        let requestedSet = Set(dataGroupsToRead)
         for dataGroup in advertised where !selectedSet.contains(dataGroup) {
             if (dataGroup == .DG2 && effectivePhotoPolicy == .skip)
                 || (skipSecureElements && (dataGroup == .DG3 || dataGroup == .DG4)) {
                 passport.recordDataGroupReadStatus(.blockedByPolicy, for: dataGroup)
-            } else if !readAllDatagroups && !requestedSet.contains(dataGroup) {
-                passport.recordDataGroupReadStatus(.skippedByProfile, for: dataGroup)
             } else {
                 passport.recordDataGroupReadStatus(.skippedByProfile, for: dataGroup)
             }

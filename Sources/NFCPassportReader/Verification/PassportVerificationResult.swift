@@ -79,20 +79,21 @@ public struct PassportVerificationResult: Sendable, Equatable {
     }
 
     public var overallStatus: PassportVerificationStatus {
-        let statuses = [
-            sodSignatureStatus,
-            dataGroupHashStatus,
-            documentSignerCertificateStatus,
-            countrySigningCertificateStatus,
-            activeAuthenticationStatus,
-            chipAuthenticationStatus
-        ]
-
-        if statuses.contains(.failed) {
+        if sodSignatureStatus == .failed
+            || dataGroupHashStatus == .failed
+            || documentSignerCertificateStatus == .failed
+            || countrySigningCertificateStatus == .failed
+            || activeAuthenticationStatus == .failed
+            || chipAuthenticationStatus == .failed {
             return .failed
         }
 
-        if statuses.contains(.passed) {
+        if sodSignatureStatus == .passed
+            || dataGroupHashStatus == .passed
+            || documentSignerCertificateStatus == .passed
+            || countrySigningCertificateStatus == .passed
+            || activeAuthenticationStatus == .passed
+            || chipAuthenticationStatus == .passed {
             return .passed
         }
 

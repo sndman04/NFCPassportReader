@@ -35,24 +35,27 @@ class DataGroup12 : DataGroup {
             tag = try getNextTag()
             let val = try getNextValue()
             
-            if tag == 0x5F19 {
+            switch tag {
+            case 0x5F19:
                 issuingAuthority = LDSStringDecoder.decode(val)
-            } else if tag == 0x5F26 {
+            case 0x5F26:
                 dateOfIssue = parseDateOfIssue(value: val)
-            } else if tag == 0xA0 {
+            case 0xA0:
                 otherPersonsDetails = parseOtherPersonsDetails(value: val)
-            } else if tag == 0x5F1B {
+            case 0x5F1B:
                 endorsementsOrObservations = LDSStringDecoder.decode(val)
-            } else if tag == 0x5F1C {
+            case 0x5F1C:
                 taxOrExitRequirements = LDSStringDecoder.decode(val)
-            } else if tag == 0x5F1D {
+            case 0x5F1D:
                 frontImage = val
-            } else if tag == 0x5F1E {
+            case 0x5F1E:
                 rearImage = val
-            } else if tag == 0x5F55 {
+            case 0x5F55:
                 personalizationTime = LDSStringDecoder.decode(val)
-            } else if tag == 0x5F56 {
+            case 0x5F56:
                 personalizationDeviceSerialNr = LDSStringDecoder.decode(val)
+            default:
+                break
             }
         }
     }

@@ -36,7 +36,8 @@ struct PassportDataGroupReadPolicy {
         filtered = photoPolicy.apply(to: filtered)
 
         if !readAllDataGroups {
-            filtered = filtered.filter { requestedDataGroups.contains($0) }
+            let requestedSet = Set(requestedDataGroups)
+            filtered = filtered.filter { requestedSet.contains($0) }
         }
 
         return filtered

@@ -81,7 +81,11 @@ class SecureMessagingSessionKeyGenerator {
                 default:
                     throw NFCPassportReaderError.UnsupportedCipherAlgorithm
             }
-        } else if cipherAlgName.lowercased() == "aes" || cipherAlgName.lowercased().hasPrefix("aes") {
+        } else {
+            let normalizedCipherName = cipherAlgName.lowercased()
+            guard normalizedCipherName == "aes" || normalizedCipherName.hasPrefix("aes") else {
+                throw NFCPassportReaderError.UnsupportedCipherAlgorithm
+            }
             // TR-SAC 1.01, 4.2.2.
             switch(keyLength) {
                 case 128:
@@ -93,8 +97,6 @@ class SecureMessagingSessionKeyGenerator {
                 default:
                     throw NFCPassportReaderError.UnsupportedCipherAlgorithm
             }
-        } else {
-            throw NFCPassportReaderError.UnsupportedCipherAlgorithm
         }
         
         return keyBytes

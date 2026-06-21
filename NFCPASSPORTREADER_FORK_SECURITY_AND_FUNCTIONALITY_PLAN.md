@@ -2540,6 +2540,108 @@ Remaining follow-up:
 
 - Continue to require real-device passport interoperability validation before tagging or making broad release claims. This pass did not perform physical-device NFC validation.
 
+### 2026-06-21 Maintainability Cleanup Pass
+
+Completed:
+
+- Reviewed the repo for duplicated code, raw parser slicing, branch-heavy mapping code, centralized privacy cleanup points, risky diagnostics, and general code smells after the Swift 6.3 migration.
+- Factored DG1 MRZ field extraction through small helpers so TD1, TD2, and TD3-style parsing no longer duplicate raw UTF-8 range conversion logic.
+- Replaced DG11 and DG12 tag `if`/`else` chains with switch-based tag mapping.
+- Removed duplicated ASN.1 length decoding by routing the array overload through the slice implementation.
+- Simplified data-group hash algorithm selection with an explicit switch.
+- Centralized `PassportChipReadResult` creation and `NFCPassportModel.removeSensitiveDataForPrivacy()` in one `PassportReader` helper so the public identity-result path has a single scrub point.
+- Simplified skipped data-group reporting by removing a duplicate branch that recorded the same `.skippedByProfile` status in both cases.
+
+Verification:
+
+- Focused parsing tests passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:NFCPassportReaderTests/DataGroupParsingTests
+  ```
+
+  Result: 51 tests, 0 failures.
+
+- Focused core tests passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:NFCPassportReaderTests/NFCPassportReaderTests
+  ```
+
+  Result: 31 tests, 0 failures.
+
+- Required generic iOS package build passed with no source/compiler warnings:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build
+  ```
+
+- Full iOS simulator suite passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5'
+  ```
+
+  Result: 148 tests, 0 failures.
+
+- Risky logging/diagnostic search was reviewed after the cleanup. Hits remained expected synthetic test patterns, OpenSSL API names, and typed redacted event logging.
+- `git diff --check` passed.
+
+Remaining follow-up:
+
+- Continue to require real-device passport interoperability validation before tagging or making broad release claims. This cleanup pass did not perform physical-device NFC validation.
+
+### 2026-06-21 Scan/Decode/Flow Performance Pass
+
+Completed:
+
+- Reviewed NFC read flow, progress handling, data-group filtering, decode helpers, certificate/OpenSSL string helpers, and verification summary code for avoidable allocations or repeated work.
+- Throttled per-chunk NFC sheet and host progress updates to meaningful 5% increments, while still resetting progress state for each data-group read attempt and rendering stage changes. This reduces UI/main-actor churn during large DG2/DG7 reads without changing APDU read behavior.
+- Removed a duplicate 0% data-group progress update before each data-group read.
+- Changed data-group read-policy filtering to use a `Set<DataGroupId>` for requested membership checks.
+- Changed DG7 image parsing to track total retained image bytes incrementally instead of reducing all parsed image items on every item.
+- Removed one extra OpenSSL BIO string allocation by decoding the raw buffer directly instead of mapping through an intermediate `[UInt8]`.
+- Avoided repeated cipher-name lowercasing in secure-messaging key derivation.
+- Avoided allocating a temporary status array when computing `PassportVerificationResult.overallStatus`.
+
+Verification:
+
+- Focused core tests passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:NFCPassportReaderTests/NFCPassportReaderTests
+  ```
+
+  Result: 31 tests, 0 failures.
+
+- Focused diagnostics/privacy tests passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:NFCPassportReaderTests/PassportReaderLoggingTests
+  ```
+
+  Result: 66 tests, 0 failures.
+
+- Required generic iOS package build passed with no source/compiler warnings:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build
+  ```
+
+- Full iOS simulator suite passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5'
+  ```
+
+  Result: 148 tests, 0 failures.
+
+- `git diff --check` passed.
+
+Remaining follow-up:
+
+- Continue to require real-device passport interoperability validation before tagging or making broad release claims. This performance pass did not perform physical-device NFC validation or measure device scan timings.
+
 ### Option A: Remote Fork
 
 Preferred long-term route:

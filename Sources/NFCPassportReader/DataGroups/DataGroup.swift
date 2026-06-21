@@ -97,20 +97,20 @@ class DataGroup {
     }
     
     func hash( _ hashAlgorythm: String ) -> [UInt8]  {
-        var ret : [UInt8] = []
-        if hashAlgorythm == "SHA1" {
-            ret = calcSHA1Hash(self.data)
-        } else if hashAlgorythm == "SHA224" {
-            ret = calcSHA224Hash(self.data)
-        } else if hashAlgorythm == "SHA256" {
-            ret = calcSHA256Hash(self.data)
-        } else if hashAlgorythm == "SHA384" {
-            ret = calcSHA384Hash(self.data)
-        } else if hashAlgorythm == "SHA512" {
-            ret = calcSHA512Hash(self.data)
+        switch hashAlgorythm {
+        case "SHA1":
+            return calcSHA1Hash(self.data)
+        case "SHA224":
+            return calcSHA224Hash(self.data)
+        case "SHA256":
+            return calcSHA256Hash(self.data)
+        case "SHA384":
+            return calcSHA384Hash(self.data)
+        case "SHA512":
+            return calcSHA512Hash(self.data)
+        default:
+            return []
         }
-        
-        return ret
     }
 
     func verifyTag(_ tag: Int, equals expectedTag: Int) throws {

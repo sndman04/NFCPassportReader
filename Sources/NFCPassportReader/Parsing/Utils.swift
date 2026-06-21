@@ -400,32 +400,7 @@ func asn1Length( _ data: ArraySlice<UInt8> ) throws -> (Int, Int) {
 
 @available(iOS 13, macOS 10.15, *)
 func asn1Length(_ data : [UInt8]) throws -> (Int, Int)  {
-    guard let firstByte = data.first else {
-        throw NFCPassportReaderError.CannotDecodeASN1Length
-    }
-
-    if firstByte < 0x80 {
-        return (Int(firstByte), 1)
-    }
-
-    let lengthByteCount = Int(firstByte & 0x7F)
-    guard lengthByteCount > 0,
-          lengthByteCount <= 4,
-          data.count >= lengthByteCount + 1 else {
-        throw NFCPassportReaderError.CannotDecodeASN1Length
-    }
-
-    var value = 0
-    for byte in data[1 ... lengthByteCount] {
-        value = (value << 8) | Int(byte)
-    }
-
-    guard value <= Int(Int32.max) else {
-        throw NFCPassportReaderError.CannotDecodeASN1Length
-    }
-
-    return (value, lengthByteCount + 1)
-    
+    try asn1Length(data[...])
 }
 
 /// Convert a length to asn.1 format
