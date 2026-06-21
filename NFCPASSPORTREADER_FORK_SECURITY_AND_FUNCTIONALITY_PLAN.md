@@ -2685,6 +2685,22 @@ Remaining follow-up:
 
 - Push the branch and confirm the replacement GitHub Actions run passes on `macos-26`.
 
+### 2026-06-21 Privacy Fork Tag 2
+
+Completed:
+
+- Confirmed the previously published annotated tag `notary-2.3.1-privacy.1` still points to commit `90b7d13`, before the OpenSSL pin, Swift 6.3 migration, parsing/performance cleanup, repository organization follow-up, and CI runner fix.
+- Chose a new annotated tag, `notary-2.3.1-privacy.2`, instead of moving the published `notary-2.3.1-privacy.1` tag.
+
+Verification:
+
+- Local tag inspection confirmed `notary-2.3.1-privacy.1` is annotated and resolves to `90b7d13`.
+- Remote tag inspection confirmed `origin/notary-2.3.1-privacy.1` also resolves to `90b7d13`.
+
+Remaining follow-up:
+
+- Push `notary-2.3.1-privacy.2` after creating it on the documented release commit.
+
 ### Option A: Remote Fork
 
 Preferred long-term route:
