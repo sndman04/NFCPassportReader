@@ -610,6 +610,31 @@ final class DataGroupParsingTests: XCTestCase {
         XCTAssertEqual(sequence.children.first?.integerValue, 1)
     }
 
+    func testSimpleASN1NodeRejectsExcessiveNestingWithoutTrapping() throws {
+        var nested = try asn1Integer([0x01])
+        for _ in 0..<66 {
+            nested = try sequence(nested)
+        }
+
+        XCTAssertThrowsError(try SimpleASN1Node.parse(nested)) { error in
+            guard case NFCPassportReaderError.InvalidASN1Structure = error else {
+                XCTFail("Expected InvalidASN1Structure, got \(error)")
+                return
+            }
+        }
+    }
+
+    func testSimpleASN1NodeRejectsOverflowingHighTagNumberWithoutTrapping() {
+        let overflowingHighTag = [0x3F] + [UInt8](repeating: 0xFF, count: MemoryLayout<Int>.size + 1) + [0x00, 0x00]
+
+        XCTAssertThrowsError(try SimpleASN1Node.parse(overflowingHighTag)) { error in
+            guard case NFCPassportReaderError.InvalidASN1Structure = error else {
+                XCTFail("Expected InvalidASN1Structure, got \(error)")
+                return
+            }
+        }
+    }
+
     func testSODParsesCMSFieldsWithoutASN1DumpText() throws {
         let encapsulatedContent: [UInt8] = [0x30, 0x03, 0x02, 0x01, 0x01]
         let messageDigest = calcSHA256Hash(encapsulatedContent)

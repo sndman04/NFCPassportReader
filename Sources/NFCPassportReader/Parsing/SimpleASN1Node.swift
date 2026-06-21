@@ -9,6 +9,9 @@ import Foundation
 
 @available(iOS 13, macOS 10.15, *)
 struct SimpleASN1Node: CustomDebugStringConvertible {
+    private static let maxDepth = 64
+    private static let maxNodes = 10_000
+
     let tag: Int
     let headerLength: Int
     let encodedBytes: [UInt8]
@@ -66,17 +69,27 @@ struct SimpleASN1Node: CustomDebugStringConvertible {
     }
 
     static func parse(_ bytes: [UInt8]) throws -> SimpleASN1Node {
-        let (node, offset) = try parseNode(bytes, from: 0, limit: bytes.count)
+        var remainingNodes = maxNodes
+        let (node, offset) = try parseNode(bytes, from: 0, limit: bytes.count, depth: 0, remainingNodes: &remainingNodes)
         guard offset == bytes.count else {
             throw NFCPassportReaderError.InvalidASN1Structure
         }
         return node
     }
 
-    private static func parseNode(_ bytes: [UInt8], from offset: Int, limit: Int) throws -> (SimpleASN1Node, Int) {
-        guard offset < limit else {
+    private static func parseNode(
+        _ bytes: [UInt8],
+        from offset: Int,
+        limit: Int,
+        depth: Int,
+        remainingNodes: inout Int
+    ) throws -> (SimpleASN1Node, Int) {
+        guard depth <= maxDepth,
+              remainingNodes > 0,
+              offset < limit else {
             throw NFCPassportReaderError.InvalidASN1Structure
         }
+        remainingNodes -= 1
 
         var cursor = offset
         let tag = try readTag(bytes, cursor: &cursor, limit: limit)
@@ -95,7 +108,13 @@ struct SimpleASN1Node: CustomDebugStringConvertible {
         if isConstructedTag(tag) {
             var childOffset = valueStart
             while childOffset < valueEnd {
-                let (child, nextOffset) = try parseNode(bytes, from: childOffset, limit: valueEnd)
+                let (child, nextOffset) = try parseNode(
+                    bytes,
+                    from: childOffset,
+                    limit: valueEnd,
+                    depth: depth + 1,
+                    remainingNodes: &remainingNodes
+                )
                 children.append(child)
                 childOffset = nextOffset
             }
@@ -132,6 +151,9 @@ struct SimpleASN1Node: CustomDebugStringConvertible {
             }
             let byte = bytes[cursor]
             cursor += 1
+            guard tag <= Int.max >> 8 else {
+                throw NFCPassportReaderError.InvalidASN1Structure
+            }
             tag = (tag << 8) | Int(byte)
             if byte & 0x80 == 0 {
                 return tag

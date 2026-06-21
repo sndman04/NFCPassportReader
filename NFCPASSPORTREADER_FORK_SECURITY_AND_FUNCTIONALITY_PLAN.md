@@ -2885,10 +2885,13 @@ Completed:
 - Hardened `TagReader.selectFileAndRead` so a chip response chunk larger than the advertised ASN.1 file length is rejected instead of being appended into the data group.
 - Hardened ISO7816 `GET RESPONSE` chaining with explicit package-side limits: 2 MiB total chained response data and 512 chained segments.
 - Added focused unit tests for overlong file chunks, valid remaining-length accounting, and chained-response budget rejection.
+- Hardened the structured ASN.1 parser used for SOD/CardAccess/CardSecurity style content with maximum recursion depth and node count limits.
+- Added checked high-tag-number parsing so malformed ASN.1 tags are rejected instead of risking integer overflow.
+- Added regression tests for excessive ASN.1 nesting and overflowing high-tag-number encodings.
 
 Security conclusion:
 
-- This pass did not find evidence of a realistic "break into the device" path in the fork's decryption layer. The more plausible malicious-chip risks are denial of service, scan failure, excessive memory/time usage, or parser rejection paths. The transport hardening above closes two concrete malformed-response gaps.
+- This pass did not find evidence of a realistic "break into the device" path in the fork's decryption layer. The more plausible malicious-chip risks are denial of service, scan failure, excessive memory/time usage, parser rejection paths, or triggering downstream platform/native parsers with malformed but bounded inputs. The transport and ASN.1 hardening above closes the concrete malformed-response and parser gaps found in this pass.
 
 Verification:
 
@@ -2898,7 +2901,7 @@ Verification:
   DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5'
   ```
 
-  Result: 151 tests passed.
+  Result: 153 tests passed.
 - Required generic iOS package build passed:
 
   ```sh
@@ -2916,7 +2919,8 @@ Verification:
 
 Remaining follow-up:
 
-- Consider adding explicit depth/node-count limits to recursive ASN.1 parsing as an additional denial-of-service guard for public files such as EF.CardAccess and EF.CardSecurity.
+- Image decoding remains a host-app/platform-parser boundary. The fork bounds DG2/DG7 image data and can skip DG2 via `PassportPhotoPolicy.skip`, but any app that displays the face image ultimately hands chip-controlled image bytes to Apple's image decoders. Keep photo reads opt-in for workflows that need them, avoid decoding off the main path when not needed, and stay current on iOS security updates.
+- CMS/X.509 parsing remains a native OpenSSL boundary for SOD/CardSecurity verification. The fork keeps this internal and privacy-safe, but malformed certificate/CMS input is still parsed by the pinned OpenSSL package. Keep the OpenSSL package pinned/current and avoid exposing raw certificate/parser APIs to apps.
 - Real-device testing remains required for actual NFC behavior, including cancellation, timeout, connection loss, and malformed/unsupported passport-chip responses where test hardware is available.
 
 ### 2026-06-21 CI Runner Fix
