@@ -603,6 +603,48 @@ Remaining follow-up:
 
 - Re-run the harness on device and confirm NFC tag detection no longer trips the dispatch queue assertion. The local environment cannot exercise physical CoreNFC scans.
 
+### 2026-06-21 Delegate And Actor Boundary Follow-Up Audit
+
+Completed:
+
+- Ran a targeted scan for other CoreNFC delegate queue, actor-isolation, continuation, unstructured-task, and unsafe CoreNFC boundary patterns after the harness `_dispatch_assert_queue_fail` crash fix.
+- Confirmed the only production framework external delegate conformance is `PassportReader : @preconcurrency NFCTagReaderSessionDelegate`, and the only `NFCTagReaderSession` construction now explicitly uses `queue: .main`.
+- Reviewed the active scan continuation path. The continuation is still protected by `scanStateLock` and consumed through `takeActiveScanContinuation()` before resume, so cancellation, timeout, session invalidation, and scan completion do not introduce an obvious double-resume path.
+- Reviewed `TagReader`, `BACHandler`, `PACEHandler`, and `ChipAuthenticationHandler` for similar delegate callback surfaces. They do not own external delegate queues; CoreNFC calls are reached through the reader-driven scan flow.
+- Hardened `PassportReader.startTimeoutTask(...)` so the timeout task explicitly runs on `@MainActor` before it calls `failActiveScan(...)`. This keeps timeout-driven invalidation on the same actor as the CoreNFC delegate state instead of relying only on inherited actor context.
+
+Verification:
+
+- No remaining `queue: nil` CoreNFC session construction was found.
+- `git diff --check` passed.
+- `scripts/privacy_scan.sh` passed.
+- Required generic iOS package build passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build
+  ```
+
+- Full iOS simulator suite passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5'
+  ```
+
+  Result: 148 tests, 0 failures.
+
+- External Passport Chip Harness build passed against the local fork:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -project "/Users/dougalvey/Documents/Passport Chip Fork Test App/PassportChipHarness.xcodeproj" -scheme PassportChipHarness -destination generic/platform=iOS -derivedDataPath "/Users/dougalvey/Documents/Passport Chip Fork Test App/.codex-deriveddata" CODE_SIGNING_ALLOWED=NO build
+  ```
+
+- Targeted risky-pattern search found only expected privacy negative tests, typed APDU/key internals, safe typed event logging, and documentation/comments. No new raw diagnostic sink was added.
+- Xcode still emits known non-source notes/warnings while processing the remote OpenSSL binary artifact and harness AppIntents metadata. These are external/build-system metadata messages, not warnings from changed fork source.
+
+Remaining follow-up:
+
+- Re-run the harness on an NFC-capable iPhone with a real passport to confirm the physical CoreNFC tag-detection path no longer crashes and that timeout/cancel/error invalidation still updates the UI cleanly.
+
 ### 2026-06-20 Scan/Decode Performance Pass
 
 Completed:

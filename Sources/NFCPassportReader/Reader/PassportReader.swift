@@ -614,7 +614,7 @@ extension PassportReader : @preconcurrency NFCTagReaderSessionDelegate {
         let maxSafeSeconds = TimeInterval(UInt64.max / 1_000_000_000)
         let timeoutSeconds = min(operationTimeout, maxSafeSeconds)
 
-        scanTimeoutTask = Task { [weak self] in
+        scanTimeoutTask = Task { @MainActor [weak self] in
             let nanoseconds = UInt64(timeoutSeconds * 1_000_000_000)
             try? await Task.sleep(nanoseconds: nanoseconds)
             guard !Task.isCancelled else { return }
