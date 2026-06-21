@@ -2876,6 +2876,49 @@ Verification:
 - The clean iOS build log contains no `warning:` diagnostics. Xcode still emits one non-source `note` while processing the remote OpenSSL binary artifact: `The identity of “OpenSSL.xcframework” is not recorded in your project.` The artifact remains checksum-pinned by the upstream `OpenSSL-Package` manifest and version-pinned by this fork's manifest.
 - Privacy impact reviewed: no runtime code, logging, diagnostics, data retention, public API, or test fixture behavior changed.
 
+### 2026-06-21 Decryption And Malformed Chip Data Review
+
+Completed:
+
+- Reviewed secure messaging response handling for malformed passport-chip data. Successful protected responses are MAC-verified before encrypted DO87 payloads are decrypted, so an attacker without the negotiated BAC/PACE/CA session keys should not be able to inject protected data for normal data-group parsing.
+- Reviewed parser and transport behavior for chip-controlled lengths and malformed responses. Swift bounds checks and CommonCrypto wrappers reduce memory-corruption risk, but malformed chips can still cause scan failure or resource pressure if response sizes are not bounded.
+- Hardened `TagReader.selectFileAndRead` so a chip response chunk larger than the advertised ASN.1 file length is rejected instead of being appended into the data group.
+- Hardened ISO7816 `GET RESPONSE` chaining with explicit package-side limits: 2 MiB total chained response data and 512 chained segments.
+- Added focused unit tests for overlong file chunks, valid remaining-length accounting, and chained-response budget rejection.
+
+Security conclusion:
+
+- This pass did not find evidence of a realistic "break into the device" path in the fork's decryption layer. The more plausible malicious-chip risks are denial of service, scan failure, excessive memory/time usage, or parser rejection paths. The transport hardening above closes two concrete malformed-response gaps.
+
+Verification:
+
+- iOS Simulator package tests passed on iPhone 17 Pro, iOS 26.5:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5'
+  ```
+
+  Result: 151 tests passed.
+- Required generic iOS package build passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build
+  ```
+
+- Full release check passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer scripts/release_check.sh
+  ```
+
+  This reran the required iOS build, iOS build-for-testing, external API surface probe, privacy scan, whitespace check, NFC boundary check, and risky-diagnostics search. Risky-pattern hits were reviewed as expected documentation, negative tests, synthetic fixtures, internal APDU/key identifiers, OpenSSL type names, or redacted diagnostic events.
+- `git diff --check` passed.
+
+Remaining follow-up:
+
+- Consider adding explicit depth/node-count limits to recursive ASN.1 parsing as an additional denial-of-service guard for public files such as EF.CardAccess and EF.CardSecurity.
+- Real-device testing remains required for actual NFC behavior, including cancellation, timeout, connection loss, and malformed/unsupported passport-chip responses where test hardware is available.
+
 ### 2026-06-21 CI Runner Fix
 
 Completed:

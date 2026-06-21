@@ -15,6 +15,9 @@ import Foundation
 // CoreNFC's tag protocol is not Sendable-annotated. The reader creates one TagReader per scan
 // and serializes access through the scan task; do not share this wrapper across concurrent scans.
 class TagReader: @unchecked Sendable {
+    private static let maxChainedResponseBytes = 2 * 1024 * 1024
+    private static let maxGetResponseSegments = 512
+
     var tag : NFCISO7816Tag
     var secureMessaging : SecureMessaging?
     var maxDataLengthToRead : Int = 0xA0  // Should be able to use 256 to read arbitrary amounts of data at full speed BUT this isn't supported across all passports so for reliability just use the smaller amount.
@@ -216,9 +219,7 @@ class TagReader: @unchecked Sendable {
             guard !resp.data.isEmpty else {
                 throw NFCPassportReaderError.InvalidASN1Structure
             }
-            data.append(contentsOf: resp.data)
-            
-            remaining -= resp.data.count
+            try Self.appendReadChunk(resp.data, to: &data, remaining: &remaining)
             amountRead += resp.data.count
         }
         
@@ -227,6 +228,27 @@ class TagReader: @unchecked Sendable {
 
     static func readAmount(maximum: Int, remaining: Int) -> Int {
         min(max(maximum, 0), max(remaining, 0))
+    }
+
+    static func appendReadChunk(_ chunk: [UInt8], to data: inout [UInt8], remaining: inout Int) throws {
+        guard !chunk.isEmpty,
+              chunk.count <= remaining else {
+            throw NFCPassportReaderError.InvalidASN1Structure
+        }
+
+        data.append(contentsOf: chunk)
+        remaining -= chunk.count
+    }
+
+    static func validateChainedResponseBudget(currentByteCount: Int, incomingByteCount: Int, segmentCount: Int) throws {
+        guard currentByteCount >= 0,
+              incomingByteCount >= 0,
+              segmentCount >= 0,
+              segmentCount <= maxGetResponseSegments,
+              currentByteCount <= maxChainedResponseBytes,
+              incomingByteCount <= maxChainedResponseBytes - currentByteCount else {
+            throw NFCPassportReaderError.InvalidASN1Structure
+        }
     }
 
 
@@ -292,11 +314,18 @@ class TagReader: @unchecked Sendable {
         var (data, sw1, sw2) = try await tag.sendCommand(apdu: toSend)
 
         // Some commands may have bigger response than expected. Read the whole response using INS 0xC0 (GET RESPONSE).
+        var getResponseSegments = 0
         while (sw1 == 0x61) {
             let getResponseCmd = NFCISO7816APDU(instructionClass: 0x0, instructionCode: 0xC0, p1Parameter: 0x0, p2Parameter: 0x0, data: Data(), expectedResponseLength: Int(sw2))
             let nextSegment: Data
             // Overwrite sw1 and sw2.
             (nextSegment, sw1, sw2) = try await tag.sendCommand(apdu: getResponseCmd)
+            getResponseSegments += 1
+            try Self.validateChainedResponseBudget(
+                currentByteCount: data.count,
+                incomingByteCount: nextSegment.count,
+                segmentCount: getResponseSegments
+            )
             data.append(contentsOf: nextSegment)
         }
 

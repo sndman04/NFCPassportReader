@@ -176,6 +176,60 @@ final class NFCPassportReaderTests: XCTestCase {
         XCTAssertEqual(TagReader.readAmount(maximum: 160, remaining: 12), 12)
         XCTAssertEqual(TagReader.readAmount(maximum: 160, remaining: 300), 160)
     }
+
+    func testReadChunkRejectsMoreDataThanAdvertisedFileLength() {
+        var data: [UInt8] = [0x61, 0x03]
+        var remaining = 2
+
+        XCTAssertThrowsError(try TagReader.appendReadChunk([0x01, 0x02, 0x03], to: &data, remaining: &remaining)) { error in
+            guard case NFCPassportReaderError.InvalidASN1Structure = error else {
+                XCTFail("Expected InvalidASN1Structure, got \(error)")
+                return
+            }
+        }
+
+        XCTAssertEqual(data, [0x61, 0x03])
+        XCTAssertEqual(remaining, 2)
+    }
+
+    func testReadChunkTracksRemainingAdvertisedFileLength() throws {
+        var data: [UInt8] = [0x61, 0x03]
+        var remaining = 3
+
+        try TagReader.appendReadChunk([0x01, 0x02], to: &data, remaining: &remaining)
+        XCTAssertEqual(data, [0x61, 0x03, 0x01, 0x02])
+        XCTAssertEqual(remaining, 1)
+    }
+
+    func testGetResponseBudgetRejectsUnboundedChaining() {
+        XCTAssertNoThrow(try TagReader.validateChainedResponseBudget(
+            currentByteCount: (2 * 1024 * 1024) - 1,
+            incomingByteCount: 1,
+            segmentCount: 512
+        ))
+
+        XCTAssertThrowsError(try TagReader.validateChainedResponseBudget(
+            currentByteCount: 2 * 1024 * 1024,
+            incomingByteCount: 1,
+            segmentCount: 512
+        )) { error in
+            guard case NFCPassportReaderError.InvalidASN1Structure = error else {
+                XCTFail("Expected InvalidASN1Structure, got \(error)")
+                return
+            }
+        }
+
+        XCTAssertThrowsError(try TagReader.validateChainedResponseBudget(
+            currentByteCount: 0,
+            incomingByteCount: 1,
+            segmentCount: 513
+        )) { error in
+            guard case NFCPassportReaderError.InvalidASN1Structure = error else {
+                XCTFail("Expected InvalidASN1Structure, got \(error)")
+                return
+            }
+        }
+    }
     #endif
 
     func testByteIntegerHelpersUseBigEndianArithmetic() {
