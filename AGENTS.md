@@ -65,7 +65,14 @@ A task is not complete until all applicable items are true:
 ## Git And Release Hygiene
 
 - Keep changes scoped and reviewable.
-- Use the app-pinned `2.3.0` baseline as the compatibility reference unless the task explicitly upgrades upstream.
-- Do not rewrite upstream history.
+- Keep `main` as the maintained Notary/privacy release line for this fork. It should expose the documented privacy-safe app APIs and should not be used as a plain upstream mirror.
+- Preserve upstream reference points on explicitly named branches such as `upstream/2.3.1` or `notary/2.3.0-baseline`; do not let upstream snapshots displace the fork's app-compatible `main`.
+- Use short-lived work branches for active tasks. Merge or fast-forward completed work back to `main`, then delete temporary branches after the relevant annotated release tag or follow-up branch is in place.
+- Do not leave app-critical work only on a temporary `codex/*`, feature, or experiment branch. If Notary Journal depends on it, it belongs on `main` and on an annotated app-consumption tag.
+- Pin Notary Journal to annotated `notary-*` tags, not moving branches. Tags for app consumption should use an explicit fork suffix, such as `notary-2.3.1-privacy.2` or `2.3.0-notary.1`.
+- Never move or rewrite a published app-consumption tag. If a release needs more commits, create a new annotated tag with the next suffix.
+- Do not rewrite upstream history. Avoid force-pushing shared branches; if a branch correction is genuinely required, first preserve the old remote tip under an explicit backup/snapshot branch and use `--force-with-lease`, documenting the reason in the plan.
+- Before changing branch topology or release refs, inspect local and remote refs with `git branch -vv --all`, `git ls-remote --heads --tags origin`, and `git log --oneline --decorate --graph --all`.
+- After changing branch topology or release refs, verify `origin/HEAD`, `origin/main`, relevant `upstream/*` snapshots, and latest `notary-*` tags resolve to the intended commits.
+- Use the app-pinned baseline as the compatibility reference unless the task explicitly upgrades upstream, and document any upstream merge or baseline change in the plan and migration notes.
 - Use clear commit messages that call out privacy, API, test, or documentation implications.
-- Tags for app consumption should use an explicit fork suffix, such as `2.3.0-notary.1`.

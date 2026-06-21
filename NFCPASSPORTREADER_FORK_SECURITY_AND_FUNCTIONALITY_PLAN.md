@@ -2724,6 +2724,10 @@ Verification:
 - `notary-2.3.1-privacy.2` remains the latest app-consumption tag and resolves to `12d1aea`.
 - `origin/codex/privacy-safe-logging` no longer exists.
 
+Follow-up process decision:
+
+- Expanded `AGENTS.md` Git and release hygiene instructions so future agents keep `main` as the maintained Notary/privacy line, preserve upstream snapshots under explicit branches, delete completed temporary branches, avoid moving published app-consumption tags, and verify local/remote refs before and after branch topology changes.
+
 ### Option A: Remote Fork
 
 Preferred long-term route:
