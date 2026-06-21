@@ -2389,6 +2389,47 @@ Remaining follow-up:
 
 - Push this plan note, wait for the final branch-head CI run to complete successfully, then create and push `notary-2.3.1-privacy.1` on that exact commit.
 
+### 2026-06-20 OpenSSL Package Upgrade Pass
+
+Decision:
+
+- Upgrade the fork to the newest OpenSSL version currently offered by the existing SwiftPM dependency source, `krzyzanowskim/OpenSSL-Package` `3.6.2000`.
+- This package wraps OpenSSL `3.6.2`. OpenSSL `4.0.1` is newer upstream, but no `OpenSSL-Package` 4.x artifact is currently published, so 4.x would require a custom Apple `OpenSSL.xcframework` build and a higher-risk compatibility pass.
+- Keep the dependency on the existing Swift package wrapper instead of vendoring a custom OpenSSL binary in this fork.
+
+Implementation status:
+
+- Updated `Package.swift` from `.upToNextMinor(from: "3.3.1000")` to `.exact("3.6.2000")`.
+- Resolved `Package.resolved` from `OpenSSL-Package` `3.3.3001` revision `71dbe0b4514cdaad95961470db72e8231f5943a6` to `3.6.2000` revision `2d180b33702e0e67fd58607d1f96d5fad0816d10`.
+- Follow-up audit found that the root `Package.resolved` is intentionally ignored by this package repo, so the dependency version is pinned directly in the manifest to keep release resolution reproducible.
+
+Verification:
+
+- Resolved the package graph successfully with `OpenSSL-Package` `3.6.2000`.
+- Re-ran dependency resolution from a temporary clean copy with no `.build`, `.swiftpm`, or `Package.resolved`; SwiftPM resolved `OpenSSL-Package` to `3.6.2000`, confirming the manifest-level exact pin is sufficient for fresh checkouts.
+- Consolidated release check passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer scripts/release_check.sh
+  ```
+
+  Result: required iOS package build, iOS build-for-testing, external API surface probe, privacy scan, whitespace check, and risky-diagnostics search all completed successfully. Risky-pattern hits were reviewed as expected documentation, negative-test fixtures, typed APDU/key internals, OpenSSL API names, or redacted diagnostic events.
+
+- Full iOS simulator unit suite passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5'
+  ```
+
+  Result: 147 tests, 0 failures.
+
+- Captured release-check and simulator-test logs were scanned for compiler warnings and errors. No source/compiler warnings or errors were found.
+- `scripts/privacy_scan.sh` and `git diff --check` passed after the exact-version audit fix.
+
+Remaining follow-up:
+
+- Continue to require real-device passport interoperability validation before broadening release claims.
+
 ### Option A: Remote Fork
 
 Preferred long-term route:
