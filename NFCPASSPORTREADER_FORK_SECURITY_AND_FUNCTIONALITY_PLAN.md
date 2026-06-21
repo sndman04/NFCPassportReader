@@ -2399,7 +2399,7 @@ Decision:
 
 Implementation status:
 
-- Updated `Package.swift` from `.upToNextMinor(from: "3.3.1000")` to `.exact("3.6.2000")`.
+- Updated `Package.swift` from `.upToNextMinor(from: "3.3.1000")` to an exact `3.6.2000` OpenSSL-Package pin.
 - Resolved `Package.resolved` from `OpenSSL-Package` `3.3.3001` revision `71dbe0b4514cdaad95961470db72e8231f5943a6` to `3.6.2000` revision `2d180b33702e0e67fd58607d1f96d5fad0816d10`.
 - Follow-up audit found that the root `Package.resolved` is intentionally ignored by this package repo, so the dependency version is pinned directly in the manifest to keep release resolution reproducible.
 
@@ -2664,6 +2664,27 @@ Verification:
 Remaining follow-up:
 
 - Continue to keep local SwiftPM/Xcode generated state (`.build`, `.swiftpm`, and root `Package.resolved`) untracked. The OpenSSL dependency remains reproducibly pinned by exact version in `Package.swift`.
+
+### 2026-06-21 SwiftPM Dependency Warning Cleanup
+
+Completed:
+
+- Replaced the deprecated SwiftPM dependency declaration `.package(url:_: .exact(...))` with the current `.package(url:exact:)` form for `OpenSSL-Package` `3.6.2000`.
+- Kept the dependency version unchanged and still exactly pinned; this is a manifest syntax cleanup only, not an OpenSSL upgrade or security policy change.
+- Updated `AGENTS.md` completion instructions so future AI turns must fix warnings or errors surfaced by build, test, package-resolution, lint, formatting, or verification commands before handoff, or explicitly document an external/toolchain/environment reason when an in-repo fix is not possible.
+- Version bump decision: publish these fixes as the next annotated app-consumption tag, `notary-2.3.1-privacy.3`, without moving the existing `notary-2.3.1-privacy.1` or `notary-2.3.1-privacy.2` tags.
+
+Verification:
+
+- `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift package resolve` completed with no manifest deprecation warnings.
+- Required generic iOS package build passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS clean build
+  ```
+
+- The clean iOS build log contains no `warning:` diagnostics. Xcode still emits one non-source `note` while processing the remote OpenSSL binary artifact: `The identity of “OpenSSL.xcframework” is not recorded in your project.` The artifact remains checksum-pinned by the upstream `OpenSSL-Package` manifest and version-pinned by this fork's manifest.
+- Privacy impact reviewed: no runtime code, logging, diagnostics, data retention, public API, or test fixture behavior changed.
 
 ### 2026-06-21 CI Runner Fix
 

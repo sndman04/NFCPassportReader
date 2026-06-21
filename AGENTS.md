@@ -24,6 +24,7 @@ A task is not complete until all applicable items are true:
 - The code builds for the intended iOS package target.
 - New or changed behavior has focused tests, or the reason tests are not practical is documented.
 - There are zero compiler warnings from code changed in this fork.
+- Any warnings or errors surfaced by build, test, package-resolution, lint, formatting, or verification commands run during the turn are fixed before handoff. If a warning or error is from an external toolchain, generated dependency artifact, or known environment issue that cannot be fixed in-repo, document it explicitly with the reason it is safe to leave.
 - Public API changes are documented in `readme.md`, inline doc comments, or a migration note, as appropriate.
 - Security/privacy impact has been reviewed, especially logging, error messages, retained data, and diagnostics.
 - Sensitive values are not printed, persisted, surfaced in errors, or accidentally included in test fixtures.
