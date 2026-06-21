@@ -2703,22 +2703,26 @@ Remaining follow-up:
 
 ### 2026-06-21 Fork Branch Cleanup
 
-Decision:
+Completed:
 
 - Make the fork's `main` branch the maintained Notary/privacy release line, not a plain upstream mirror.
 - Preserve the previous upstream 2.3.1 pointer as `upstream/2.3.1` before moving `main`.
 - Keep app consumption on annotated `notary-*` tags. Branches are for development and maintenance; tags are for app pinning.
+- Updated `readme.md` and `REPOSITORY_STRUCTURE.md` with the branch and release policy.
+- Deleted the completed temporary `codex/privacy-safe-logging` branch after `main` was safely updated.
 
 Rationale:
 
 - The previous `origin/main` pointed to upstream `2.3.1` at `7dfc19c`, which did not expose the Notary-specific privacy APIs used by the app.
 - The compatible Notary release line was on `codex/privacy-safe-logging`, making the repository unintuitive and easy for package consumers to misuse.
 
-Planned verification:
+Verification:
 
-- Confirm `main`, `origin/main`, and `notary-2.3.1-privacy.2` resolve to the maintained Notary/privacy line after the cleanup.
-- Confirm `upstream/2.3.1` resolves to the previous upstream mirror commit `7dfc19c`.
-- Remove the completed temporary `codex/privacy-safe-logging` branch after `main` is safely updated.
+- `origin/main` now resolves to the maintained Notary/privacy line at `de3ca00`.
+- GitHub remote `HEAD` points to `refs/heads/main`, which now resolves to `de3ca00`.
+- `origin/upstream/2.3.1` resolves to the previous upstream mirror commit `7dfc19c`.
+- `notary-2.3.1-privacy.2` remains the latest app-consumption tag and resolves to `12d1aea`.
+- `origin/codex/privacy-safe-logging` no longer exists.
 
 ### Option A: Remote Fork
 
