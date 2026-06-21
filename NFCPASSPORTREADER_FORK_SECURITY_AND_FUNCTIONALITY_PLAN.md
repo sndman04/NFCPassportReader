@@ -2701,6 +2701,25 @@ Remaining follow-up:
 
 - Push `notary-2.3.1-privacy.2` after creating it on the documented release commit.
 
+### 2026-06-21 Fork Branch Cleanup
+
+Decision:
+
+- Make the fork's `main` branch the maintained Notary/privacy release line, not a plain upstream mirror.
+- Preserve the previous upstream 2.3.1 pointer as `upstream/2.3.1` before moving `main`.
+- Keep app consumption on annotated `notary-*` tags. Branches are for development and maintenance; tags are for app pinning.
+
+Rationale:
+
+- The previous `origin/main` pointed to upstream `2.3.1` at `7dfc19c`, which did not expose the Notary-specific privacy APIs used by the app.
+- The compatible Notary release line was on `codex/privacy-safe-logging`, making the repository unintuitive and easy for package consumers to misuse.
+
+Planned verification:
+
+- Confirm `main`, `origin/main`, and `notary-2.3.1-privacy.2` resolve to the maintained Notary/privacy line after the cleanup.
+- Confirm `upstream/2.3.1` resolves to the previous upstream mirror commit `7dfc19c`.
+- Remove the completed temporary `codex/privacy-safe-logging` branch after `main` is safely updated.
+
 ### Option A: Remote Fork
 
 Preferred long-term route:

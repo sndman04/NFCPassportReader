@@ -14,6 +14,13 @@ This fork is organized around the responsibilities of an iOS passport-chip reade
 - `THREAT_MODEL.md`: Privacy and security assumptions for this fork.
 - `NFCPASSPORTREADER_FORK_SECURITY_AND_FUNCTIONALITY_PLAN.md`: Source of truth for fork priorities, implementation status, verification, and remaining work.
 
+## Branch And Release Policy
+
+- `main`: maintained Notary/privacy release line. It should build, pass the release checks before release tagging, and expose the documented privacy-safe app API.
+- `notary-*` tags: annotated app-consumption tags. Notary Journal should pin these rather than a moving branch.
+- `upstream/*`: preserved upstream snapshots used for comparison and future update planning. These branches are not app-compatible unless the Notary/privacy changes have been merged and verified.
+- Temporary work branches may exist during development, but completed release work should land on `main` and be represented by an annotated tag.
+
 ## Main Library Target
 
 All Swift files under `Sources/NFCPassportReader/` compile into the single `NFCPassportReader` module. Subfolders are for maintainability and auditability; they do not create separate Swift modules.

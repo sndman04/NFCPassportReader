@@ -2,6 +2,12 @@
 
 This fork handles reading NFC-enabled passports for iOS 26+ apps using Swift 6.3 and CoreNFC.
 
+## Fork Branch Policy
+
+This fork's `main` branch is the maintained Notary/privacy release line. It includes the privacy-safe public APIs documented below, including `readPassportIdentity(...)`, `PassportChipReadResult`, `PassportScanOptions`, and typed redacted diagnostics.
+
+Historical upstream snapshots are kept on explicitly named branches such as `upstream/2.3.1` for comparison and future merge work. Apps should pin a `notary-*` annotated release tag rather than a moving branch.
+
 **Version 2 (and the main branch) now uses Swift Async/Await for communication.  If you need an earlier version, please use 1.1.9 or below!**
 
 Supported features:
