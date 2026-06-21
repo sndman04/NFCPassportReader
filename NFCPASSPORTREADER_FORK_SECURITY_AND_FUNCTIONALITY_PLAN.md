@@ -2665,6 +2665,26 @@ Remaining follow-up:
 
 - Continue to keep local SwiftPM/Xcode generated state (`.build`, `.swiftpm`, and root `Package.resolved`) untracked. The OpenSSL dependency remains reproducibly pinned by exact version in `Package.swift`.
 
+### 2026-06-21 CI Runner Fix
+
+Completed:
+
+- Investigated the failed GitHub Actions run for commit `9becfe9`. The release checklist failed before source compilation because `macos-15` selected Xcode 16.4 / Swift tools 6.1, while this fork's package manifest requires Swift tools 6.3.
+- Updated `.github/workflows/ios-package.yml` to run on `macos-26`, whose hosted runner image includes the Xcode 26 toolchain needed by the Swift 6.3 package.
+- Updated `actions/checkout` from `v4` to `v5` to avoid the Node 20 deprecation warning on current GitHub-hosted runners.
+
+Verification:
+
+- Local release checklist passed after the CI workflow edit:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer scripts/release_check.sh
+  ```
+
+Remaining follow-up:
+
+- Push the branch and confirm the replacement GitHub Actions run passes on `macos-26`.
+
 ### Option A: Remote Fork
 
 Preferred long-term route:
