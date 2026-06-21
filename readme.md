@@ -213,7 +213,7 @@ Before tagging this fork for app consumption, run:
 scripts/release_check.sh
 ```
 
-The release check script runs the required iOS package build, iOS build-for-testing, external API surface probe, privacy scan, whitespace check, and a targeted risky diagnostics search. Review any search hits before tagging.
+The release check script runs the required iOS package build, iOS build-for-testing, external API surface probe, privacy scan, CoreNFC delegate-boundary check, whitespace check, and a targeted risky diagnostics search. Review any search hits before tagging.
 
 `swift test` may fail in this environment because SwiftPM evaluates the package against macOS while the OpenSSL dependency requires a newer macOS target. Use the iOS/Xcode path above unless the package manifest is deliberately changed to support macOS tests.
 

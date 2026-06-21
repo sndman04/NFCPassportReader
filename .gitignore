@@ -73,6 +73,7 @@ scripts/*
 !scripts/README.md
 !scripts/api_surface_check.sh
 !scripts/extract.py
+!scripts/nfc_boundary_check.sh
 !scripts/privacy_scan.sh
 !scripts/release_check.sh
 

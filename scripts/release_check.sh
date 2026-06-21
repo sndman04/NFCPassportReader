@@ -11,6 +11,7 @@ xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build
 xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build-for-testing
 scripts/api_surface_check.sh
 scripts/privacy_scan.sh
+scripts/nfc_boundary_check.sh
 git diff --check
 
 if command -v rg >/dev/null 2>&1; then

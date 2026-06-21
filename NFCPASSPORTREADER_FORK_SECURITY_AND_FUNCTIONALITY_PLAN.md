@@ -645,6 +645,53 @@ Remaining follow-up:
 
 - Re-run the harness on an NFC-capable iPhone with a real passport to confirm the physical CoreNFC tag-detection path no longer crashes and that timeout/cancel/error invalidation still updates the UI cleanly.
 
+### 2026-06-21 NFC Boundary Release Guardrail
+
+Completed:
+
+- Added `PassportNFCSessionFactory` as the single internal construction point for `NFCTagReaderSession`.
+- Kept the audited CoreNFC delegate queue decision inside the factory: `delegateQueue` is `DispatchQueue.main`, matching the main-actor-isolated `PassportReader` state.
+- Updated `PassportReader` to request sessions through the factory instead of calling the CoreNFC initializer directly.
+- Added `scripts/nfc_boundary_check.sh` to fail release verification if production source creates `NFCTagReaderSession` outside the factory, if the factory uses `queue: nil`, or if the audited delegate queue stops being `.main`.
+- Wired the NFC boundary check into `scripts/release_check.sh`, and documented the guardrail in `README.md` and `REPOSITORY_STRUCTURE.md`.
+
+Verification:
+
+- `scripts/nfc_boundary_check.sh` passed.
+- `scripts/privacy_scan.sh` passed.
+- `git diff --check` passed.
+- Required generic iOS package build passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build
+  ```
+
+- Full iOS simulator suite passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5'
+  ```
+
+  Result: 148 tests, 0 failures.
+
+- Consolidated release check passed, including iOS build, iOS build-for-testing, API surface probe, privacy scan, NFC boundary check, whitespace check, and risky-pattern report:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer scripts/release_check.sh
+  ```
+
+- External Passport Chip Harness build passed against the local fork:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -project "/Users/dougalvey/Documents/Passport Chip Fork Test App/PassportChipHarness.xcodeproj" -scheme PassportChipHarness -destination generic/platform=iOS -derivedDataPath "/Users/dougalvey/Documents/Passport Chip Fork Test App/.codex-deriveddata" CODE_SIGNING_ALLOWED=NO build
+  ```
+
+- Xcode still emits known non-source metadata notes for the remote OpenSSL binary artifact and the harness AppIntents processor. No warnings came from changed fork source.
+
+Remaining follow-up:
+
+- Keep the physical-device harness NFC smoke test as the final check before publishing app-consumption tags. The static guard prevents the exact queue-regression shape, but it does not replace real CoreNFC interoperability testing.
+
 ### 2026-06-20 Scan/Decode Performance Pass
 
 Completed:

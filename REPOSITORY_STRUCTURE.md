@@ -58,6 +58,7 @@ Use synthetic fixtures only. Do not add real passport values, MRZ strings, APDU 
 
 - Building an app integration: start with `Sources/NFCPassportReader/API/` and the "Privacy-safe fork usage" section in `readme.md`.
 - Changing the NFC scan flow: inspect `Sources/NFCPassportReader/Reader/`, then `NFC/`, `Authentication/`, and `Diagnostics/`.
+- Changing CoreNFC session creation: keep construction centralized in `Sources/NFCPassportReader/NFC/PassportNFCSessionFactory.swift` and run `scripts/nfc_boundary_check.sh`.
 - Changing verification or trust semantics: inspect `Verification/`, `DataGroups/SOD.swift`, `Crypto/`, and the relevant tests.
 - Changing parsing: inspect `DataGroups/`, `Parsing/`, and `Tests/NFCPassportReaderTests/Parsing/`.
 - Changing logging, user-facing errors, progress, or support diagnostics: inspect `Diagnostics/` and run `scripts/privacy_scan.sh` before handoff.

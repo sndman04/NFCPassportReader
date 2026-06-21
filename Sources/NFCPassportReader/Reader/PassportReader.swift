@@ -176,7 +176,7 @@ public class PassportReader : NSObject {
                     return
                 }
 
-                self.readerSession = NFCTagReaderSession(pollingOption: [.iso14443], delegate: self, queue: .main)
+                self.readerSession = PassportNFCSessionFactory.makeTagReaderSession(delegate: self)
                 self.updateReaderSessionMessage( alertMessage: NFCViewDisplayMessage.requestPresentPassport )
                 self.emitProgress(.waitingForPassport)
                 self.startTimeoutTask(operationTimeout)
