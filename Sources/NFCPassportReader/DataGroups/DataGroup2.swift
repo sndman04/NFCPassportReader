@@ -15,6 +15,9 @@ class DataGroup2 : DataGroup {
     private static let maxImageDataLength = 10 * 1024 * 1024
     private static let maxImageDimension = 20_000
     private static let maxFeaturePoints = 10_000
+    private static let jpegHeader: [UInt8] = [0xff, 0xd8, 0xff]
+    private static let jpeg2000BitmapHeader: [UInt8] = [0x00, 0x00, 0x00, 0x0c, 0x6a, 0x50, 0x20, 0x20, 0x0d, 0x0a]
+    private static let jpeg2000CodestreamBitmapHeader: [UInt8] = [0xff, 0x4f, 0xff, 0x51]
 
     public private(set) var nrImages : Int = 0
     public private(set) var versionNumber : Int = 0
@@ -43,8 +46,8 @@ class DataGroup2 : DataGroup {
     public override var datagroupType: DataGroupId { .DG2 }
 
 #if !os(macOS)
-func getImage() -> UIImage? {
-        if imageData.count == 0 {
+    func getImage() -> UIImage? {
+        guard Self.canDecodeImageData(imageData) else {
             return nil
         }
         
@@ -237,25 +240,12 @@ func getImage() -> UIImage? {
         }
         
         
-        // Make sure that the image data at least has a valid header
-        // Either JPG or JPEG2000
-        
-        let jpegHeader : [UInt8] = [0xff,0xd8,0xff]
-        let jpeg2000BitmapHeader : [UInt8] = [0x00,0x00,0x00,0x0c,0x6a,0x50,0x20,0x20,0x0d,0x0a]
-        let jpeg2000CodestreamBitmapHeader : [UInt8] = [0xff,0x4f,0xff,0x51]
-        
         guard recordEnd > offset else {
             throw NFCPassportReaderError.UnknownImageFormat
         }
 
         let imageBytes = data[offset..<recordEnd]
-        guard imageBytes.count <= Self.maxImageDataLength else {
-            throw NFCPassportReaderError.UnknownImageFormat
-        }
-
-        if !imageBytes.starts(with: jpegHeader) &&
-            !imageBytes.starts(with: jpeg2000BitmapHeader) &&
-            !imageBytes.starts(with: jpeg2000CodestreamBitmapHeader) {
+        guard Self.canDecodeImageData(imageBytes) else {
             throw NFCPassportReaderError.UnknownImageFormat
         }
         
@@ -324,6 +314,16 @@ func getImage() -> UIImage? {
         }
         offset += byteCount
         return value
+    }
+
+    private static func canDecodeImageData<T: Collection>(_ data: T) -> Bool where T.Element == UInt8 {
+        data.count > 0 &&
+            data.count <= maxImageDataLength &&
+            (
+                data.starts(with: jpegHeader) ||
+                data.starts(with: jpeg2000BitmapHeader) ||
+                data.starts(with: jpeg2000CodestreamBitmapHeader)
+            )
     }
 
     private struct ParsedFacialRecord {

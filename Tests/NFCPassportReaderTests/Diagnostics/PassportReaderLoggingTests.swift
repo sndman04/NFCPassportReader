@@ -515,6 +515,22 @@ final class PassportReaderLoggingTests: XCTestCase {
         XCTAssertTrue(try SecurityInfosParser.parse(diagnosticASN1Set(malformedPublicKeyInfo)).isEmpty)
     }
 
+    func testSecurityInfoRejectsOversizedPublicKeyBeforeOpenSSLParsing() throws {
+        let malformedPublicKeyInfo = try securityInfo(
+            oid: SecurityInfo.ID_PK_ECDH_OID,
+            requiredData: diagnosticASN1Integer([0x01])
+        )
+        let parsedInfo = try XCTUnwrap(try SimpleASN1Node.parse(malformedPublicKeyInfo))
+        let requiredData = try XCTUnwrap(parsedInfo.children.dropFirst().first)
+
+        XCTAssertNil(SecurityInfo.getInstance(
+            oid: SecurityInfo.ID_PK_ECDH_OID,
+            requiredData: requiredData,
+            requiredDataDER: [UInt8](repeating: 0x01, count: 64 * 1024 + 1),
+            optionalData: nil
+        ))
+    }
+
     func testCustomScanProfileDeduplicatesWithoutReordering() {
         let profile = PassportScanProfile.custom([.DG1, .DG2, .DG1, .SOD, .DG2])
 

@@ -2923,6 +2923,46 @@ Remaining follow-up:
 - CMS/X.509 parsing remains a native OpenSSL boundary for SOD/CardSecurity verification. The fork keeps this internal and privacy-safe, but malformed certificate/CMS input is still parsed by the pinned OpenSSL package. Keep the OpenSSL package pinned/current and avoid exposing raw certificate/parser APIs to apps.
 - Real-device testing remains required for actual NFC behavior, including cancellation, timeout, connection loss, and malformed/unsupported passport-chip responses where test hardware is available.
 
+### 2026-06-21 Native Parser Boundary Hardening
+
+Completed:
+
+- Added explicit size guards before chip-controlled PKCS7/CMS DER and SubjectPublicKeyInfo DER blobs are handed to OpenSSL. Empty native-parser inputs and inputs above the fork's NFC response budget are rejected before `BIO`/`d2i_*` parsing.
+- Routed DG14 Chip Authentication public-key parsing through the guarded `OpenSSLUtils.readPublicKey(data:)` helper instead of calling `d2i_PUBKEY` directly.
+- Added a sanity cap to OpenSSL shared-secret derivation output before allocating the derived secret buffer.
+- Reused DG2's JPEG/JPEG2000 allowlist at UIKit decode time, not only parse time, so manually constructed or stale model data cannot bypass the parser guard before `UIImage(data:)`.
+- Added a matching DG7 decode-time guard. DG7 still preserves bounded signature-image bytes for model/status behavior, but only known bounded JPEG/JPEG2000 payloads are submitted to UIKit for image decoding.
+- Added focused tests for oversized and empty OpenSSL parser inputs, oversized Chip Authentication public-key security info, and arbitrary DG7 signature bytes not being decoded as `UIImage`.
+
+Security conclusion:
+
+- These changes reduce the remaining malformed-chip attack surface by failing closed before native OpenSSL/UIKit parser boundaries see unreasonable or format-unknown chip-controlled data. They do not eliminate the need to keep iOS and the pinned OpenSSL package current, but the package now has explicit Swift-side guardrails at each identified fork-owned boundary.
+
+Verification:
+
+- iOS Simulator package tests passed on iPhone 17 Pro, iOS 26.5:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5'
+  ```
+
+  Result: 157 tests passed.
+- Required generic iOS package build passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build
+  ```
+
+- Full release check passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer scripts/release_check.sh
+  ```
+
+  This reran the required iOS package build, iOS build-for-testing, external API surface probe, privacy scan, whitespace check, NFC boundary check, and risky-diagnostics search. Risky-pattern hits were reviewed as expected documentation, negative tests, synthetic fixtures, internal APDU/key identifiers, OpenSSL/native parser type names, image model field names, or redacted diagnostic events.
+- `git diff --check` passed.
+- Targeted scan of changed files found no new runtime logging sink, clipboard/network persistence, raw export API, or sensitive diagnostic surface. Remaining hits are expected native parser API names, image model field names, privacy documentation, and negative-test fixtures.
+
 ### 2026-06-21 CI Runner Fix
 
 Completed:

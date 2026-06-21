@@ -89,12 +89,7 @@ class SecurityInfo {
         optionalData: SimpleASN1Node?
     ) -> SecurityInfo? {
         if ChipAuthenticationPublicKeyInfo.checkRequiredIdentifier(oid) {
-            var subjectPublicKeyInfo: OpaquePointer?
-            let _ = requiredDataDER.withUnsafeBytes { ptr in
-                var newPtr = ptr.baseAddress?.assumingMemoryBound(to: UInt8.self)
-                subjectPublicKeyInfo = d2i_PUBKEY(nil, &newPtr, requiredDataDER.count)
-            }
-
+            let subjectPublicKeyInfo = try? OpenSSLUtils.readPublicKey(data: requiredDataDER)
             if let subjectPublicKeyInfo {
                 return ChipAuthenticationPublicKeyInfo(
                     oid: oid,

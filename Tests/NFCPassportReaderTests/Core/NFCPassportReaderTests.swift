@@ -589,6 +589,21 @@ final class NFCPassportReaderTests: XCTestCase {
         XCTAssertNil(OpenSSLUtils.sk_X509_value(nil, 0))
     }
 
+    func testOpenSSLRejectsOversizedNativeParserInputsBeforeParsing() {
+        let oversizedCMS = Data(repeating: 0x30, count: 2 * 1024 * 1024 + 1)
+        let oversizedPublicKey = [UInt8](repeating: 0x30, count: 64 * 1024 + 1)
+
+        XCTAssertThrowsError(try OpenSSLUtils.getX509CertificatesFromPKCS7(pkcs7Der: oversizedCMS))
+        XCTAssertThrowsError(try OpenSSLUtils.verifyAndReturnCMSEncapsulatedData(oversizedCMS, trustedCertificatesURL: nil))
+        XCTAssertThrowsError(try OpenSSLUtils.readPublicKey(data: oversizedPublicKey))
+    }
+
+    func testOpenSSLRejectsEmptyNativeParserInputsBeforeParsing() {
+        XCTAssertThrowsError(try OpenSSLUtils.getX509CertificatesFromPKCS7(pkcs7Der: Data()))
+        XCTAssertThrowsError(try OpenSSLUtils.verifyAndReturnCMSEncapsulatedData(Data(), trustedCertificatesURL: nil))
+        XCTAssertThrowsError(try OpenSSLUtils.readPublicKey(data: []))
+    }
+
     func testSignatureDigestNameSelectionCoversActiveAuthenticationAlgorithms() {
         XCTAssertEqual(OpenSSLUtils.digestName(forSignatureType: "ecdsa-plain-SHA1"), "sha1")
         XCTAssertEqual(OpenSSLUtils.digestName(forSignatureType: "ecdsa-plain-SHA224"), "sha224")

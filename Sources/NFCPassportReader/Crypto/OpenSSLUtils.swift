@@ -11,6 +11,10 @@ import CryptoTokenKit
 
 @available(iOS 13, macOS 10.15, *)
 class OpenSSLUtils {
+    private static let maxNativeParserInputLength = 2 * 1024 * 1024
+    private static let maxPublicKeyDERLength = 64 * 1024
+    private static let maxSharedSecretLength = 8192
+
     /// Returns any OpenSSL error as a string.
     ///
     /// This is an internal low-level helper, not an app-facing diagnostic surface. Do not include
@@ -75,6 +79,9 @@ class OpenSSLUtils {
     /// - Returns: The PEM formatted X509 certificate
     /// - Throws: A OpenSSLError.UnableToGetX509CertificateFromPKCS7 are thrown for any error
     static func getX509CertificatesFromPKCS7( pkcs7Der : Data ) throws -> [X509Wrapper] {
+        guard isNativeParserInputSizeValid(pkcs7Der.count) else {
+            throw OpenSSLError.UnableToGetX509CertificateFromPKCS7("Invalid PKCS7 DER size")
+        }
         
         guard let inf = BIO_new(BIO_s_mem()) else { throw OpenSSLError.UnableToGetX509CertificateFromPKCS7("Unable to allocate input buffer") }
         defer { BIO_free(inf) }
@@ -203,6 +210,10 @@ class OpenSSLUtils {
     }
 
     static func verifyAndReturnCMSEncapsulatedData(_ cmsDer: Data, trustedCertificatesURL: URL?) throws -> Data {
+        guard isNativeParserInputSizeValid(cmsDer.count) else {
+            throw OpenSSLError.VerifyAndReturnSODEncapsulatedData("CMS - Invalid DER size")
+        }
+
         guard let inf = BIO_new(BIO_s_mem()) else { throw OpenSSLError.VerifyAndReturnSODEncapsulatedData("CMS - Unable to allocate input buffer") }
         defer { BIO_free(inf) }
 
@@ -317,6 +328,9 @@ class OpenSSLUtils {
     }
 
     static func readPublicKey(data : [UInt8]) throws -> OpaquePointer? {
+        guard isPublicKeyDERSizeValid(data.count) else {
+            throw OpenSSLError.UnableToReadECPublicKey("Invalid public key size")
+        }
         
         guard let inf = BIO_new(BIO_s_mem()) else { throw OpenSSLError.UnableToReadECPublicKey("Unable to allocate output buffer") }
         defer { BIO_free(inf) }
@@ -766,6 +780,10 @@ class OpenSSLUtils {
     /// passport protocol internals; do not surface inputs or outputs in diagnostics.
     @available(iOS 13, macOS 10.15, *)
     static func decodePublicKeyFromBytes(pubKeyData: [UInt8], params: OpaquePointer) -> OpaquePointer? {
+        guard isPublicKeyDERSizeValid(pubKeyData.count) else {
+            return nil
+        }
+
         let keyType = EVP_PKEY_get_base_id( params )
         if keyType == EVP_PKEY_DH || keyType == EVP_PKEY_DHX {
             var p: OpaquePointer?
@@ -838,7 +856,8 @@ class OpenSSLUtils {
 
         var keyLen = 0
         guard EVP_PKEY_derive(ctx, nil, &keyLen) == 1,
-              keyLen > 0 else {
+              keyLen > 0,
+              keyLen <= maxSharedSecretLength else {
             throw NFCPassportReaderError.InvalidDataPassed("Unable to determine shared-secret length")
         }
 
@@ -849,6 +868,14 @@ class OpenSSLUtils {
         }
         secret = [UInt8](secret.prefix(keyLen))
         return secret
+    }
+
+    private static func isNativeParserInputSizeValid(_ count: Int) -> Bool {
+        count > 0 && count <= maxNativeParserInputLength
+    }
+
+    private static func isPublicKeyDERSizeValid(_ count: Int) -> Bool {
+        count > 0 && count <= maxPublicKeyDERLength
     }
 
     private static func bnBytes(_ bn: OpaquePointer) -> [UInt8] {

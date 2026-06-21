@@ -305,6 +305,17 @@ final class DataGroupParsingTests: XCTestCase {
         XCTAssertEqual(dg7.imageDataItems, [[0x01, 0x02], [0x03, 0x04, 0x05]])
     }
 
+#if os(iOS)
+    func testDatagroup7DoesNotDecodeArbitrarySignatureBytesAsUIImage() throws {
+        let body = try [0x02] + toAsn1Length(1) + [0x01] +
+            tlv(tag: [0x5F, 0x43], value: [0x01, 0x02])
+        let data = try [UInt8]([0x67]) + toAsn1Length(body.count) + body
+        let dg7 = try XCTUnwrap(try DataGroupParser().parseDG(data: data) as? DataGroup7)
+
+        XCTAssertNil(dg7.getImage())
+    }
+#endif
+
     func testDatagroup7RejectsOversizedImageItem() throws {
         let oversizedImage = [UInt8](repeating: 0xA5, count: 10 * 1024 * 1024 + 1)
         let body = try [0x02] + toAsn1Length(1) + [0x01] +
