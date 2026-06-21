@@ -551,6 +551,32 @@ Remaining follow-up:
 - Run the Notary Journal app build and focused passport chip unit/UI tests once Xcode project loading is no longer hanging.
 - Validate `.notaryRecommended` against real passports before relying on the stricter passive-authentication requirement in production, especially when the master list is missing or incomplete.
 
+### 2026-06-21 Passport Chip Harness Current-Tag Update
+
+Completed:
+
+- Updated the external Passport Chip Harness test app at `/Users/dougalvey/Documents/Passport Chip Fork Test App` to build against the adjacent fork at tag `notary-2.3.1-privacy.3`.
+- Raised the harness iOS deployment target to 26.0 to match the current fork package platform declaration.
+- Updated the harness scan path from internal compatibility surfaces (`NFCPassportModel`, tracking delegate, raw-model read methods, unsafe raw exporter probe, and NFC read-size override) to the current public privacy-safe APIs: `readPassportIdentity(...)`, `PassportScanOptions`, `PassportChipReadResult`, `PassportIdentityResult`, typed logs, progress events, diagnostics summary, trust metadata, and optional face-image result.
+- Kept explicit data-group testing through `PassportScanProfile.custom(...)`; the harness now labels the NFC read-size override as unavailable because it is not public in this tag.
+- Added the missing `AccentColor` asset so Xcode no longer warns about the configured accent color.
+- Updated the harness README with the current tag, iOS 26.0 requirement, public API coverage, and removed/internal API notes.
+
+Verification:
+
+- Harness iOS build succeeded:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -project "/Users/dougalvey/Documents/Passport Chip Fork Test App/PassportChipHarness.xcodeproj" -scheme PassportChipHarness -destination generic/platform=iOS -derivedDataPath "/Users/dougalvey/Documents/Passport Chip Fork Test App/.codex-deriveddata" CODE_SIGNING_ALLOWED=NO build
+  ```
+
+- Build output still includes the known non-source Xcode metadata warning: `Metadata extraction skipped. No AppIntents.framework dependency found.`
+- Harness `git diff --check` passed, project/JSON metadata validation passed, and targeted risky-pattern search over changed harness files found no new logging sinks, raw export calls, APDU/key diagnostics, persistence, clipboard, or network use. Remaining hits were expected README privacy wording, the UI row stating MRZ is not exposed by the privacy-safe result, and explicit in-memory `faceImageData` display handling for the requested photo policy.
+
+Remaining follow-up:
+
+- Run the harness on an NFC-capable iPhone with a valid signing identity and real passports to validate `.fullVerification`, custom data-group reads, PACE fallback, passive-authentication results, optional bundled master-list behavior, and DG2 face-image handling.
+
 ### 2026-06-20 Scan/Decode Performance Pass
 
 Completed:
