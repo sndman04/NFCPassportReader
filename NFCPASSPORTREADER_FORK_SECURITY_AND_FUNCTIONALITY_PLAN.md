@@ -2430,6 +2430,116 @@ Remaining follow-up:
 
 - Continue to require real-device passport interoperability validation before broadening release claims.
 
+### 2026-06-21 Swift 6.3 / iOS 26 Migration Pass
+
+Decision:
+
+- Raise this app-only fork to SwiftPM tools 6.3, Swift 6 language mode, and iOS 26.0 minimum deployment. This deliberately drops older consumer/toolchain compatibility because Notary Journal is the only intended consumer and is planned around the current iOS floor.
+- Keep the existing privacy-first public API shape, but make the display-message callback explicitly `@Sendable` through `PassportReaderDisplayMessageHandler`.
+- Isolate `PassportReader` and scan-session BAC/PACE/Chip Authentication orchestration to the main actor. CoreNFC delegate conformance remains a `@preconcurrency` boundary because the SDK delegate protocol is not fully actor annotated.
+- Use narrow, documented legacy-concurrency escapes for CoreNFC transport wrappers and the mutable compatibility `NFCPassportModel` result. Longer term, a future major cleanup can replace the mutable raw model return with value-typed safe results only.
+
+Implementation status:
+
+- Updated `Package.swift` to `// swift-tools-version:6.3` and `platforms: [.iOS("26.0")]`.
+- Added `PassportReaderDisplayMessageHandler = @Sendable (NFCViewDisplayMessage) -> String?` and migrated `customDisplayMessage` parameters to that type.
+- Made `PassportReader` main-actor isolated and adjusted cancellation to hop back to the main actor.
+- Main-actor isolated BAC, PACE, and Chip Authentication handlers, preserving sensitive cleanup with `isolated deinit`.
+- Kept `TagReader` and `SecureMessaging` as documented `@unchecked Sendable` wrappers around the CoreNFC/secure-messaging legacy boundary, with single-scan ownership expectations.
+- Rewrote the SOD verification fallback selection to explicit branches to avoid a Swift 6.3 compiler diagnostic failure around ternary function references.
+- Removed obsolete Linux-style `allTests` arrays and updated focused tests for the new actor isolation.
+- Updated `scripts/api_surface_check.sh` so release probes use SwiftPM 6.3, iOS 26.0, and a main-actor safe API probe.
+- Updated README and Notary migration notes for the new minimums and `@Sendable` callback requirement.
+
+Verification:
+
+- Required generic iOS package build passed with no source/compiler warnings:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build
+  ```
+
+- Full iOS simulator suite passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5'
+  ```
+
+  Result: 147 tests, 0 failures. Xcode emitted the known non-source App Intents metadata warning for the XCTest bundle.
+
+- External API surface probe passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer scripts/api_surface_check.sh
+  ```
+
+- Consolidated release check passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer scripts/release_check.sh
+  ```
+
+  Result: required iOS package build, iOS build-for-testing, external API surface probe, privacy scan, whitespace check, and risky-diagnostics search all completed successfully. Risky-pattern hits were reviewed as expected documentation, synthetic negative tests, internal APDU/key identifiers, OpenSSL type names, explicit Swift 6 legacy-concurrency boundaries, or redacted diagnostic events.
+
+- Notary Journal app build passed after switching the app project package reference to this local migrated fork:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -project "Notary Journal.xcodeproj" -scheme "Notary Journal" -destination generic/platform=iOS CODE_SIGNING_ALLOWED=NO build
+  ```
+
+  Result: build succeeded with no warnings or errors in the saved build log. The app's `Package.resolved` now resolves `OpenSSL-Package` `3.6.2000` through the local fork.
+
+Remaining follow-up:
+
+- Continue to require real-device passport interoperability validation before broadening release claims. Physical-device validation is not required for this Swift 6.3 migration task to be considered complete.
+
+### 2026-06-21 Full Bug-Check And Security Review Pass
+
+Completed:
+
+- Performed a repo-wide source review after the Swift 6.3 / iOS 26 migration, focusing on crash paths, forced operations, concurrency escape hatches, privacy-sensitive diagnostics, and release-gate coverage.
+- Hardened the OpenSSL X509 stack helpers so a nil OpenSSL certificate stack returns an empty count or nil value instead of crashing through implicitly unwrapped pointers. This protects the trust-chain path if `X509_STORE_CTX_get1_chain` returns nil after a failed or incomplete OpenSSL verification context.
+- Added a focused regression test for nil X509 stack helper inputs.
+- Re-reviewed source and test hits for `try!`, forced casts, `fatalError`, assertions, unsafe concurrency annotations, logging sinks, file/pasteboard persistence APIs, APDU/key identifiers, long hex-like values, and passport-sensitive terms.
+- Confirmed production diagnostics remain routed through typed redacted events, with no raw MRZ, APDU, BAC/PACE key, session-key, decrypted data-group, certificate-detail, or image-byte logging surfaces introduced by this pass.
+
+Verification:
+
+- Required generic iOS package build passed with no source/compiler warnings:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build
+  ```
+
+- Focused core test suite passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:NFCPassportReaderTests/NFCPassportReaderTests
+  ```
+
+  Result: 31 tests, 0 failures.
+
+- Full iOS simulator suite passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5'
+  ```
+
+  Result: 148 tests, 0 failures. Xcode emitted the known non-source App Intents metadata warning for the XCTest bundle.
+
+- External API surface probe passed against a temporary SwiftPM 6.3 / iOS 26 consumer package, including main-actor and protocol-consumer call sites.
+- Consolidated release check passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer scripts/release_check.sh
+  ```
+
+  Result: required iOS package build, iOS build-for-testing, external API surface probe, privacy scan, whitespace check, and risky-diagnostics search completed successfully. Risky-pattern hits were reviewed as expected documentation, synthetic negative tests, internal APDU/key identifiers, OpenSSL type names, explicit Swift 6 legacy-concurrency boundaries, or redacted diagnostic events.
+
+Remaining follow-up:
+
+- Continue to require real-device passport interoperability validation before tagging or making broad release claims. This pass did not perform physical-device NFC validation.
+
 ### Option A: Remote Fork
 
 Preferred long-term route:

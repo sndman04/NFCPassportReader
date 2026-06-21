@@ -9,8 +9,8 @@
 import Foundation
 
 #if !os(macOS)
-import UIKit
-import CoreNFC
+@preconcurrency import UIKit
+@preconcurrency import CoreNFC
 
 @available(iOS 15, *)
 protocol PassportReaderTrackingDelegate: AnyObject {
@@ -37,6 +37,7 @@ extension PassportReaderTrackingDelegate {
 }
 
 @available(iOS 15, *)
+@MainActor
 public class PassportReader : NSObject {
     private typealias NFCCheckedContinuation = CheckedContinuation<NFCPassportModel, Error>
     private var nfcContinuation: NFCCheckedContinuation?
@@ -74,7 +75,7 @@ public class PassportReader : NSObject {
     private var aaChallenge: [UInt8]?
     private var dataAmountToReadOverride : Int? = nil
     
-    private var nfcViewDisplayMessageHandler: ((NFCViewDisplayMessage) -> String?)?
+    private var nfcViewDisplayMessageHandler: PassportReaderDisplayMessageHandler?
     private var masterListURL : URL?
     private var shouldNotReportNextReaderSessionInvalidationErrorUserCanceled : Bool = false
 
@@ -105,7 +106,7 @@ public class PassportReader : NSObject {
         dataAmountToReadOverride = amount
     }
     
-    func readPassport( mrzKey : String, tags : [DataGroupId] = [], aaChallenge: [UInt8]? = nil, skipSecureElements : Bool = true, skipCA : Bool = false, skipPACE : Bool = false, useExtendedMode : Bool = false, operationTimeout: TimeInterval? = nil, photoPolicy: PassportPhotoPolicy = .read, securityPolicy: PassportReaderSecurityPolicy = .default, pacePolicy: PassportReaderPACEPolicy = .allowBACFallback, progressHandler: PassportReaderProgressHandler? = nil, customDisplayMessage : ((NFCViewDisplayMessage) -> String?)? = nil) async throws -> NFCPassportModel {
+    func readPassport( mrzKey : String, tags : [DataGroupId] = [], aaChallenge: [UInt8]? = nil, skipSecureElements : Bool = true, skipCA : Bool = false, skipPACE : Bool = false, useExtendedMode : Bool = false, operationTimeout: TimeInterval? = nil, photoPolicy: PassportPhotoPolicy = .read, securityPolicy: PassportReaderSecurityPolicy = .default, pacePolicy: PassportReaderPACEPolicy = .allowBACFallback, progressHandler: PassportReaderProgressHandler? = nil, customDisplayMessage : PassportReaderDisplayMessageHandler? = nil) async throws -> NFCPassportModel {
         guard NFCNDEFReaderSession.readingAvailable else {
             pendingPACECredential = nil
             eventLogger.log(.readFailed(.nfcNotSupported))
@@ -181,7 +182,9 @@ public class PassportReader : NSObject {
                 self.readerSession?.begin()
             })
         } onCancel: {
-            self.cancelRead()
+            Task { @MainActor in
+                self.cancelRead()
+            }
         }
     }
 
@@ -198,7 +201,7 @@ public class PassportReader : NSObject {
         securityPolicy: PassportReaderSecurityPolicy = .default,
         pacePolicy: PassportReaderPACEPolicy = .allowBACFallback,
         progressHandler: PassportReaderProgressHandler? = nil,
-        customDisplayMessage: ((NFCViewDisplayMessage) -> String?)? = nil
+        customDisplayMessage: PassportReaderDisplayMessageHandler? = nil
     ) async throws -> NFCPassportModel {
         try await readPassport(
             mrzKey: mrzKey,
@@ -232,7 +235,7 @@ public class PassportReader : NSObject {
         securityPolicy: PassportReaderSecurityPolicy = .default,
         pacePolicy: PassportReaderPACEPolicy = .allowBACFallback,
         progressHandler: PassportReaderProgressHandler? = nil,
-        customDisplayMessage: ((NFCViewDisplayMessage) -> String?)? = nil
+        customDisplayMessage: PassportReaderDisplayMessageHandler? = nil
     ) async throws -> NFCPassportModel {
         self.pendingPACECredential = (paceKey, paceKeyReference)
         return try await readPassport(
@@ -267,7 +270,7 @@ public class PassportReader : NSObject {
         securityPolicy: PassportReaderSecurityPolicy = .default,
         pacePolicy: PassportReaderPACEPolicy = .allowBACFallback,
         progressHandler: PassportReaderProgressHandler? = nil,
-        customDisplayMessage: ((NFCViewDisplayMessage) -> String?)? = nil
+        customDisplayMessage: PassportReaderDisplayMessageHandler? = nil
     ) async throws -> NFCPassportModel {
         try await readPassport(
             mrzKey: mrzKey,
@@ -293,7 +296,7 @@ public class PassportReader : NSObject {
         options: PassportScanOptions,
         aaChallenge: [UInt8]? = nil,
         progressHandler: PassportReaderProgressHandler? = nil,
-        customDisplayMessage: ((NFCViewDisplayMessage) -> String?)? = nil
+        customDisplayMessage: PassportReaderDisplayMessageHandler? = nil
     ) async throws -> NFCPassportModel {
         try await readPassport(
             mrzKey: mrzKey,
@@ -325,7 +328,7 @@ public class PassportReader : NSObject {
         securityPolicy: PassportReaderSecurityPolicy = .default,
         pacePolicy: PassportReaderPACEPolicy = .allowBACFallback,
         progressHandler: PassportReaderProgressHandler? = nil,
-        customDisplayMessage: ((NFCViewDisplayMessage) -> String?)? = nil
+        customDisplayMessage: PassportReaderDisplayMessageHandler? = nil
     ) async throws -> PassportChipReadResult {
         let passport = try await readPassport(
             mrzKey: mrzKey,
@@ -365,7 +368,7 @@ public class PassportReader : NSObject {
         securityPolicy: PassportReaderSecurityPolicy = .default,
         pacePolicy: PassportReaderPACEPolicy = .allowBACFallback,
         progressHandler: PassportReaderProgressHandler? = nil,
-        customDisplayMessage: ((NFCViewDisplayMessage) -> String?)? = nil
+        customDisplayMessage: PassportReaderDisplayMessageHandler? = nil
     ) async throws -> PassportChipReadResult {
         let passport = try await readPassport(
             mrzKey: mrzKey,
@@ -405,7 +408,7 @@ public class PassportReader : NSObject {
         securityPolicy: PassportReaderSecurityPolicy = .default,
         pacePolicy: PassportReaderPACEPolicy = .allowBACFallback,
         progressHandler: PassportReaderProgressHandler? = nil,
-        customDisplayMessage: ((NFCViewDisplayMessage) -> String?)? = nil
+        customDisplayMessage: PassportReaderDisplayMessageHandler? = nil
     ) async throws -> PassportChipReadResult {
         let passport = try await readPassport(
             mrzKey: mrzKey,
@@ -435,7 +438,7 @@ public class PassportReader : NSObject {
         options: PassportScanOptions,
         aaChallenge: [UInt8]? = nil,
         progressHandler: PassportReaderProgressHandler? = nil,
-        customDisplayMessage: ((NFCViewDisplayMessage) -> String?)? = nil
+        customDisplayMessage: PassportReaderDisplayMessageHandler? = nil
     ) async throws -> PassportChipReadResult {
         let passport = try await readPassport(
             mrzKey: mrzKey,
@@ -458,7 +461,7 @@ public class PassportReader : NSObject {
 }
 
 @available(iOS 15, *)
-extension PassportReader : NFCTagReaderSessionDelegate {
+extension PassportReader : @preconcurrency NFCTagReaderSessionDelegate {
     // MARK: - NFCTagReaderSessionDelegate
     public func tagReaderSessionDidBecomeActive(_ session: NFCTagReaderSession) {
         // If necessary, you may perform additional operations on session start.
@@ -530,7 +533,12 @@ extension PassportReader : NFCTagReaderSessionDelegate {
         
         Task { [passportTag] in
             do {
-                try await session.connect(to: tag)
+                // CoreNFC's async connect API is not fully Sendable-annotated in the SDK.
+                // Keep the unsafe boundary at the external transport call, then return to
+                // main-actor-isolated reader state for all scan bookkeeping.
+                nonisolated(unsafe) let sessionToConnect = session
+                nonisolated(unsafe) let tagToConnect = tag
+                try await sessionToConnect.connect(to: tagToConnect)
                 self.eventLogger.log(.tagConnected)
                 self.updateReaderSessionMessage( alertMessage: NFCViewDisplayMessage.authenticatingWithPassport(0) )
                 self.emitProgress(.authenticating(progress: 0))

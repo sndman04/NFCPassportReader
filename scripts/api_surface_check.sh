@@ -14,13 +14,13 @@ write_probe_package() {
 
   mkdir -p "$package_dir/Sources/ExternalAPISurfaceProbe"
   cat > "$package_dir/Package.swift" <<PACKAGE
-// swift-tools-version:5.4
+// swift-tools-version:6.3
 
 import PackageDescription
 
 let package = Package(
     name: "ExternalAPISurfaceProbe",
-    platforms: [.iOS("15.0")],
+    platforms: [.iOS("26.0")],
     products: [
         .library(name: "ExternalAPISurfaceProbe", targets: ["ExternalAPISurfaceProbe"])
     ],
@@ -46,7 +46,7 @@ cat > "$SAFE_SOURCE" <<'SWIFT'
 import Foundation
 import NFCPassportReader
 
-@available(iOS 15, *)
+@available(iOS 26, *)
 public final class ProbeLogger: PassportReaderLogging {
     public init() {}
 
@@ -55,7 +55,8 @@ public final class ProbeLogger: PassportReaderLogging {
     }
 }
 
-@available(iOS 15, *)
+@available(iOS 26, *)
+@MainActor
 public func compileSafePassportReaderSurface() {
     let reader = PassportReader(logLevel: .debugRedacted, logger: ProbeLogger())
     reader.passiveAuthenticationUsesOpenSSL = false
@@ -122,7 +123,7 @@ UNSAFE_SOURCE="$TMP_DIR/UnsafeProbe.swift"
 cat > "$UNSAFE_SOURCE" <<'SWIFT'
 import NFCPassportReader
 
-@available(iOS 15, *)
+@available(iOS 26, *)
 public func compileUnsafePassportReaderSurface() {
     _ = NFCPassportModel()
     _ = TagReader(tag: nil)

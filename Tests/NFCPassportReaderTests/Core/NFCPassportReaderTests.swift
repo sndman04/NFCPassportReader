@@ -4,7 +4,7 @@ import OpenSSL
 
 @testable import NFCPassportReader
 
-public func XCTAssertNoThrow<T>(_ expression: @autoclosure () throws -> T, _ message: String = "", file: StaticString = #file, line: UInt = #line, also validateResult: (T) -> Void) {
+public func XCTAssertNoThrow<T>(_ expression: @autoclosure () throws -> T, _ message: String = "", file: StaticString = #filePath, line: UInt = #line, also validateResult: (T) -> Void) {
     func executeAndAssignResult(_ expression: @autoclosure () throws -> T, to: inout T?) rethrows {
         to = try expression()
     }
@@ -222,6 +222,7 @@ final class NFCPassportReaderTests: XCTestCase {
     }
 
     @available(iOS 15, *)
+    @MainActor
     func testBACHandlerCleanupClearsDerivedKeysAndRandoms() throws {
         let bac = BACHandler()
         _ = try bac.deriveDocumentBasicAccessKeys(mrz: "ABC1234567001012300101")
@@ -475,6 +476,7 @@ final class NFCPassportReaderTests: XCTestCase {
     }
 
     @available(iOS 15, *)
+    @MainActor
     func testBACSessionKeysRejectShortMutualAuthenticationResponse() {
         let bac = BACHandler()
 
@@ -528,6 +530,11 @@ final class NFCPassportReaderTests: XCTestCase {
         XCTAssertFalse(OpenSSLUtils.verifyECDSASignature(publicKey: key, signature: [0x01], data: []))
     }
 
+    func testOpenSSLX509StackHelpersHandleNilPointers() {
+        XCTAssertEqual(OpenSSLUtils.sk_X509_num(nil), 0)
+        XCTAssertNil(OpenSSLUtils.sk_X509_value(nil, 0))
+    }
+
     func testSignatureDigestNameSelectionCoversActiveAuthenticationAlgorithms() {
         XCTAssertEqual(OpenSSLUtils.digestName(forSignatureType: "ecdsa-plain-SHA1"), "sha1")
         XCTAssertEqual(OpenSSLUtils.digestName(forSignatureType: "ecdsa-plain-SHA224"), "sha224")
@@ -539,18 +546,6 @@ final class NFCPassportReaderTests: XCTestCase {
         XCTAssertEqual(OpenSSLUtils.digestName(forSignatureType: ""), "sha256")
     }
 
-    
-    static var allTests = [
-        ("testBinToHexRep", testBinToHexRep),
-        ("testHexRepToBin", testHexRepToBin),
-        ("testAsn1Length", testAsn1Length),
-        ("testToASNLength", testToASNLength),
-        ("testDES3Encryption", testDES3Encryption),
-        ("testDES3Decryption", testDES3Decryption),
-        ("testSecureMessagingProtect", testSecureMessagingProtect),
-        ("testSecureMessagingUnprotectNoData", testSecureMessagingUnprotectNoData),
-        ("testSecureMessagingUnprotectWithData", testSecureMessagingUnprotectWithData),
-    ]
 }
 
 private func mirroredByteArray(from object: Any, named label: String) -> [UInt8] {

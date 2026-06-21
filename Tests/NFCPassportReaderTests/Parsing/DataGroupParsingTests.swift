@@ -816,13 +816,6 @@ final class DataGroupParsingTests: XCTestCase {
         XCTAssertNoThrow(try sut.verifyTag(actual, oneOf: expected))
     }
 
-    static var allTests = [
-        ("testDatagroup1Parsing", testDatagroup1Parsing),
-        ("testDatagroup2Parsing", testDatagroup2ParsingJPEG2000),
-        ("testDatagroup2ParsingJPEG", testDatagroup2ParsingJPEG),
-        ("testCOMDatagroupParsing", testCOMDatagroupParsing),
-    ]
-    
 }
 
 private func tlv(tag: [UInt8], value: [UInt8]) throws -> [UInt8] {

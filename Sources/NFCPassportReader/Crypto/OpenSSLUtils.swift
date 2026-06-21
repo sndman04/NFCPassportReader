@@ -40,18 +40,17 @@ class OpenSSLUtils {
         var buffer = [CChar](repeating: 0, count: len+1)
         BIO_read(bio, &buffer, Int32(len))
         
-        // Ensure last value is 0 (null terminated) otherwise we get buffer overflow!
-        buffer[len] = 0
-        let ret = String(cString:buffer)
-        return ret
+        return String(decoding: buffer.prefix(len).map(UInt8.init(bitPattern:)), as: UTF8.self)
     }
     
 
-    static func sk_X509_num(_ sk : OpaquePointer!) -> Int32 {
+    static func sk_X509_num(_ sk : OpaquePointer?) -> Int32 {
+        guard let sk else { return 0 }
         return OPENSSL_sk_num(ossl_check_const_X509_sk_type(sk))
     }
     
-    static func sk_X509_value(_ sk : OpaquePointer!, _ idx : Int32 ) -> OpaquePointer! {
+    static func sk_X509_value(_ sk : OpaquePointer?, _ idx : Int32 ) -> OpaquePointer? {
+        guard let sk else { return nil }
         let p = OPENSSL_sk_value(ossl_check_const_X509_sk_type(sk), (idx))
         let op = OpaquePointer(p)
         return op

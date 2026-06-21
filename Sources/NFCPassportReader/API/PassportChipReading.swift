@@ -14,7 +14,7 @@ public protocol PassportChipReading {
         options: PassportScanOptions,
         aaChallenge: [UInt8]?,
         progressHandler: PassportReaderProgressHandler?,
-        customDisplayMessage: ((NFCViewDisplayMessage) -> String?)?
+        customDisplayMessage: PassportReaderDisplayMessageHandler?
     ) async throws -> PassportChipReadResult
 }
 
@@ -33,7 +33,7 @@ extension PassportChipReading {
         securityPolicy: PassportReaderSecurityPolicy = .default,
         pacePolicy: PassportReaderPACEPolicy = .allowBACFallback,
         progressHandler: PassportReaderProgressHandler? = nil,
-        customDisplayMessage: ((NFCViewDisplayMessage) -> String?)? = nil
+        customDisplayMessage: PassportReaderDisplayMessageHandler? = nil
     ) async throws -> PassportChipReadResult {
         try await readPassportIdentity(
             mrzKey: mrzKey,
@@ -71,7 +71,7 @@ public struct PassportReaderFixture: PassportChipReading {
         options: PassportScanOptions,
         aaChallenge: [UInt8]? = nil,
         progressHandler: PassportReaderProgressHandler? = nil,
-        customDisplayMessage: ((NFCViewDisplayMessage) -> String?)? = nil
+        customDisplayMessage: PassportReaderDisplayMessageHandler? = nil
     ) async throws -> PassportChipReadResult {
         progressHandler?(.waitingForPassport)
 

@@ -20,7 +20,9 @@ enum PassportAuthenticationStatus {
 }
 
 @available(iOS 13, macOS 10.15, *)
-class NFCPassportModel {
+// Legacy mutable result type returned by the async reader API. PassportReader transfers it to
+// the caller at completion and releases its own sensitive scan references immediately afterward.
+class NFCPassportModel: @unchecked Sendable {
     
     public var documentType : String { return String( passportDataElements?["5F03"]?.first ?? "?" ) }
     public var documentSubType : String { return String( passportDataElements?["5F03"]?.last ?? "?" ) }
@@ -474,17 +476,18 @@ class NFCPassportModel {
     }
 
     private func verifySODAndReturnEncapsulatedContent(sod: SOD, preferCMSVerification: Bool) throws -> Data {
-        let firstVerifier: (SOD) throws -> Data = preferCMSVerification
-            ? OpenSSLUtils.verifyAndReturnSODEncapsulatedDataUsingCMS
-            : OpenSSLUtils.verifyAndReturnSODEncapsulatedData
-        let secondVerifier: (SOD) throws -> Data = preferCMSVerification
-            ? OpenSSLUtils.verifyAndReturnSODEncapsulatedData
-            : OpenSSLUtils.verifyAndReturnSODEncapsulatedDataUsingCMS
-
-        do {
-            return try firstVerifier(sod)
-        } catch {
-            return try secondVerifier(sod)
+        if preferCMSVerification {
+            do {
+                return try OpenSSLUtils.verifyAndReturnSODEncapsulatedDataUsingCMS(sod: sod)
+            } catch {
+                return try OpenSSLUtils.verifyAndReturnSODEncapsulatedData(sod: sod)
+            }
+        } else {
+            do {
+                return try OpenSSLUtils.verifyAndReturnSODEncapsulatedData(sod: sod)
+            } catch {
+                return try OpenSSLUtils.verifyAndReturnSODEncapsulatedDataUsingCMS(sod: sod)
+            }
         }
     }
     

@@ -23,7 +23,8 @@ import CoreNFC
 /// ciphers it following the doc9303 specification, sends the ciphered APDU to the reader
 /// layer and returns the unciphered APDU.
 @available(iOS 13, *)
-class SecureMessaging {
+// Secure messaging state is owned by a single TagReader scan flow and is scrubbed on cleanup.
+class SecureMessaging: @unchecked Sendable {
     private var ksenc : [UInt8]
     private var ksmac : [UInt8]
     private var ssc : [UInt8]

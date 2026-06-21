@@ -36,6 +36,7 @@ extension PACEHandlerError: LocalizedError {
 }
 
 @available(iOS 15, *)
+@MainActor
 class PACEHandler {
     
     
@@ -76,7 +77,7 @@ class PACEHandler {
         isPACESupported = true
     }
 
-    deinit {
+    isolated deinit {
         removeSensitiveData()
     }
 
@@ -500,7 +501,7 @@ extension PACEHandler {
         )
     }
 
-    static func integratedMappingField(
+    nonisolated static func integratedMappingField(
         passportNonce: [UInt8],
         terminalNonce: [UInt8],
         cipherAlg: String,
@@ -549,7 +550,7 @@ extension PACEHandler {
         PACEHandler.integratedMappingInputBlockLength(cipherAlg: cipherAlg, keyLength: keyLength)
     }
 
-    private static func integratedMappingInputBlockLength(cipherAlg: String, keyLength: Int) -> Int {
+    nonisolated private static func integratedMappingInputBlockLength(cipherAlg: String, keyLength: Int) -> Int {
         if cipherAlg == "AES", keyLength > 128 {
             return 32
         }
@@ -560,14 +561,14 @@ extension PACEHandler {
         PACEHandler.integratedMappingTruncatedKey(key, cipherAlg: cipherAlg, keyLength: keyLength)
     }
 
-    private static func integratedMappingNonceLength(cipherAlg: String, keyLength: Int) -> Int {
+    nonisolated private static func integratedMappingNonceLength(cipherAlg: String, keyLength: Int) -> Int {
         if cipherAlg == "DESede" {
             return 16
         }
         return max(keyLength / 8, 16)
     }
 
-    private static func integratedMappingTruncatedKey(_ key: [UInt8], cipherAlg: String, keyLength: Int) -> [UInt8] {
+    nonisolated private static func integratedMappingTruncatedKey(_ key: [UInt8], cipherAlg: String, keyLength: Int) -> [UInt8] {
         let requiredLength = integratedMappingNonceLength(cipherAlg: cipherAlg, keyLength: keyLength)
         guard key.count > requiredLength else {
             return key
@@ -579,7 +580,7 @@ extension PACEHandler {
         try PACEHandler.integratedMappingEncrypt(key: key, message: message, cipherAlg: cipherAlg)
     }
 
-    private static func integratedMappingEncrypt(key: [UInt8], message: [UInt8], cipherAlg: String) throws -> [UInt8] {
+    nonisolated private static func integratedMappingEncrypt(key: [UInt8], message: [UInt8], cipherAlg: String) throws -> [UInt8] {
         let ivLength = cipherAlg == "DESede" ? 8 : 16
         let iv = [UInt8](repeating: 0, count: ivLength)
         let encrypted: [UInt8]

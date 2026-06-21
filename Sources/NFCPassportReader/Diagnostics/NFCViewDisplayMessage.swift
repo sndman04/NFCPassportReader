@@ -17,6 +17,8 @@ public enum NFCViewDisplayMessage {
     case successfulRead
 }
 
+public typealias PassportReaderDisplayMessageHandler = @Sendable (NFCViewDisplayMessage) -> String?
+
 @available(iOS 13, macOS 10.15, *)
 extension NFCViewDisplayMessage {
     public var description: String {

@@ -2,6 +2,8 @@
 
 This fork intentionally exposes the privacy-safe passport-chip API as the app integration boundary. Notary Journal should use `readPassportIdentity(...)` and should not depend on the internal raw passport model.
 
+The fork now requires SwiftPM tools 6.3, Swift 6 language mode, Xcode 26.5 or newer, and iOS 26.0 or newer. This matches the app-only integration plan and intentionally drops older-package consumer compatibility.
+
 ## Recommended Reader Setup
 
 ```swift
@@ -38,6 +40,8 @@ let result = try await reader.readPassportIdentity(
     }
 )
 ```
+
+`customDisplayMessage` is now `PassportReaderDisplayMessageHandler`, an `@Sendable` closure. Keep captured UI or model state main-actor isolated, or capture immutable values only.
 
 `PassportChipReadResult` exposes normalized identity, optional `faceImageData`, verification, trust, certificate/master-list metadata, and safe diagnostics without returning `NFCPassportModel` or raw chip data. It intentionally omits MRZ text, raw data groups, APDUs, certificates, keys, and active-authentication challenge/signature bytes.
 

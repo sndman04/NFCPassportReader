@@ -1,6 +1,6 @@
 # NFCPassportReader
 
-This package handles reading an NFC Enabled passport using iOS 15 CoreNFC APIS
+This fork handles reading NFC-enabled passports for iOS 26+ apps using Swift 6.3 and CoreNFC.
 
 **Version 2 (and the main branch) now uses Swift Async/Await for communication.  If you need an earlier version, please use 1.1.9 or below!**
 
@@ -23,6 +23,8 @@ It reads and verifies my passport (and others I've been able to test) fine, howe
 ### Swift Package Manager (recommended)
 
 NFCPassportReader may be installed via Swift Package Manager, by pointing to this repo's URL.
+
+This fork requires Xcode 26.5 or newer with Swift 6.3 support. The package manifest declares SwiftPM tools 6.3 and an iOS 26.0 minimum deployment target.
 
 ## Privacy-safe fork usage
 
@@ -50,6 +52,8 @@ mrzKey = "12345678898012772508315"
 Then create a `PassportReader` and call the privacy-first async `readPassportIdentity` API. Prefer reviewed scan options over ad hoc data-group lists where possible.
 
 Progress events are structured and redacted; they do not include MRZ values, APDUs, keys, decrypted data groups, or image bytes.
+
+`customDisplayMessage` uses the public `PassportReaderDisplayMessageHandler` typealias, which is `@Sendable` under Swift 6. Avoid capturing mutable app state in that closure unless the state is actor-isolated or otherwise concurrency-safe.
 
 ```swift
 let passportReader = PassportReader(masterListURL: masterListURL)
@@ -203,7 +207,7 @@ Before tagging this fork for app consumption, run:
 scripts/release_check.sh
 ```
 
-The release check script runs the required iOS package build, iOS build-for-testing, privacy scan, whitespace check, and a targeted risky diagnostics search. Review any search hits before tagging.
+The release check script runs the required iOS package build, iOS build-for-testing, external API surface probe, privacy scan, whitespace check, and a targeted risky diagnostics search. Review any search hits before tagging.
 
 `swift test` may fail in this environment because SwiftPM evaluates the package against macOS while the OpenSSL dependency requires a newer macOS target. Use the iOS/Xcode path above unless the package manifest is deliberately changed to support macOS tests.
 

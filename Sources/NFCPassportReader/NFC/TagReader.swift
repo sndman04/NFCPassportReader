@@ -9,10 +9,12 @@
 import Foundation
 
 #if !os(macOS)
-import CoreNFC
+@preconcurrency import CoreNFC
 
 @available(iOS 15, *)
-class TagReader {
+// CoreNFC's tag protocol is not Sendable-annotated. The reader creates one TagReader per scan
+// and serializes access through the scan task; do not share this wrapper across concurrent scans.
+class TagReader: @unchecked Sendable {
     var tag : NFCISO7816Tag
     var secureMessaging : SecureMessaging?
     var maxDataLengthToRead : Int = 0xA0  // Should be able to use 256 to read arbitrary amounts of data at full speed BUT this isn't supported across all passports so for reliability just use the smaller amount.

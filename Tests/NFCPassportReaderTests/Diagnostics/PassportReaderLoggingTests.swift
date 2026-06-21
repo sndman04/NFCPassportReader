@@ -821,6 +821,7 @@ final class PassportReaderLoggingTests: XCTestCase {
     }
 
     @available(iOS 15, *)
+    @MainActor
     func testReaderFailureCleanupScrubsPartiallyReadWorkingModel() throws {
         let reader = PassportReader()
         let workingModel = try XCTUnwrap(
@@ -867,6 +868,7 @@ final class PassportReaderLoggingTests: XCTestCase {
     }
 
     @available(iOS 15, *)
+    @MainActor
     func testPACEPolicyRequiresExplicitCredentialWithoutLoggingDetails() throws {
         let reader = PassportReader()
 
