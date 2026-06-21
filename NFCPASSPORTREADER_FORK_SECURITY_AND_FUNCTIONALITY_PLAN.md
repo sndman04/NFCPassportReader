@@ -2642,6 +2642,29 @@ Remaining follow-up:
 
 - Continue to require real-device passport interoperability validation before tagging or making broad release claims. This performance pass did not perform physical-device NFC validation or measure device scan timings.
 
+### 2026-06-21 Repository Organization Follow-Up
+
+Completed:
+
+- Reviewed the repository layout against `REPOSITORY_STRUCTURE.md`, the SwiftPM manifest, tracked files, ignored generated state, scripts, tests, and the current CI workflow.
+- Kept the existing responsibility-focused source/test folder layout. No source moves were needed.
+- Updated `.gitignore` so the tracked maintenance helper files under `scripts/` (`README.md`, `extract.py`, and release/privacy/API scripts) are explicitly unignored while ad hoc script outputs remain ignored.
+- Updated `REPOSITORY_STRUCTURE.md` to document `Sources/NFCPassportReader/Unsafe` as an intentionally empty quarantine folder for any future deliberately unsafe compatibility surface that would require plan, docs, tests, and policy gates before use.
+
+Verification:
+
+- `git diff --check` passed.
+- `scripts/privacy_scan.sh` passed.
+- Required generic iOS package build passed:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build
+  ```
+
+Remaining follow-up:
+
+- Continue to keep local SwiftPM/Xcode generated state (`.build`, `.swiftpm`, and root `Package.resolved`) untracked. The OpenSSL dependency remains reproducibly pinned by exact version in `Package.swift`.
+
 ### Option A: Remote Fork
 
 Preferred long-term route:

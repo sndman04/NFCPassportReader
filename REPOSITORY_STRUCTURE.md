@@ -29,6 +29,7 @@ All Swift files under `Sources/NFCPassportReader/` compile into the single `NFCP
 - `Parsing/`: Shared TLV/ASN.1/string/byte parsing utilities and the data-group parser dispatcher.
 - `Models/`: Supporting value models shared by parser and app-facing output code.
 - `Privacy/`: Privacy-safe host-app copy and wording helpers.
+- `Unsafe/`: Reserved quarantine folder for any deliberately unsafe compatibility surface. It is expected to stay empty unless an unsafe API is explicitly reintroduced with plan updates, docs, tests, and policy gates.
 - `Resources/`: Package resources such as `PrivacyInfo.xcprivacy`.
 
 ## OpenSSL Compatibility Target

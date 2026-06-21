@@ -70,7 +70,9 @@ working/
 # Keep release/verification scripts tracked, but ignore ad hoc script outputs.
 scripts/*
 !scripts/
+!scripts/README.md
 !scripts/api_surface_check.sh
+!scripts/extract.py
 !scripts/privacy_scan.sh
 !scripts/release_check.sh
 
