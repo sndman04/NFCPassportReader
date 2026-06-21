@@ -577,6 +577,32 @@ Remaining follow-up:
 
 - Run the harness on an NFC-capable iPhone with a valid signing identity and real passports to validate `.fullVerification`, custom data-group reads, PACE fallback, passive-authentication results, optional bundled master-list behavior, and DG2 face-image handling.
 
+### 2026-06-21 NFC Delegate Queue Crash Fix
+
+Completed:
+
+- Investigated a harness crash at NFC read start showing `_dispatch_assert_queue_fail` on a CoreNFC-related background queue.
+- Root cause: `PassportReader` is main-actor isolated, but `NFCTagReaderSession` was created without an explicit delegate queue. On device, CoreNFC delivered delegate callbacks on a private serial queue, which violated the reader's main-actor/main-queue assumptions as soon as NFC detection began.
+- Fixed `PassportReader` to create `NFCTagReaderSession` with `queue: .main`, keeping CoreNFC delegate callbacks on the same queue as the main-actor reader state.
+
+Verification:
+
+- iOS package build succeeded:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build
+  ```
+
+- External Passport Chip Harness build succeeded against the local fork:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -project "/Users/dougalvey/Documents/Passport Chip Fork Test App/PassportChipHarness.xcodeproj" -scheme PassportChipHarness -destination generic/platform=iOS -derivedDataPath "/Users/dougalvey/Documents/Passport Chip Fork Test App/.codex-deriveddata" CODE_SIGNING_ALLOWED=NO build
+  ```
+
+Remaining follow-up:
+
+- Re-run the harness on device and confirm NFC tag detection no longer trips the dispatch queue assertion. The local environment cannot exercise physical CoreNFC scans.
+
 ### 2026-06-20 Scan/Decode Performance Pass
 
 Completed:
