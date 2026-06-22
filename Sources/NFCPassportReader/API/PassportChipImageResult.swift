@@ -35,7 +35,7 @@ public struct PassportChipImageResult: Sendable, Equatable {
         }
 
         self.data = Data(dataGroup.imageData)
-        self.format = PassportChipImageFormat(imageDataType: dataGroup.imageDataType)
+        self.format = PassportChipImageFormat(imageData: dataGroup.imageData)
         self.mimeType = format.mimeType
         self.width = dataGroup.imageWidth > 0 ? dataGroup.imageWidth : nil
         self.height = dataGroup.imageHeight > 0 ? dataGroup.imageHeight : nil
@@ -44,13 +44,13 @@ public struct PassportChipImageResult: Sendable, Equatable {
 
 @available(iOS 13, macOS 10.15, *)
 private extension PassportChipImageFormat {
-    init(imageDataType: Int) {
-        switch imageDataType {
-        case 0x00:
+    init(imageData: [UInt8]) {
+        if imageData.starts(with: [0xff, 0xd8, 0xff]) {
             self = .jpeg
-        case 0x01:
+        } else if imageData.starts(with: [0x00, 0x00, 0x00, 0x0c, 0x6a, 0x50, 0x20, 0x20, 0x0d, 0x0a]) ||
+                    imageData.starts(with: [0xff, 0x4f, 0xff, 0x51]) {
             self = .jpeg2000
-        default:
+        } else {
             self = .unknown
         }
     }

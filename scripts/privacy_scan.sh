@@ -19,8 +19,8 @@ if scan "(^|[^[:alnum:]_])(print\\(|Logger\\.|os_log\\(|OSLog\\()" Sources; then
 fi
 
 echo "Checking for risky sinks in production sources..."
-if scan "UIPasteboard|URLSession|FileManager\\.default\\.createFile|\\.write\\(" Sources; then
-  echo "Potential persistence, clipboard, or network sink found in production sources. Review privacy impact." >&2
+if scan "UIPasteboard|URLSession|UserDefaults|FileManager\\.default|\\.write\\(" Sources; then
+  echo "Potential persistence, clipboard, filesystem, defaults, or network sink found in production sources. Review privacy impact." >&2
   exit 1
 fi
 

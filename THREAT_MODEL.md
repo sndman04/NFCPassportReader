@@ -33,7 +33,9 @@ This fork reads identity-document NFC data. Privacy, security, correctness, and 
 - `PassportReaderFailure` carries stage-aware retry metadata without exposing low-level error payloads, and data-group read reports describe requested/advertised/read/skipped/blocked/unsupported/failed states without raw contents.
 - `PassportInteroperabilityRecord` is limited to non-identifying real-device compatibility notes and rejects MRZ-like strings or long hex samples.
 - Parser and crypto boundaries should reject malformed input without traps, out-of-bounds reads, or empty cryptographic outputs.
-- DG2 and DG7 image parsing applies explicit size and structural bounds before retaining image bytes or allowing image decode.
+- Secure Messaging protected responses must fail closed when DO'87, DO'99, or DO'8E are missing, truncated, malformed, or inconsistent.
+- DG2, DG7, and DG12 image parsing applies explicit size, structure, and image-header bounds before retaining image bytes or allowing image decode.
+- DG11 and DG12 optional text parsing applies per-field size bounds before retaining decoded strings.
 
 ## Verification Trust Assumptions
 
@@ -57,6 +59,7 @@ This fork reads identity-document NFC data. Privacy, security, correctness, and 
 
 - Build the iOS package target.
 - Build the iOS test bundle.
+- Run the iOS Simulator test suite through `scripts/release_check.sh`.
 - Run `scripts/privacy_scan.sh`.
 - Run `git diff --check`.
 - Run targeted searches for raw diagnostics, risky sinks, runtime traps, and removed raw import/export APIs.

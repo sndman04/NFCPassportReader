@@ -49,63 +49,73 @@ class SecureMessaging: @unchecked Sendable {
         ssc.removeAll(keepingCapacity: false)
     }
 
+    var sequenceCounter: [UInt8] {
+        ssc
+    }
+
     /// Protect the apdu following the doc9303 specification
     func protect(apdu : NFCISO7816APDU, useExtendedMode: Bool = false ) throws -> NFCISO7816APDU {
+        let originalSSC = self.ssc
         self.ssc = self.incSSC()
-        let paddedSSC = algoName == .DES ? self.ssc : [UInt8](repeating: 0, count: 8) + ssc
+        do {
+            let paddedSSC = algoName == .DES ? self.ssc : [UInt8](repeating: 0, count: 8) + ssc
 
 
-        let cmdHeader = self.maskClassAndPad(apdu: apdu)
-        var do87 : [UInt8] = []
-        var do97 : [UInt8] = []
-        
-        if apdu.data != nil {
-            do87 = try self.buildD087(apdu: apdu)
-        }
-        
-        let isMSE = apdu.instructionCode == 0x22
-        if apdu.expectedResponseLength > 0 && (isMSE ? apdu.expectedResponseLength < 256 : true) {
-            do97 = try self.buildD097(apdu: apdu)
-        }
-        
-        let M = cmdHeader + do87 + do97
-        
-        let N = pad(paddedSSC + M, blockSize:padLength)
+            let cmdHeader = self.maskClassAndPad(apdu: apdu)
+            var do87 : [UInt8] = []
+            var do97 : [UInt8] = []
 
-        var CC = mac(algoName: algoName, key: self.ksmac, msg: N)
-        guard !CC.isEmpty else {
-            throw NFCPassportReaderError.UnableToProtectAPDU
+            if apdu.data != nil {
+                do87 = try self.buildD087(apdu: apdu)
+            }
+
+            let isMSE = apdu.instructionCode == 0x22
+            if apdu.expectedResponseLength > 0 && (isMSE ? apdu.expectedResponseLength < 256 : true) {
+                do97 = try self.buildD097(apdu: apdu)
+            }
+
+            let M = cmdHeader + do87 + do97
+
+            let N = pad(paddedSSC + M, blockSize:padLength)
+
+            var CC = mac(algoName: algoName, key: self.ksmac, msg: N)
+            guard !CC.isEmpty else {
+                throw NFCPassportReaderError.UnableToProtectAPDU
+            }
+            if CC.count > 8 {
+                CC = [UInt8](CC[0..<8])
+            }
+
+            let do8e = self.buildD08E(mac: CC)
+
+            // If dataSize > 255 then it will be encoded in 3 bytes with the first byte being 0x00
+            // otherwise its a single byte of size
+            let size = do87.count + do97.count + do8e.count
+            var dataSize: [UInt8]
+            if size > 255 || (useExtendedMode && apdu.expectedResponseLength > 231) {
+                dataSize = [0x00] + intToBin(size, pad: 4)
+            } else {
+                dataSize = intToBin(size)
+            }
+            var protectedAPDU = [UInt8](cmdHeader[0..<4]) + dataSize
+            protectedAPDU += do87 + do97 + do8e
+
+            // If the data is more that 255, specify the we are using extended length (0x00, 0x00)
+            // Thanks to @filom for the fix!
+            if size > 255 || (useExtendedMode && apdu.expectedResponseLength > 231) {
+                protectedAPDU += [0x00,0x00]
+            } else {
+                protectedAPDU += [0x00]
+            }
+
+            guard let newAPDU = NFCISO7816APDU(data: Data(protectedAPDU)) else {
+                throw NFCPassportReaderError.UnableToProtectAPDU
+            }
+            return newAPDU
+        } catch {
+            self.ssc = originalSSC
+            throw error
         }
-        if CC.count > 8 {
-            CC = [UInt8](CC[0..<8])
-        }
-        
-        let do8e = self.buildD08E(mac: CC)
-        
-        // If dataSize > 255 then it will be encoded in 3 bytes with the first byte being 0x00
-        // otherwise its a single byte of size
-        let size = do87.count + do97.count + do8e.count
-        var dataSize: [UInt8]
-        if size > 255 || (useExtendedMode && apdu.expectedResponseLength > 231) {
-            dataSize = [0x00] + intToBin(size, pad: 4)
-        } else {
-            dataSize = intToBin(size)
-        }
-        var protectedAPDU = [UInt8](cmdHeader[0..<4]) + dataSize
-        protectedAPDU += do87 + do97 + do8e
-            
-        // If the data is more that 255, specify the we are using extended length (0x00, 0x00)
-        // Thanks to @filom for the fix!
-        if size > 255 || (useExtendedMode && apdu.expectedResponseLength > 231) {
-            protectedAPDU += [0x00,0x00]
-        } else {
-            protectedAPDU += [0x00]
-        }
-        
-        guard let newAPDU = NFCISO7816APDU(data: Data(protectedAPDU)) else {
-            throw NFCPassportReaderError.UnableToProtectAPDU
-        }
-        return newAPDU
     }
 
     /// Unprotect the APDU following the iso7816 specification
@@ -117,13 +127,13 @@ class SecureMessaging: @unchecked Sendable {
         //var do8e : [UInt8] = []
         var offset = 0
         
-        self.ssc = self.incSSC()
-        let paddedSSC = algoName == .DES ? self.ssc : [UInt8](repeating: 0, count: 8) + ssc
-                
         // Check for a SM error
         if(rapdu.sw1 != 0x90 || rapdu.sw2 != 0x00) {
             return rapdu
         }
+
+        self.ssc = self.incSSC()
+        let paddedSSC = algoName == .DES ? self.ssc : [UInt8](repeating: 0, count: 8) + ssc
 
         let rapduBin = rapdu.data + [rapdu.sw1, rapdu.sw2]
         guard !rapduBin.isEmpty else {
@@ -140,6 +150,10 @@ class SecureMessaging: @unchecked Sendable {
                   offset + Int(encDataLength) <= rapduBin.count else {
                 throw NFCPassportReaderError.D087Malformed
             }
+
+            guard encDataLength >= 2 else {
+                throw NFCPassportReaderError.D087Malformed
+            }
             
             if rapduBin[offset] != 0x1 {
                 throw NFCPassportReaderError.D087Malformed
@@ -147,28 +161,29 @@ class SecureMessaging: @unchecked Sendable {
             
             do87 = [UInt8](rapduBin[0 ..< offset + Int(encDataLength)])
             do87Data = [UInt8](rapduBin[offset+1 ..< offset + Int(encDataLength)])
+            guard !do87Data.isEmpty,
+                  do87Data.count.isMultiple(of: padLength) else {
+                throw NFCPassportReaderError.D087Malformed
+            }
             offset += Int(encDataLength)
             needCC = true
         }
         
         //DO'99'
         // Mandatory, only absent if SM error occurs
-        guard rapduBin.count >= offset + 5 else {
-            let returnSw1 = (rapduBin.count >= offset+3) ? rapduBin[offset+2] : 0;
-            let returnSw2 = (rapduBin.count >= offset+4) ? rapduBin[offset+3] : 0;
-            return ResponseAPDU(data: [], sw1: returnSw1, sw2: returnSw2);
+        guard rapduBin.count >= offset + 4 else {
+            throw NFCPassportReaderError.MissingMandatoryFields
         }
 
         do99 = [UInt8](rapduBin[offset..<offset+4])
+        if do99[0] != 0x99 || do99[1] != 0x02 {
+            throw NFCPassportReaderError.MissingMandatoryFields
+        }
+
         let sw1 = rapduBin[offset+2]
         let sw2 = rapduBin[offset+3]
         offset += 4
         needCC = true
-        
-        if do99[0] != 0x99 || do99[1] != 0x02 {
-            //SM error, return the error code
-            return ResponseAPDU(data: [], sw1: sw1, sw2: sw2)
-        }
         
         // DO'8E'
         //Mandatory if DO'87' and/or DO'99' is present
@@ -178,6 +193,10 @@ class SecureMessaging: @unchecked Sendable {
             }
 
             let ccLength : Int = Int(rapduBin[offset+1])
+            guard ccLength == 8 else {
+                throw NFCPassportReaderError.MissingMandatoryFields
+            }
+
             guard offset + 2 + ccLength <= rapduBin.count else {
                 throw NFCPassportReaderError.MissingMandatoryFields
             }
@@ -231,7 +250,10 @@ class SecureMessaging: @unchecked Sendable {
             }
 
             // There is a payload
-            data = unpad(dec)
+            guard let unpaddedData = strictUnpad(dec) else {
+                throw NFCPassportReaderError.UnableToUnprotectAPDU
+            }
+            data = unpaddedData
         }
         return ResponseAPDU(data: data, sw1: sw1, sw2: sw2)
     }

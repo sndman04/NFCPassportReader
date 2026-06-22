@@ -90,6 +90,27 @@ class DataGroup2 : DataGroup {
     }
 
     override func removeSensitiveDataForPrivacy() {
+        nrImages = 0
+        versionNumber = 0
+        lengthOfRecord = 0
+        numberOfFacialImages = 0
+        facialRecordDataLength = 0
+        nrFeaturePoints = 0
+        gender = 0
+        eyeColor = 0
+        hairColor = 0
+        featureMask = 0
+        expression = 0
+        poseAngle = 0
+        poseAngleUncertainty = 0
+        faceImageType = 0
+        imageDataType = 0
+        imageWidth = 0
+        imageHeight = 0
+        imageColorSpace = 0
+        sourceType = 0
+        deviceType = 0
+        quality = 0
         imageData.removeAll(keepingCapacity: false)
         imageDataItems.removeAll(keepingCapacity: false)
         super.removeSensitiveDataForPrivacy()
@@ -132,8 +153,15 @@ class DataGroup2 : DataGroup {
         let parsedLengthOfRecord = try readInteger(from: data, offset: &offset, byteCount: 4)
         let parsedNumberOfFacialImages = try readInteger(from: data, offset: &offset, byteCount: 2)
 
+        guard parsedLengthOfRecord == data.count else {
+            throw NFCPassportReaderError.InvalidASN1Structure
+        }
+        guard parsedNumberOfFacialImages > 0,
+              parsedNumberOfFacialImages <= 32 else {
+            throw NFCPassportReaderError.InvalidASN1Structure
+        }
+
         if parsedNumberOfFacialImages > 1,
-           parsedNumberOfFacialImages <= 32,
            try parseMultipleFacialRecordsIfPossible(
             data: data,
             offset: offset,
@@ -144,10 +172,21 @@ class DataGroup2 : DataGroup {
             return
         }
 
+        let recordStart = offset
+        var lengthOffset = offset
+        let facialRecordDataLength = try readInteger(from: data, offset: &lengthOffset, byteCount: 4)
+        let remainingDataLength = data.count - recordStart
+        guard facialRecordDataLength >= 32,
+              facialRecordDataLength <= remainingDataLength,
+              facialRecordDataLength == remainingDataLength else {
+            throw NFCPassportReaderError.InvalidASN1Structure
+        }
+        let recordEnd = recordStart + facialRecordDataLength
+
         let record = try parseFacialRecord(
             data: data,
             offset: &offset,
-            recordEnd: data.count,
+            recordEnd: recordEnd,
             versionNumber: parsedVersionNumber,
             lengthOfRecord: parsedLengthOfRecord,
             numberOfFacialImages: parsedNumberOfFacialImages

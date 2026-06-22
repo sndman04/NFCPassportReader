@@ -26,26 +26,40 @@ class COM : DataGroup {
         // AA is major number, BB is minor number
         // e.g.  48 49 48 55 -> 01 07 -> 1.7
         var versionBytes = try getNextValue()
-        if let parsedVersion = Self.versionString(from: versionBytes, componentWidths: [2, 2]) {
-            version = parsedVersion
+        guard let parsedVersion = Self.versionString(from: versionBytes, componentWidths: [2, 2]) else {
+            throw NFCPassportReaderError.InvalidASN1Structure
         }
+        version = parsedVersion
+
         tag = try getNextTag()
         try verifyTag(tag, equals: 0x5F36)
         
         versionBytes = try getNextValue()
-        if let parsedUnicodeVersion = Self.versionString(from: versionBytes, componentWidths: [2, 2, 2]) {
-            unicodeVersion = parsedUnicodeVersion
+        guard let parsedUnicodeVersion = Self.versionString(from: versionBytes, componentWidths: [2, 2, 2]) else {
+            throw NFCPassportReaderError.InvalidASN1Structure
         }
+        unicodeVersion = parsedUnicodeVersion
         
         tag = try getNextTag()
         try verifyTag(tag, equals: 0x5C)
         
         let vals = try getNextValue()
+        var seenDataGroups = Set<UInt8>()
         for v in vals {
-            if let name = DataGroupParser.tagNameLookup[v] {
+            guard let name = DataGroupParser.tagNameLookup[v] else {
+                throw NFCPassportReaderError.InvalidASN1Structure
+            }
+            if seenDataGroups.insert(v).inserted {
                 dataGroupsPresent.append(name)
             }
         }
+    }
+
+    override func removeSensitiveDataForPrivacy() {
+        version = "Unknown"
+        unicodeVersion = "Unknown"
+        dataGroupsPresent.removeAll(keepingCapacity: false)
+        super.removeSensitiveDataForPrivacy()
     }
 
     private static func versionString(from bytes: [UInt8], componentWidths: [Int]) -> String? {

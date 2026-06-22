@@ -24,8 +24,12 @@ public struct PassportChipReadResult: Sendable, Equatable {
     public let certificateTrustMetadata: PassportCertificateTrustMetadata
     public let diagnosticsSummary: PassportReaderDiagnosticsSummary
 
-    init(passport: NFCPassportModel, photoPolicy: PassportPhotoPolicy = .read) {
-        self.identity = passport.identityResult
+    init(
+        passport: NFCPassportModel,
+        photoPolicy: PassportPhotoPolicy = .read,
+        securityPolicy: PassportReaderSecurityPolicy = .default
+    ) {
+        self.identity = PassportIdentityResult(passport: passport, photoPolicy: photoPolicy)
         if let dg2 = passport.getDataGroup(.DG2) as? DataGroup2 {
             self.faceImageData = PassportChipImageResult(dataGroup: dg2, photoPolicy: photoPolicy)
         } else {
@@ -34,6 +38,11 @@ public struct PassportChipReadResult: Sendable, Equatable {
         self.verificationResult = passport.verificationResult
         self.trustLevel = PassportTrustLevel(passport: passport)
         self.certificateTrustMetadata = PassportCertificateTrustMetadata(passport: passport)
-        self.diagnosticsSummary = PassportReaderDiagnosticsSummary(passport: passport)
+        self.diagnosticsSummary = PassportReaderDiagnosticsSummary(
+            scanProfile: .custom(passport.dataGroupsAvailable),
+            photoPolicy: photoPolicy,
+            securityPolicy: securityPolicy,
+            passport: passport
+        )
     }
 }

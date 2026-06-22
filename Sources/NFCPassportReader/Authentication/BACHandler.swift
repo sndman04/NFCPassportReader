@@ -112,8 +112,10 @@ class BACHandler {
     /// @type rnd_icc: A 8 bytes binary string
     /// @return: The APDU binary data for the mutual authenticate command
     func authentication( rnd_icc : [UInt8]) throws -> [UInt8] {
-        self.rnd_icc = rnd_icc
-        
+        guard rnd_icc.count == 8 else {
+            throw NFCPassportReaderError.MissingMandatoryFields
+        }
+
         self.rnd_icc = rnd_icc
 
         let rnd_ifd = generateRandomUInt8Array(8)
@@ -146,14 +148,32 @@ class BACHandler {
     
     /// @param data: the data received from the mutual authenticate command send to the chip.
     /// @type data: a binary string
-    /// @return: A set of two 16 bytes keys (KSenc, KSmac) and the SSC
+    /// @return: A set of secure messaging keys (KSenc, KSmac) and the SSC
     func sessionKeys(data : [UInt8] ) throws -> ([UInt8], [UInt8], [UInt8]) {
-        guard data.count >= 32 else {
+        guard data.count == 40 else {
             throw NFCPassportReaderError.InvalidMRZKey
         }
 
-        let response = tripleDESDecrypt(key: self.ksenc, message: [UInt8](data[0..<32]), iv: [0,0,0,0,0,0,0,0] )
-        guard response.count >= 32 else {
+        let encryptedResponse = [UInt8](data[0..<32])
+        let responseMAC = [UInt8](data[32..<40])
+        var expectedMAC = mac(algoName: .DES, key: ksmac, msg: pad(encryptedResponse, blockSize: 8))
+        guard !expectedMAC.isEmpty else {
+            throw NFCPassportReaderError.InvalidMRZKey
+        }
+        if expectedMAC.count > 8 {
+            expectedMAC = [UInt8](expectedMAC[0..<8])
+        }
+        guard Self.constantTimeEqual(responseMAC, expectedMAC) else {
+            throw NFCPassportReaderError.InvalidMRZKey
+        }
+
+        let response = tripleDESDecrypt(key: self.ksenc, message: encryptedResponse, iv: [0,0,0,0,0,0,0,0] )
+        guard response.count == 32 else {
+            throw NFCPassportReaderError.InvalidMRZKey
+        }
+
+        guard [UInt8](response[0..<8]) == rnd_icc,
+              [UInt8](response[8..<16]) == rnd_ifd else {
             throw NFCPassportReaderError.InvalidMRZKey
         }
 
@@ -166,6 +186,18 @@ class BACHandler {
         
         let ssc = [UInt8](self.rnd_icc.suffix(4) + self.rnd_ifd.suffix(4))
         return (KSenc, KSmac, ssc)
+    }
+
+    private nonisolated static func constantTimeEqual(_ lhs: [UInt8], _ rhs: [UInt8]) -> Bool {
+        guard lhs.count == rhs.count else {
+            return false
+        }
+
+        var difference: UInt8 = 0
+        for index in lhs.indices {
+            difference |= lhs[index] ^ rhs[index]
+        }
+        return difference == 0
     }
     
 }

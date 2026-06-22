@@ -60,6 +60,10 @@ class SecureMessagingSessionKeyGenerator {
     /// - Returns the key.
     /// - Throws InvalidDataPassed on data error
     func deriveKey(keySeed : [UInt8], cipherAlgName :String, keyLength : Int, nonce : [UInt8]?, mode : SMSMode, paceKeyReference : UInt8) throws ->  [UInt8] {
+        guard !keySeed.isEmpty else {
+            throw NFCPassportReaderError.InvalidDataPassed("Missing key seed")
+        }
+
         let digestAlgo = try inferDigestAlgorithmFromCipherAlgorithmForKeyDerivation(cipherAlg: cipherAlgName, keyLength: keyLength);
         
         let modeArr : [UInt8] = [0x00, 0x00, 0x00, mode.rawValue]
@@ -70,8 +74,9 @@ class SecureMessagingSessionKeyGenerator {
         dataEls.append( Data(modeArr) )
         let hashResult = try getHash(algo: digestAlgo, dataElements: dataEls)
         
+        let normalizedCipherName = cipherAlgName.lowercased()
         var keyBytes : [UInt8]
-        if cipherAlgName == "DESede" || cipherAlgName == "3DES" {
+        if normalizedCipherName == "desede" || normalizedCipherName == "3des" {
             // TR-SAC 1.01, 4.2.1.
             switch(keyLength) {
                 case 112, 128:
@@ -82,7 +87,6 @@ class SecureMessagingSessionKeyGenerator {
                     throw NFCPassportReaderError.UnsupportedCipherAlgorithm
             }
         } else {
-            let normalizedCipherName = cipherAlgName.lowercased()
             guard normalizedCipherName == "aes" || normalizedCipherName.hasPrefix("aes") else {
                 throw NFCPassportReaderError.UnsupportedCipherAlgorithm
             }
@@ -103,16 +107,17 @@ class SecureMessagingSessionKeyGenerator {
     }
     
     func inferDigestAlgorithmFromCipherAlgorithmForKeyDerivation( cipherAlg : String, keyLength : Int) throws -> String {
-        if cipherAlg == "DESede" || cipherAlg == "AES-128" {
+        let normalizedCipherName = cipherAlg.lowercased()
+        if normalizedCipherName == "desede" || normalizedCipherName == "3des" || normalizedCipherName == "aes-128" {
             return "SHA1";
         }
-        if cipherAlg == "AES" && keyLength == 128 {
+        if normalizedCipherName == "aes" && keyLength == 128 {
             return "SHA1";
         }
-        if cipherAlg == "AES-256" || cipherAlg ==  "AES-192" {
+        if normalizedCipherName == "aes-256" || normalizedCipherName ==  "aes-192" {
             return "SHA256";
         }
-        if cipherAlg == "AES" && (keyLength == 192 || keyLength == 256) {
+        if normalizedCipherName == "aes" && (keyLength == 192 || keyLength == 256) {
             return "SHA256";
         }
         

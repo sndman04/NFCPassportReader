@@ -27,7 +27,7 @@ class DataGroup15 : DataGroup {
     override func parse(_ data: [UInt8]) throws {
         
         guard let key = try OpenSSLUtils.readPublicKey(data: body) else {
-            return
+            throw NFCPassportReaderError.InvalidASN1Structure
         }
 
         switch OpenSSLUtils.publicKeyType(key) {
@@ -37,6 +37,7 @@ class DataGroup15 : DataGroup {
             rsaPublicKey = key
         default:
             EVP_PKEY_free(key)
+            throw NFCPassportReaderError.InvalidASN1Structure
         }
     }
 

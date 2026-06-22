@@ -31,13 +31,6 @@ extension Int {
     }
 }
 
-extension FileManager {
-    static var documentDir : URL {
-        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
-            ?? URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
-    }
-}
-
 extension StringProtocol {
     subscript(bounds: CountableClosedRange<Int>) -> SubSequence {
         let start = index(startIndex, offsetBy: bounds.lowerBound)
@@ -138,6 +131,10 @@ func binToInt( _ val: [UInt8] ) -> Int {
 }
 
 func intToBin(_ data : Int, pad : Int = 2) -> [UInt8] {
+    guard data >= 0 else {
+        return []
+    }
+
     if pad == 2 {
         guard data > 0xFF else {
             return [UInt8(data & 0xFF)]
@@ -234,6 +231,23 @@ func unpad( _ tounpad : [UInt8]) -> [UInt8] {
     }
 }
 
+func strictUnpad(_ toUnpad: [UInt8]) -> [UInt8]? {
+    guard !toUnpad.isEmpty else {
+        return nil
+    }
+
+    var index = toUnpad.count - 1
+    while index > 0 && toUnpad[index] == 0x00 {
+        index -= 1
+    }
+
+    guard toUnpad[index] == 0x80 else {
+        return nil
+    }
+
+    return [UInt8](toUnpad[0..<index])
+}
+
 @available(iOS 13, macOS 10.15, *)
 func mac(algoName: SecureMessagingSupportedAlgorithms, key : [UInt8], msg : [UInt8]) -> [UInt8] {
     if algoName == .DES {
@@ -316,6 +330,10 @@ private func asn1LengthBytes(for length: Int) -> [UInt8] {
 
 
 func intToBytes( val: Int, removePadding:Bool) -> [UInt8] {
+    guard val >= 0 else {
+        return []
+    }
+
     if val == 0 {
         return [0]
     }

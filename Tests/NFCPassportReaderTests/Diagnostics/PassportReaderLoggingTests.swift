@@ -295,6 +295,40 @@ final class PassportReaderLoggingTests: XCTestCase {
         XCTAssertTrue(ordered.first === im)
     }
 
+    func testCardAccessPreferredPACEInfoUsesFirstImplementedEntry() throws {
+        let unsupportedFirst = try securityInfo(
+            oid: SecurityInfo.ID_PACE_ECDH_GM_AES_CBC_CMAC_128,
+            requiredData: diagnosticASN1Integer([0x02]),
+            optionalData: diagnosticASN1Integer([0x7F])
+        )
+        let implementedSecond = try securityInfo(
+            oid: SecurityInfo.ID_PACE_ECDH_GM_AES_CBC_CMAC_128,
+            requiredData: diagnosticASN1Integer([0x02]),
+            optionalData: diagnosticASN1Integer([UInt8(PACEInfo.PARAM_ID_ECP_NIST_P256_R1)])
+        )
+
+        let cardAccess = try CardAccess(diagnosticASN1Set(unsupportedFirst + implementedSecond))
+
+        XCTAssertEqual(cardAccess.preferredPACEInfo?.getParameterId(), PACEInfo.PARAM_ID_ECP_NIST_P256_R1)
+    }
+
+    func testCardAccessPreferredPACEInfoFallsBackToFirstEntryForPreflightFailure() throws {
+        let unsupportedFirst = try securityInfo(
+            oid: SecurityInfo.ID_PACE_ECDH_GM_AES_CBC_CMAC_128,
+            requiredData: diagnosticASN1Integer([0x02]),
+            optionalData: diagnosticASN1Integer([0x7F])
+        )
+        let unsupportedSecond = try securityInfo(
+            oid: SecurityInfo.ID_PACE_ECDH_GM_AES_CBC_CMAC_192,
+            requiredData: diagnosticASN1Integer([0x02]),
+            optionalData: diagnosticASN1Integer([0x7E])
+        )
+
+        let cardAccess = try CardAccess(diagnosticASN1Set(unsupportedFirst + unsupportedSecond))
+
+        XCTAssertEqual(cardAccess.preferredPACEInfo?.getParameterId(), 0x7F)
+    }
+
     func testPACEInfoSelectionTreatsECDHCAMAsReadableMapping() {
         let cam = PACEInfo(
             oid: SecurityInfo.ID_PACE_ECDH_CAM_AES_CBC_CMAC_128,
@@ -439,6 +473,19 @@ final class PassportReaderLoggingTests: XCTestCase {
         XCTAssertFalse(result.verifies(using: [
             ChipAuthenticationPublicKeyInfo(oid: SecurityInfo.ID_PK_ECDH_OID, pubKey: wrongStaticKey, ownsPublicKey: false)
         ]))
+
+        let malformedPaddedCAMData = [UInt8](repeating: 0xA5, count: 16)
+        let encryptedMalformedCAMData = AESEncrypt(key: encryptionKey, message: malformedPaddedCAMData, iv: iv)
+        XCTAssertThrowsError(try PACEChipAuthenticationMappingResult(
+            mappingPublicKey: mappingPublicKey,
+            encryptedChipAuthenticationData: encryptedMalformedCAMData,
+            encryptionKey: encryptionKey
+        )) { error in
+            guard case NFCPassportReaderError.PACEError = error else {
+                XCTFail("Expected PACEError, got \(error)")
+                return
+            }
+        }
     }
 
     func testSupportedPACEIdentifiersHaveCompleteMetadata() throws {
@@ -512,7 +559,12 @@ final class PassportReaderLoggingTests: XCTestCase {
             requiredData: diagnosticASN1Integer([0x01])
         )
 
-        XCTAssertTrue(try SecurityInfosParser.parse(diagnosticASN1Set(malformedPublicKeyInfo)).isEmpty)
+        XCTAssertThrowsError(try SecurityInfosParser.parse(diagnosticASN1Set(malformedPublicKeyInfo))) { error in
+            guard case NFCPassportReaderError.InvalidASN1Structure = error else {
+                XCTFail("Expected InvalidASN1Structure, got \(error)")
+                return
+            }
+        }
     }
 
     func testSecurityInfoRejectsOversizedPublicKeyBeforeOpenSSLParsing() throws {
@@ -523,12 +575,17 @@ final class PassportReaderLoggingTests: XCTestCase {
         let parsedInfo = try XCTUnwrap(try SimpleASN1Node.parse(malformedPublicKeyInfo))
         let requiredData = try XCTUnwrap(parsedInfo.children.dropFirst().first)
 
-        XCTAssertNil(SecurityInfo.getInstance(
+        XCTAssertThrowsError(try SecurityInfo.getInstance(
             oid: SecurityInfo.ID_PK_ECDH_OID,
             requiredData: requiredData,
             requiredDataDER: [UInt8](repeating: 0x01, count: 64 * 1024 + 1),
             optionalData: nil
-        ))
+        )) { error in
+            guard case NFCPassportReaderError.InvalidASN1Structure = error else {
+                XCTFail("Expected InvalidASN1Structure, got \(error)")
+                return
+            }
+        }
     }
 
     func testCustomScanProfileDeduplicatesWithoutReordering() {
@@ -573,6 +630,15 @@ final class PassportReaderLoggingTests: XCTestCase {
         XCTAssertTrue(NFCPassportReaderError.ResponseError("redacted", 0x6C, 0x20).shouldReduceReadAmountAndRedoBAC)
         XCTAssertTrue(NFCPassportReaderError.UnsupportedDataGroup.isUnsupportedDataGroupRead)
         XCTAssertFalse(NFCPassportReaderError.InvalidMRZKey.shouldRedoBACForDataGroupRead)
+    }
+
+    @MainActor
+    func testSkippedDataGroupQueueRemovalTargetsCurrentGroup() {
+        var dataGroups: [DataGroupId] = [.COM, .SOD, .DG1, .DG2, .DG11]
+
+        PassportReader.removeDataGroup(.DG2, from: &dataGroups)
+
+        XCTAssertEqual(dataGroups, [.COM, .SOD, .DG1, .DG11])
     }
 
     @available(iOS 15, *)
@@ -641,6 +707,40 @@ final class PassportReaderLoggingTests: XCTestCase {
 
         XCTAssertEqual(model.verificationResult.chipAuthenticationStatus, .notChecked)
         XCTAssertEqual(model.verificationResult.chipAuthenticationDetail.reason, .skipped)
+    }
+
+    func testOptionalAuthenticationStatusReportsFailedDataGroupReadsAsFailed() {
+        let activeModel = NFCPassportModel()
+        activeModel.recordDataGroupReadStatus(.advertised, for: .DG15)
+        activeModel.recordDataGroupReadStatus(.failed, for: .DG15)
+
+        XCTAssertEqual(activeModel.verificationResult.activeAuthenticationStatus, .failed)
+        XCTAssertEqual(activeModel.verificationResult.activeAuthenticationDetail.reason, .attemptedFailed)
+
+        let chipModel = NFCPassportModel()
+        chipModel.recordDataGroupReadStatus(.advertised, for: .DG14)
+        chipModel.recordDataGroupReadStatus(.failed, for: .DG14)
+
+        XCTAssertEqual(chipModel.verificationResult.chipAuthenticationStatus, .failed)
+        XCTAssertEqual(chipModel.verificationResult.chipAuthenticationDetail.reason, .attemptedFailed)
+    }
+
+    func testOptionalAuthenticationUnsupportedReadTakesPrecedenceOverTransientFailure() {
+        let activeModel = NFCPassportModel()
+        activeModel.recordDataGroupReadStatus(.advertised, for: .DG15)
+        activeModel.recordDataGroupReadStatus(.failed, for: .DG15)
+        activeModel.recordDataGroupReadStatus(.unsupported, for: .DG15)
+
+        XCTAssertEqual(activeModel.verificationResult.activeAuthenticationStatus, .notChecked)
+        XCTAssertEqual(activeModel.verificationResult.activeAuthenticationDetail.reason, .notSupported)
+
+        let chipModel = NFCPassportModel()
+        chipModel.recordDataGroupReadStatus(.advertised, for: .DG14)
+        chipModel.recordDataGroupReadStatus(.failed, for: .DG14)
+        chipModel.recordDataGroupReadStatus(.unsupported, for: .DG14)
+
+        XCTAssertEqual(chipModel.verificationResult.chipAuthenticationStatus, .notChecked)
+        XCTAssertEqual(chipModel.verificationResult.chipAuthenticationDetail.reason, .notSupported)
     }
 
     func testWhenSupportedPoliciesFailIfAdvertisedMechanismWasSkipped() {
@@ -731,6 +831,28 @@ final class PassportReaderLoggingTests: XCTestCase {
         XCTAssertEqual(requested, [.COM, .SOD, .DG1])
     }
 
+    @available(iOS 15, *)
+    @MainActor
+    func testInitialDataGroupReadRequestRecordsLegacyReadAllStartupGroups() {
+        let legacyReadAll = PassportReader.initialDataGroupReadRequest(
+            tags: [],
+            photoPolicy: .read,
+            securityPolicy: .default
+        )
+
+        XCTAssertEqual(legacyReadAll.dataGroups, [.COM, .SOD])
+        XCTAssertTrue(legacyReadAll.readAllDataGroups)
+
+        let identityOnly = PassportReader.initialDataGroupReadRequest(
+            tags: [],
+            photoPolicy: .read,
+            securityPolicy: .identityOnly
+        )
+
+        XCTAssertEqual(identityOnly.dataGroups, [.COM, .SOD, .DG1])
+        XCTAssertFalse(identityOnly.readAllDataGroups)
+    }
+
     func testSecurityPolicyCanDisallowPassportPhotoReads() {
         let policy = PassportReaderSecurityPolicy.identityOnly
 
@@ -797,11 +919,20 @@ final class PassportReaderLoggingTests: XCTestCase {
         let model = NFCPassportModel()
         let dataGroup = try DataGroup([0x61, 0x00])
         model.addDataGroup(.DG1, dataGroup: dataGroup)
-        model.verifyActiveAuthentication(challenge: [0x01, 0x02], signature: [0x03, 0x04])
+        model.verifyActiveAuthentication(
+            challenge: [UInt8](repeating: 0x01, count: 8),
+            signature: [0x03, 0x04]
+        )
+        model.verifyPassport(masterListURL: nil)
+        model.BACStatus = .success
+        model.PACEStatus = .failed
+        model.chipAuthenticationStatus = .success
 
         XCTAssertNotNil(model.getDataGroup(.DG1))
         XCTAssertFalse(model.activeAuthenticationChallenge.isEmpty)
         XCTAssertFalse(model.activeAuthenticationSignature.isEmpty)
+        XCTAssertTrue(model.passportVerificationAttempted)
+        XCTAssertFalse(model.verificationErrors.isEmpty)
 
         model.removeSensitiveDataForPrivacy()
 
@@ -810,12 +941,210 @@ final class PassportReaderLoggingTests: XCTestCase {
         XCTAssertTrue(model.dataGroupHashes.isEmpty)
         XCTAssertTrue(model.activeAuthenticationChallenge.isEmpty)
         XCTAssertTrue(model.activeAuthenticationSignature.isEmpty)
+        XCTAssertFalse(model.passportVerificationAttempted)
+        XCTAssertFalse(model.masterListWasProvided)
+        XCTAssertNil(model.masterListModifiedDate)
+        XCTAssertFalse(model.revocationCheckPerformed)
+        XCTAssertFalse(model.passportCorrectlySigned)
+        XCTAssertFalse(model.documentSigningCertificateVerified)
+        XCTAssertFalse(model.passportDataNotTampered)
+        XCTAssertFalse(model.activeAuthenticationPassed)
+        XCTAssertFalse(model.activeAuthenticationAttempted)
+        XCTAssertEqual(model.BACStatus, .notDone)
+        XCTAssertEqual(model.PACEStatus, .notDone)
+        XCTAssertEqual(model.chipAuthenticationStatus, .notDone)
+        XCTAssertTrue(model.verificationErrors.isEmpty)
+        XCTAssertEqual(model.verificationResult.overallStatus, .notChecked)
+        XCTAssertEqual(model.verificationResult.sodSignatureDetail.reason, .notRequested)
+    }
+
+    func testActiveAuthenticationRejectsMalformedInputsWithoutRetainingBytes() {
+        let model = NFCPassportModel()
+        let invalidInputs: [([UInt8], [UInt8])] = [
+            ([], [0x01]),
+            ([UInt8](repeating: 0xAA, count: 7), [0x01]),
+            ([UInt8](repeating: 0xAA, count: 9), [0x01]),
+            ([UInt8](repeating: 0xAA, count: 8), []),
+            ([UInt8](repeating: 0xAA, count: 8), [UInt8](repeating: 0xBB, count: 64 * 1024 + 1))
+        ]
+
+        for (challenge, signature) in invalidInputs {
+            model.verifyActiveAuthentication(challenge: challenge, signature: signature)
+
+            XCTAssertFalse(model.activeAuthenticationPassed)
+            XCTAssertTrue(model.activeAuthenticationAttempted)
+            XCTAssertTrue(model.activeAuthenticationChallenge.isEmpty)
+            XCTAssertTrue(model.activeAuthenticationSignature.isEmpty)
+            XCTAssertEqual(model.verificationResult.activeAuthenticationDetail.reason, .notRequested)
+        }
+
+        XCTAssertTrue(NFCPassportModel.isValidActiveAuthenticationInput(
+            challenge: [UInt8](repeating: 0xAA, count: 8),
+            signature: [0x01]
+        ))
+        XCTAssertFalse(NFCPassportModel.isValidActiveAuthenticationInput(
+            challenge: [UInt8](repeating: 0xAA, count: 8),
+            signature: [UInt8](repeating: 0xBB, count: 64 * 1024 + 1)
+        ))
+    }
+
+    func testAddingAuthenticationDataGroupsInvalidatesDerivedAuthenticationState() throws {
+        let model = NFCPassportModel()
+        model.verifyActiveAuthentication(
+            challenge: [UInt8](repeating: 0x01, count: 8),
+            signature: [0x02, 0x03]
+        )
+        model.chipAuthenticationStatus = .success
+
+        XCTAssertTrue(model.activeAuthenticationAttempted)
+        XCTAssertFalse(model.activeAuthenticationChallenge.isEmpty)
+        XCTAssertFalse(model.activeAuthenticationSignature.isEmpty)
+        XCTAssertEqual(model.chipAuthenticationStatus, .success)
+
+        model.addDataGroup(.DG14, dataGroup: try DataGroup([0x6E, 0x00]))
+
+        XCTAssertFalse(model.activeAuthenticationAttempted)
+        XCTAssertFalse(model.activeAuthenticationPassed)
+        XCTAssertTrue(model.activeAuthenticationChallenge.isEmpty)
+        XCTAssertTrue(model.activeAuthenticationSignature.isEmpty)
+        XCTAssertEqual(model.chipAuthenticationStatus, .notDone)
+
+        model.verifyActiveAuthentication(
+            challenge: [UInt8](repeating: 0x04, count: 8),
+            signature: [0x05, 0x06]
+        )
+        XCTAssertTrue(model.activeAuthenticationAttempted)
+
+        model.addDataGroup(.DG15, dataGroup: try DataGroup([0x6F, 0x00]))
+
+        XCTAssertFalse(model.activeAuthenticationAttempted)
+        XCTAssertFalse(model.activeAuthenticationPassed)
+        XCTAssertTrue(model.activeAuthenticationChallenge.isEmpty)
+        XCTAssertTrue(model.activeAuthenticationSignature.isEmpty)
+    }
+
+    @available(iOS 15, *)
+    @MainActor
+    func testReaderRejectsMalformedActiveAuthenticationChallengeBeforeSessionState() throws {
+        let reader = PassportReader()
+
+        for challenge in [[UInt8](), [UInt8](repeating: 0xAA, count: 7), [UInt8](repeating: 0xAA, count: 9)] {
+            XCTAssertThrowsError(try reader.validateActiveAuthenticationChallengeBeforeSession(challenge)) { error in
+                guard case NFCPassportReaderError.MissingMandatoryFields = error else {
+                    XCTFail("Expected MissingMandatoryFields, got \(error)")
+                    return
+                }
+            }
+        }
+
+        XCTAssertNoThrow(try reader.validateActiveAuthenticationChallengeBeforeSession(nil))
+        XCTAssertNoThrow(try reader.validateActiveAuthenticationChallengeBeforeSession([UInt8](repeating: 0xAA, count: 8)))
+    }
+
+    @available(iOS 15, *)
+    @MainActor
+    func testTagReaderProgressHandlerDoesNotRetainReaderAfterCancellation() {
+        var reader: PassportReader? = PassportReader()
+        weak let weakReader = reader
+        let progressHandler = reader?.makeTagReaderProgressHandler(scanID: 1)
+
+        reader = nil
+
+        XCTAssertNil(weakReader)
+        progressHandler?(50)
+        progressHandler?(100)
+    }
+
+    @available(iOS 15, *)
+    @MainActor
+    func testReaderTimeoutNanosecondsRejectsInvalidValuesAndPreservesPrecision() {
+        XCTAssertNil(PassportReader.safeTimeoutNanoseconds(for: nil))
+        XCTAssertNil(PassportReader.safeTimeoutNanoseconds(for: 0))
+        XCTAssertNil(PassportReader.safeTimeoutNanoseconds(for: -1))
+        XCTAssertNil(PassportReader.safeTimeoutNanoseconds(for: .infinity))
+        XCTAssertNil(PassportReader.safeTimeoutNanoseconds(for: .nan))
+
+        XCTAssertEqual(PassportReader.safeTimeoutNanoseconds(for: 1.25), 1_250_000_000)
+        XCTAssertEqual(PassportReader.safeTimeoutNanoseconds(for: 0.000_000_001), 1)
+    }
+
+    @available(iOS 15, *)
+    @MainActor
+    func testReaderTimeoutNanosecondsClampsExtremeFiniteValuesWithoutOverflow() throws {
+        let hugeTimeout = try XCTUnwrap(PassportReader.safeTimeoutNanoseconds(for: .greatestFiniteMagnitude))
+        XCTAssertGreaterThan(hugeTimeout, 0)
+        XCTAssertLessThanOrEqual(hugeTimeout, UInt64.max)
+
+        let maxWholeSeconds = TimeInterval(UInt64.max / 1_000_000_000)
+        XCTAssertEqual(
+            PassportReader.safeTimeoutNanoseconds(for: maxWholeSeconds + 60),
+            PassportReader.safeTimeoutNanoseconds(for: maxWholeSeconds)
+        )
+    }
+
+    @available(iOS 15, *)
+    @MainActor
+    func testStaleScanFailureDoesNotClearActiveScanState() throws {
+        let reader = PassportReader()
+        let scanID = try XCTUnwrap(reader.beginScanIfPossible())
+        let staleScanID = scanID &+ 1
+
+        reader.failActiveScan(error: .UserCanceled, scanID: staleScanID)
+
+        XCTAssertTrue(reader.isActiveScan(scanID))
+
+        reader.failActiveScan(error: .UserCanceled, scanID: scanID)
+
+        XCTAssertFalse(reader.isActiveScan(scanID))
+    }
+
+    @available(iOS 15, *)
+    @MainActor
+    func testStaleScanPhaseCheckpointFailsClosed() throws {
+        let reader = PassportReader()
+        let scanID = try XCTUnwrap(reader.beginScanIfPossible())
+
+        XCTAssertNoThrow(try reader.ensureActiveScan(scanID))
+
+        reader.failActiveScan(error: .UserCanceled, scanID: scanID)
+
+        XCTAssertThrowsError(try reader.ensureActiveScan(scanID)) { error in
+            guard case NFCPassportReaderError.UserCanceled = error else {
+                XCTFail("Expected UserCanceled, got \(error)")
+                return
+            }
+        }
+    }
+
+    @available(iOS 15, *)
+    @MainActor
+    func testReaderSessionUserCancelSuppressionDoesNotLeakAcrossScans() throws {
+        let reader = PassportReader()
+        reader.suppressNextReaderSessionUserCancelForTesting()
+        XCTAssertTrue(reader.isNextReaderSessionUserCancelSuppressedForTesting)
+
+        let firstScanID = try XCTUnwrap(reader.beginScanIfPossible())
+        XCTAssertFalse(reader.isNextReaderSessionUserCancelSuppressedForTesting)
+
+        reader.suppressNextReaderSessionUserCancelForTesting()
+        XCTAssertTrue(reader.isNextReaderSessionUserCancelSuppressedForTesting)
+
+        reader.failActiveScan(error: .UserCanceled, scanID: firstScanID)
+        XCTAssertFalse(reader.isNextReaderSessionUserCancelSuppressedForTesting)
+
+        reader.suppressNextReaderSessionUserCancelForTesting()
+        XCTAssertTrue(reader.isNextReaderSessionUserCancelSuppressedForTesting)
+
+        let secondScanID = try XCTUnwrap(reader.beginScanIfPossible())
+        reader.suppressNextReaderSessionUserCancelForTesting()
+        reader.completeActiveScan(returning: NFCPassportModel(), scanID: secondScanID)
+
+        XCTAssertFalse(reader.isNextReaderSessionUserCancelSuppressedForTesting)
+        XCTAssertFalse(reader.isActiveScan(secondScanID))
     }
 
     func testModelSensitiveCleanupDoesNotKeepProjectedIdentityCaches() throws {
-        let mrzLine1 = "P<UTO" + diagnosticMRZPadded("DOE<<JANE", length: 39)
-        let mrzLine2 = "ABC123456" + "7" + "UTO" + "700101" + "1" + "F" + "300101" + "2" + String(repeating: "<", count: 14) + "0" + "8"
-        let dg1 = try DataGroupParser().parseDG(data: diagnosticDataGroup1Fixture(mrz: mrzLine1 + mrzLine2))
+        let dg1 = try DataGroupParser().parseDG(data: diagnosticDataGroup1Fixture(mrz: diagnosticSyntheticTD3MRZ()))
         let model = NFCPassportModel()
         model.addDataGroup(.DG1, dataGroup: dg1)
 
@@ -845,7 +1174,10 @@ final class PassportReaderLoggingTests: XCTestCase {
         )
         let dataGroup = try DataGroup([0x61, 0x00])
         workingModel.addDataGroup(.DG1, dataGroup: dataGroup)
-        workingModel.verifyActiveAuthentication(challenge: [0x01, 0x02], signature: [0x03, 0x04])
+        workingModel.verifyActiveAuthentication(
+            challenge: [UInt8](repeating: 0x01, count: 8),
+            signature: [0x03, 0x04]
+        )
 
         XCTAssertNotNil(workingModel.getDataGroup(.DG1))
         XCTAssertFalse(workingModel.activeAuthenticationChallenge.isEmpty)
@@ -897,6 +1229,79 @@ final class PassportReaderLoggingTests: XCTestCase {
         XCTAssertEqual(strictOptions.pacePolicy, .requireExplicitCredential(.can))
     }
 
+    @available(iOS 15, *)
+    @MainActor
+    func testStrictPACEPoliciesDoNotFallBackToBACAfterPACEFailure() {
+        let reader = PassportReader()
+        let error = NFCPassportReaderError.PACEError("Step1", "Synthetic failure")
+
+        reader.configurePACEPolicyForTesting(.allowBACFallback)
+        XCTAssertFalse(reader.shouldFailInsteadOfFallingBackFromPACE(error: error))
+
+        reader.configurePACEPolicyForTesting(.requirePACEWhenAdvertised)
+        XCTAssertTrue(reader.shouldFailInsteadOfFallingBackFromPACE(error: error))
+
+        reader.configurePACEPolicyForTesting(.requireExplicitCredential(.can))
+        XCTAssertTrue(reader.shouldFailInsteadOfFallingBackFromPACE(error: error))
+    }
+
+    @available(iOS 15, *)
+    @MainActor
+    func testStrictPACEPoliciesRejectSkipPACEBeforeSession() {
+        let reader = PassportReader()
+
+        reader.configurePACEPolicyForTesting(.allowBACFallback)
+        XCTAssertNoThrow(try reader.validatePACEPolicyBeforeSession(skipPACE: true))
+
+        reader.configurePACEPolicyForTesting(.requirePACEWhenAdvertised)
+        XCTAssertThrowsError(try reader.validatePACEPolicyBeforeSession(skipPACE: true)) { error in
+            guard case NFCPassportReaderError.PACEError = error else {
+                XCTFail("Expected PACEError, got \(error)")
+                return
+            }
+        }
+    }
+
+    @available(iOS 15, *)
+    @MainActor
+    func testExplicitPACECredentialPolicyRequiresMatchingCredentialAtBothGates() {
+        let reader = PassportReader()
+
+        reader.configurePACEPolicyForTesting(.requireExplicitCredential(.can))
+        XCTAssertThrowsError(try reader.validatePACEPolicyBeforeSession(skipPACE: false)) { error in
+            guard case NFCPassportReaderError.PACEError = error else {
+                XCTFail("Expected PACEError, got \(error)")
+                return
+            }
+        }
+
+        reader.configurePACEPolicyForTesting(
+            .requireExplicitCredential(.can),
+            paceKey: "SYNTHETIC-CAN",
+            paceKeyReference: .can,
+            pendingPACEKey: "SYNTHETIC-CAN",
+            pendingPACEKeyReference: .can
+        )
+
+        XCTAssertNoThrow(try reader.validatePACEPolicyBeforeSession(skipPACE: false))
+        XCTAssertNoThrow(try reader.validatePACEPolicyBeforeAttempt())
+
+        reader.configurePACEPolicyForTesting(
+            .requireExplicitCredential(.can),
+            paceKey: "SYNTHETIC-MRZ",
+            paceKeyReference: .mrz,
+            pendingPACEKey: "SYNTHETIC-CAN",
+            pendingPACEKeyReference: .can
+        )
+
+        XCTAssertThrowsError(try reader.validatePACEPolicyBeforeAttempt()) { error in
+            guard case NFCPassportReaderError.PACEError = error else {
+                XCTFail("Expected PACEError, got \(error)")
+                return
+            }
+        }
+    }
+
     func testDataGroupReadReportsAreSafeAndCanTrackSkippedStates() throws {
         let model = NFCPassportModel()
         model.recordDataGroupReadStatus(.requested, for: .DG1)
@@ -907,6 +1312,34 @@ final class PassportReaderLoggingTests: XCTestCase {
         XCTAssertTrue(reports.contains(PassportDataGroupReadReport(dataGroup: .DG1, status: .requested)))
         XCTAssertTrue(reports.contains(PassportDataGroupReadReport(dataGroup: .DG2, status: .blockedByPolicy)))
         XCTAssertFalse(String(describing: reports).localizedCaseInsensitiveContains("APDU"))
+    }
+
+    func testDataGroupReadReportsReplaceTransientFailureWithUnsupportedFinalState() {
+        let model = NFCPassportModel()
+        model.recordDataGroupReadStatus(.requested, for: .DG15)
+        model.recordDataGroupReadStatus(.advertised, for: .DG15)
+        model.recordDataGroupReadStatus(.failed, for: .DG15)
+        model.recordDataGroupReadStatus(.unsupported, for: .DG15)
+
+        let reports = model.identityResult.dataGroupReadReports
+        XCTAssertTrue(reports.contains(PassportDataGroupReadReport(dataGroup: .DG15, status: .requested)))
+        XCTAssertTrue(reports.contains(PassportDataGroupReadReport(dataGroup: .DG15, status: .advertised)))
+        XCTAssertTrue(reports.contains(PassportDataGroupReadReport(dataGroup: .DG15, status: .unsupported)))
+        XCTAssertFalse(reports.contains(PassportDataGroupReadReport(dataGroup: .DG15, status: .failed)))
+    }
+
+    func testDataGroupReadReportsReplaceTransientFailureWithReadFinalState() {
+        let model = NFCPassportModel()
+        model.recordDataGroupReadStatus(.requested, for: .DG14)
+        model.recordDataGroupReadStatus(.advertised, for: .DG14)
+        model.recordDataGroupReadStatus(.failed, for: .DG14)
+        model.recordDataGroupReadStatus(.read, for: .DG14)
+
+        let reports = model.identityResult.dataGroupReadReports
+        XCTAssertTrue(reports.contains(PassportDataGroupReadReport(dataGroup: .DG14, status: .requested)))
+        XCTAssertTrue(reports.contains(PassportDataGroupReadReport(dataGroup: .DG14, status: .advertised)))
+        XCTAssertTrue(reports.contains(PassportDataGroupReadReport(dataGroup: .DG14, status: .read)))
+        XCTAssertFalse(reports.contains(PassportDataGroupReadReport(dataGroup: .DG14, status: .failed)))
     }
 
     func testInteroperabilityRecordRejectsIdentifyingLookingNotes() {
@@ -966,6 +1399,29 @@ final class PassportReaderLoggingTests: XCTestCase {
     func testIdentityResultReportsNoFaceImageWhenDG2WasNotRead() {
         let modelWithoutDG2 = NFCPassportModel()
         XCTAssertFalse(modelWithoutDG2.identityResult.hasFaceImage)
+    }
+
+    func testChipReadResultDiagnosticsUsesEffectivePhotoPolicy() throws {
+        let model = NFCPassportModel()
+        let dg2Data = try diagnosticDataGroup2Fixture(imageBytes: [0xFF, 0xD8, 0xFF, 0xE1, 0x00, 0x10])
+        let dg2 = try XCTUnwrap(try DataGroupParser().parseDG(data: dg2Data) as? DataGroup2)
+        model.addDataGroup(.DG2, dataGroup: dg2)
+
+        let skipped = PassportChipReadResult(
+            passport: model,
+            photoPolicy: .skip,
+            securityPolicy: .identityOnly
+        )
+        XCTAssertNil(skipped.faceImageData)
+        XCTAssertFalse(skipped.identity.hasFaceImage)
+        XCTAssertEqual(skipped.diagnosticsSummary.photoPolicy, .skip)
+        XCTAssertEqual(skipped.diagnosticsSummary.securityPolicy, .identityOnly)
+
+        let read = PassportChipReadResult(passport: model, photoPolicy: .read)
+        XCTAssertNotNil(read.faceImageData)
+        XCTAssertTrue(read.identity.hasFaceImage)
+        XCTAssertEqual(read.diagnosticsSummary.photoPolicy, .read)
+        XCTAssertEqual(read.diagnosticsSummary.securityPolicy, .default)
     }
 
     func testDiagnosticsSummaryContainsOnlySafeScanMetadata() {
@@ -1069,11 +1525,100 @@ private func diagnosticDataGroup1Fixture(mrz: String) throws -> [UInt8] {
     return try [0x61] + toAsn1Length(mrzDataObject.count) + mrzDataObject
 }
 
+private func diagnosticDataGroup2Fixture(imageBytes: [UInt8]) throws -> [UInt8] {
+    let biometricHeader = try diagnosticTLV(tag: [0xA1], value: [0x80, 0x01, 0x01])
+    let biometricData = try diagnosticTLV(
+        tag: [0x5F, 0x2E],
+        value: diagnosticISO19794FaceRecord(imageBytes: imageBytes)
+    )
+    let template = try diagnosticTLV(tag: [0x7F, 0x60], value: biometricHeader + biometricData)
+    let body = try diagnosticTLV(tag: [0x7F, 0x61], value: diagnosticTLV(tag: [0x02], value: [0x01]) + template)
+    return try [0x75] + toAsn1Length(body.count) + body
+}
+
+private func diagnosticISO19794FaceRecord(imageBytes: [UInt8]) -> [UInt8] {
+    var record: [UInt8] = []
+    record.reserveCapacity(46 + imageBytes.count)
+    record += [0x46, 0x41, 0x43, 0x00]
+    record += [0x30, 0x31, 0x30, 0x00]
+    record += diagnosticFixedWidthBytes(46 + imageBytes.count, count: 4)
+    record += diagnosticFixedWidthBytes(1, count: 2)
+    record += diagnosticFixedWidthBytes(46 + imageBytes.count - 14, count: 4)
+    record += diagnosticFixedWidthBytes(0, count: 2)
+    record += [0x00, 0x00, 0x00]
+    record += [0x00, 0x00, 0x00]
+    record += [0x00, 0x00]
+    record += [0x00, 0x00, 0x00]
+    record += [0x00, 0x00, 0x00]
+    record += [0x00, 0x00]
+    record += diagnosticFixedWidthBytes(1, count: 2)
+    record += diagnosticFixedWidthBytes(1, count: 2)
+    record += [0x00, 0x00]
+    record += [0x00, 0x00]
+    record += [0x00, 0x00]
+    record += imageBytes
+    return record
+}
+
+private func diagnosticFixedWidthBytes(_ value: Int, count: Int) -> [UInt8] {
+    (0..<count).map { shift in
+        UInt8((value >> (8 * (count - shift - 1))) & 0xFF)
+    }
+}
+
 private func diagnosticMRZPadded(_ value: String, length: Int) -> String {
     if value.count >= length {
         return String(value.prefix(length))
     }
     return value + String(repeating: "<", count: length - value.count)
+}
+
+private func diagnosticSyntheticTD3MRZ() -> String {
+    let documentNumber = "ABC123456"
+    let dateOfBirth = "700101"
+    let expiryDate = "300101"
+    let optionalData = String(repeating: "<", count: 14)
+    let line1 = "P<UTO" + diagnosticMRZPadded("DOE<<JANE", length: 39)
+    let documentNumberCheckDigit = diagnosticMRZCheckDigit(documentNumber)
+    let dateOfBirthCheckDigit = diagnosticMRZCheckDigit(dateOfBirth)
+    let expiryDateCheckDigit = diagnosticMRZCheckDigit(expiryDate)
+    let optionalDataCheckDigit = diagnosticMRZCheckDigit(optionalData)
+    let compositeCheckDigit = diagnosticMRZCheckDigit(
+        documentNumber + documentNumberCheckDigit +
+        dateOfBirth + dateOfBirthCheckDigit +
+        expiryDate + expiryDateCheckDigit +
+        optionalData + optionalDataCheckDigit
+    )
+    let line2 = documentNumber + documentNumberCheckDigit +
+        "UTO" +
+        dateOfBirth + dateOfBirthCheckDigit +
+        "F" +
+        expiryDate + expiryDateCheckDigit +
+        optionalData + optionalDataCheckDigit +
+        compositeCheckDigit
+    return line1 + line2
+}
+
+private func diagnosticMRZCheckDigit(_ value: String) -> String {
+    let weights = [7, 3, 1]
+    let sum = value.utf8.enumerated().reduce(0) { partial, item in
+        let (offset, byte) = item
+        return partial + diagnosticMRZCharacterValue(byte) * weights[offset % weights.count]
+    }
+    return String(sum % 10)
+}
+
+private func diagnosticMRZCharacterValue(_ byte: UInt8) -> Int {
+    switch byte {
+    case 0x30...0x39:
+        return Int(byte - 0x30)
+    case 0x41...0x5A:
+        return Int(byte - 0x41) + 10
+    case 0x3C:
+        return 0
+    default:
+        return 0
+    }
 }
 
 private func diagnosticSequence(_ value: [UInt8]) throws -> [UInt8] {

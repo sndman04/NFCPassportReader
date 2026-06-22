@@ -23,6 +23,11 @@ class ChipAuthenticationHandler {
 
     private static let COMMAND_CHAINING_CHUNK_SIZE = 224
 
+    struct ChipAuthenticationMetadata {
+        let infosByKeyId: [Int: ChipAuthenticationInfo]
+        let publicKeyInfos: [ChipAuthenticationPublicKeyInfo]
+    }
+
     var tagReader : TagReader?
     var gaSegments = [[UInt8]]()
     
@@ -30,22 +35,48 @@ class ChipAuthenticationHandler {
     var chipAuthPublicKeyInfos = [ChipAuthenticationPublicKeyInfo]()
     
     var isChipAuthenticationSupported : Bool = false
+
+    init() {
+        self.tagReader = nil
+    }
     
-    init(dg14 : DataGroup14, tagReader: TagReader) {
+    init(dg14 : DataGroup14, tagReader: TagReader) throws {
         self.tagReader = tagReader
-        
-        for secInfo in dg14.securityInfos {
-            if let cai = secInfo as? ChipAuthenticationInfo {
-                let keyId = cai.getKeyId()
-                chipAuthInfos[keyId] = cai
-            } else if let capki = secInfo as? ChipAuthenticationPublicKeyInfo {
-                chipAuthPublicKeyInfos.append(capki)
-            }
-        }
-        
+
+        let metadata = try Self.metadata(from: dg14.securityInfos)
+        chipAuthInfos = metadata.infosByKeyId
+        chipAuthPublicKeyInfos = metadata.publicKeyInfos
+
         if chipAuthPublicKeyInfos.count > 0 {
             isChipAuthenticationSupported = true
         }
+    }
+
+    nonisolated static func metadata(from securityInfos: [SecurityInfo]) throws -> ChipAuthenticationMetadata {
+        var infosByKeyId = [Int: ChipAuthenticationInfo]()
+        var publicKeyInfos = [ChipAuthenticationPublicKeyInfo]()
+
+        for secInfo in securityInfos {
+            if let chipAuthInfo = secInfo as? ChipAuthenticationInfo {
+                let keyId = chipAuthInfo.getKeyId()
+                if let existing = infosByKeyId[keyId] {
+                    guard existing.oid == chipAuthInfo.oid,
+                          existing.version == chipAuthInfo.version,
+                          existing.keyId == chipAuthInfo.keyId else {
+                        throw NFCPassportReaderError.InvalidASN1Structure
+                    }
+                    continue
+                }
+                infosByKeyId[keyId] = chipAuthInfo
+            } else if let publicKeyInfo = secInfo as? ChipAuthenticationPublicKeyInfo {
+                publicKeyInfos.append(publicKeyInfo)
+            }
+        }
+
+        return ChipAuthenticationMetadata(
+            infosByKeyId: infosByKeyId,
+            publicKeyInfos: publicKeyInfos
+        )
     }
 
     isolated deinit {
@@ -55,6 +86,7 @@ class ChipAuthenticationHandler {
     func removeSensitiveData() {
         gaSegments.removeAll(keepingCapacity: false)
         chipAuthInfos.removeAll(keepingCapacity: false)
+        chipAuthPublicKeyInfos.forEach { $0.removeSensitiveDataForPrivacy() }
         chipAuthPublicKeyInfos.removeAll(keepingCapacity: false)
         tagReader?.secureMessaging?.removeSensitiveData()
         tagReader?.secureMessaging = nil
@@ -63,19 +95,23 @@ class ChipAuthenticationHandler {
     }
 
     func doChipAuthentication() async throws  {
+        try await doChipAuthentication { publicKeyInfo in
+            try await self.doChipAuthentication(with: publicKeyInfo)
+        }
+    }
+
+    func doChipAuthentication(
+        using attempt: @MainActor (ChipAuthenticationPublicKeyInfo) async throws -> Bool
+    ) async throws {
         guard isChipAuthenticationSupported else {
             throw NFCPassportReaderError.NotYetSupported( "ChipAuthentication not supported" )
         }
         
         var success = false
         for pubKey in chipAuthPublicKeyInfos {
-            do {
-                success = try await self.doChipAuthentication( with: pubKey)
-                if success {
-                    break
-                }
-            } catch {
-                // try next key
+            success = try await attempt(pubKey)
+            if success {
+                break
             }
         }
         
@@ -101,7 +137,11 @@ class ChipAuthenticationHandler {
             }
         }
         
-        try await self.doCA( keyId: keyId, encryptionDetailsOID: chipAuthInfoOID, publicKey: chipAuthPublicKeyInfo.pubKey )
+        guard let publicKey = chipAuthPublicKeyInfo.pubKey else {
+            return false
+        }
+
+        try await self.doCA( keyId: keyId, encryptionDetailsOID: chipAuthInfoOID, publicKey: publicKey )
         return true
     }
     
@@ -158,24 +198,36 @@ class ChipAuthenticationHandler {
         
         if cipherAlg.hasPrefix("DESede") {
         
-            var idData : [UInt8] = []
-            if let keyId = keyId {
-                idData = intToBytes( val:keyId, removePadding:true)
-                idData = wrapDO( b:0x84, arr:idData)
-            }
+            let idData = try TagReader.mseKeyIdentifierData(keyId: keyId)
             let wrappedKeyData = wrapDO( b:0x91, arr:keyData)
-            _ = try await self.tagReader?.sendMSEKAT(keyData: Data(wrappedKeyData), idData: Data(idData))
+            _ = try await self.tagReader?.sendMSEKAT(keyData: Data(wrappedKeyData), idData: idData.map { Data($0) })
         } else if cipherAlg.hasPrefix("AES") {
             _ = try await self.tagReader?.sendMSESetATIntAuth(oid: oid, keyId: keyId)
             let data = wrapDO(b: 0x80, arr:keyData)
-            gaSegments = self.chunk(data: data, segmentSize: ChipAuthenticationHandler.COMMAND_CHAINING_CHUNK_SIZE )
-            try await self.handleGeneralAuthentication()
+            try await withPendingGeneralAuthenticationSegments(Self.chunk(data: data, segmentSize: ChipAuthenticationHandler.COMMAND_CHAINING_CHUNK_SIZE)) {
+                try await self.handleGeneralAuthentication()
+            }
         } else {
             throw NFCPassportReaderError.UnsupportedCipherAlgorithm
         }
     }
+
+    func withPendingGeneralAuthenticationSegments<T>(
+        _ segments: [[UInt8]],
+        operation: () async throws -> T
+    ) async throws -> T {
+        gaSegments = segments
+        defer {
+            gaSegments.removeAll(keepingCapacity: false)
+        }
+        return try await operation()
+    }
     
     private func handleGeneralAuthentication() async throws {
+        guard !gaSegments.isEmpty else {
+            throw NFCPassportReaderError.ChipAuthenticationFailed
+        }
+
         repeat {
             // Pull next segment from list
             let segment = gaSegments.removeFirst()
@@ -230,7 +282,11 @@ class ChipAuthenticationHandler {
     /// - Parameter segmentSize the number of bytes per segment
     /// - Parameter data the data to be partitioned
     /// - Parameter a list with the segments
-    func chunk( data : [UInt8], segmentSize: Int ) -> [[UInt8]] {
+    nonisolated static func chunk( data : [UInt8], segmentSize: Int ) -> [[UInt8]] {
+        guard segmentSize > 0, !data.isEmpty else {
+            return []
+        }
+
         return stride(from: 0, to: data.count, by: segmentSize).map {
             Array(data[$0 ..< Swift.min($0 + segmentSize, data.count)])
         }

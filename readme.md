@@ -42,17 +42,6 @@ For example:
 
 ```
 <passport number><passport number checksum><date of birth><date of birth checksum><expiry date><expiry date checksum>
-
-e.g. for Passport nr 12345678, Date of birth 27-Jan-1998, Expiry 30-Aug-2025 the MRZ Key would be:
-
-Passport number - 12345678
-Passport number checksum - 8
-Date Of birth - 980127
-Date of birth checksum - 7
-Expiry date - 250830
-Expiry date checksum - 5
-
-mrzKey = "12345678898012772508315"
 ```
 
 Then create a `PassportReader` and call the privacy-first async `readPassportIdentity` API. Prefer reviewed scan options over ad hoc data-group lists where possible.
@@ -95,7 +84,8 @@ Supported scan profiles are `.identityOnly`, `.identityWithPhoto`, `.fullVerific
 Prefer the smallest profile that supports the app workflow.
 `.fullVerification` reads COM, SOD, DG1, DG2, DG7, DG11, DG12, DG14, and DG15 for identity, photo, signature/mark image, optional personal details, document details, and chip/authentication checks.
 Use `photoPolicy: .skip` to remove DG2 from the requested data groups when the app does not need passport face image data.
-When `photoPolicy: .read` remains allowed by the effective `PassportReaderSecurityPolicy`, `PassportChipReadResult.faceImageData` returns the first DG2 face image as explicitly sensitive `PassportChipImageResult` bytes for workflows such as in-app document review. Treat this value as biometric data: do not log it, attach it to diagnostics, or persist/upload it without a separate app-level privacy decision.
+When a result is projected with `photoPolicy: .skip`, `PassportChipReadResult.faceImageData` is `nil` and `PassportChipReadResult.identity.hasFaceImage` is `false`, even if an internal model already contains DG2, so no-photo result projections do not reveal face-image presence.
+When `photoPolicy: .read` remains allowed by the effective `PassportReaderSecurityPolicy`, `PassportChipReadResult.faceImageData` returns the first DG2 face image as explicitly sensitive `PassportChipImageResult` bytes for workflows such as in-app document review. Its format and MIME type are derived from the validated image bytes rather than from possibly inconsistent chip metadata. Treat this value as biometric data: do not log it, attach it to diagnostics, or persist/upload it without a separate app-level privacy decision.
 
 Use `PassportReaderSecurityPolicy` to centralize privacy and verification decisions:
 
@@ -110,7 +100,9 @@ Security policies can disallow passport photo reads even when a broader scan pro
 
 `PassportChipReadResult` contains `identity`, optional `faceImageData`, `verificationResult`, `trustLevel`, `certificateTrustMetadata`, and `diagnosticsSummary`. It intentionally does not expose the internal raw model, MRZ text, raw data-group bytes, APDUs, certificates, keys, or active-authentication challenge/signature bytes. It also intentionally does not conform to `Codable`.
 
-`PassportIdentityResult.dateOfIssue` exposes the normalized DG12 issue date when DG12 is read and the chip provides it. This lets apps fill issue-date fields without reopening raw DG12 model access.
+`PassportIdentityResult` projects primary names from DG1 MRZ data unless DG11 provides a non-empty ICAO-style full name with the `<<` primary separator. Empty, whitespace-only, or unstructured DG11 names fall back to DG1 instead of replacing a validated MRZ name with blank or ambiguous text. Blank or filler-only DG11 personal-number values likewise fall back to the DG1 optional-data value, and filler-only DG1 optional data is reported as `nil` rather than an empty personal number. Optional DG11 place-of-birth, residence-address, and phone fields are trimmed at projection time; blank or filler-only values are reported as `nil`.
+
+`PassportIdentityResult.dateOfIssue` exposes the normalized DG12 issue date when DG12 is read and the chip provides it. DG1 MRZ birth and expiry dates are rejected unless their `YYMMDD` content has a valid month and day, and DG11 date-of-birth and DG12 issue-date values are rejected unless their `YYYYMMDD` content is a real Gregorian calendar date. This lets apps fill issue-date fields without reopening raw DG12 model access.
 
 `PassportScanOptions` provides reviewed combinations of profile, timeout, photo policy, authentication flags, security policy, and PACE policy. `.notaryStrict` is the recommended starting point for Notary Journal style workflows; `.identityOnly` keeps collection minimal when the app does not need photo or optional verification groups.
 
@@ -118,9 +110,9 @@ PACE policy defaults to `.allowBACFallback` for current passport interoperabilit
 
 If passive authentication runs without a CSCA master list, SOD signature and data-group hash checks can still report that the data groups actually read are internally consistent, but country signer trust is reported as not checked. A trusted signer result requires a master list from the issuing country or ICAO PKD. Certificate revocation is reported separately in `certificateTrustMetadata.revocationCheck`; it remains not checked until a tested CRL/PKD revocation workflow is configured and implemented.
 
-`PassportVerificationResult` keeps the original simple status properties and also includes safe detail fields such as `sodSignatureDetail`, `dataGroupHashDetail`, `countrySigningCertificateDetail`, `activeAuthenticationDetail`, and `chipAuthenticationDetail`. These distinguish cases such as not requested, not supported, skipped, missing SOD, missing master list, signer untrusted, hash mismatch, malformed SOD, unsupported algorithm, attempted failed, and passed without exposing raw hashes or certificate contents. `dataGroupCoverage` summarizes whether read groups were covered by SOD hashes.
+`PassportVerificationResult` keeps the original simple status properties and also includes safe detail fields such as `sodSignatureDetail`, `dataGroupHashDetail`, `countrySigningCertificateDetail`, `activeAuthenticationDetail`, and `chipAuthenticationDetail`. These distinguish cases such as not requested, not supported, skipped, missing SOD, missing master list, signer untrusted, hash mismatch, malformed SOD, unsupported algorithm, attempted failed, and passed without exposing raw hashes or certificate contents. The SOD CMS wrapper, LDS Security Object content type, and data-group hash list are structurally validated before they can drive signature or hash status. `dataGroupCoverage` summarizes whether read groups were covered by SOD hashes.
 
-For support diagnostics, use `PassportReaderDiagnosticsSummary`. It records the scan profile, photo policy, security policy, safe failure reason, verification summary, trust level, data-group names read, and privacy-safe data-group read reports such as requested, advertised, read, skipped, blocked, unsupported, or failed. It does not include identity fields, MRZ text, APDUs, certificates, keys, raw data groups, or images.
+For support diagnostics, use `PassportReaderDiagnosticsSummary`. It records the scan profile, effective photo policy, effective security policy, safe failure reason, verification summary, trust level, data-group names read, and privacy-safe data-group read reports such as requested, advertised, read, skipped, blocked, unsupported, or failed. Legacy read-all scans preserve requested COM/SOD startup context before COM-advertised groups expand the read set. Final read outcomes replace transient failed/skipped outcomes for the same data group while preserving requested and advertised context. Chip-reported inaccessible or missing optional groups are reported as unsupported after the reader resets BAC for later groups instead of retrying the same group indefinitely. It does not include identity fields, MRZ text, APDUs, certificates, keys, raw data groups, or images.
 
 For private real-device compatibility tracking, use `PassportInteroperabilityRecord` and keep notes non-identifying. It is designed for country/feature-class outcomes, not passport numbers, MRZ text, names, dates of birth, expiration dates, image bytes, APDUs, keys, certificate details, or hex samples. `containsOnlyNonIdentifyingFields` rejects common sensitive labels and byte-pattern notes, but it is a safeguard rather than permission to store detailed scan artifacts.
 
@@ -144,11 +136,11 @@ For UI tests or simulator flows, depend on `PassportChipReading` and inject `Pas
 let fixture = PassportReaderFixture(result: .success(syntheticResult))
 ```
 
-The reader is scoped to the LDS1 eMRTD application and can read every LDS1 data-group file id. COM, DG1, DG2, DG7, DG11, DG12, DG14, DG15, and SOD have typed parsers used by the safe app-facing result. DG2 preserves multiple biometric templates when present and keeps the first image through the compatibility `imageData` path. DG7 preserves multiple displayed signature/mark image items when present. DG3, DG4, DG5, DG6, DG8, DG9, DG10, DG13, and DG16 are represented as opaque typed groups internally so they can be read and hashed for passive authentication without public raw export. Optional LDS2 applications, such as travel records, visa records, and additional biometrics, are not implemented by this package.
+The reader is scoped to the LDS1 eMRTD application and can read every LDS1 data-group file id. COM, DG1, DG2, DG7, DG11, DG12, DG14, DG15, and SOD have typed parsers used by the safe app-facing result. DG2 preserves multiple biometric templates when present and keeps the first image through the compatibility `imageData` path. DG7 preserves multiple displayed signature/mark image items when present, and empty DG7 placeholders do not count as signature-image presence. DG3, DG4, DG5, DG6, DG8, DG9, DG10, DG13, and DG16 are represented as opaque typed groups internally so they can be read and hashed for passive authentication without public raw export. Optional LDS2 applications, such as travel records, visa records, and additional biometrics, are not implemented by this package.
 
-DG2 and DG7 image parsing has explicit byte and structural bounds. DG2 accepts JPEG and JPEG 2000 image payloads with standard headers, including JPEG streams that do not use the JFIF APP0 marker. Malformed payloads with excessive image bytes, excessive dimensions, or impossible feature-point skips are rejected before unbounded retention or image decoding.
+DG2, DG7, and DG12 image parsing has explicit byte, structure, and image-header bounds. These parsers accept JPEG and JPEG 2000 image payloads with standard headers, including JPEG streams that do not use the JFIF APP0 marker. Malformed payloads with unknown image headers, excessive image bytes, excessive dimensions, or impossible feature-point skips are rejected before unbounded retention or image decoding.
 
-DG11 and DG12 optional text fields are decoded with BOM-aware UTF-8/UTF-16 handling, UTF-16 heuristics, and common Latin fallback encodings before using replacement UTF-8. DG12 other-person details are preserved from plain text or nested text TLVs. This preserves more multilingual issuer fields while still avoiding raw byte exposure in public diagnostics.
+DG11 and DG12 optional text fields are decoded with per-field size bounds, BOM-aware UTF-8/UTF-16 handling, UTF-16 heuristics, and common Latin fallback encodings before using replacement UTF-8. DG12 other-person details are preserved from plain text or nested text TLVs. This preserves more multilingual issuer fields while still avoiding raw byte exposure in public diagnostics or unbounded string retention.
 
 PACE defaults to the MRZ-derived key:
 
@@ -170,12 +162,12 @@ let result = try await passportReader.readPassportIdentity(
 )
 ```
 
-Integrated Mapping (IM) is implemented for standardized DH and ECDH domain parameters, with synthetic ICAO Appendix H vector coverage for the IM pseudorandom field mapping and mapped DH/ECDH generators. ECDH Chip Authentication Mapping (CAM) is handled for PACE secure messaging and requires the chip's final CAM data object to be present. EF.CardSecurity is read and parsed when present. If a master list is supplied and EF.CardSecurity CMS verification succeeds against that trust store, trusted EF.CardSecurity chip-authentication public keys can satisfy the CAM proof before DG14 is read. When DG14 is read, the CAM proof is also checked against DG14 chip-authentication public keys and can satisfy chip-authentication status; otherwise the reader falls back to the separate Chip Authentication flow when available. Unknown DG14/CardAccess/CardSecurity `SecurityInfo` records are preserved as redacted `UnknownSecurityInfo` values so callers can detect unrecognized security capabilities without exposing raw chip data.
+Integrated Mapping (IM) is implemented for standardized DH and ECDH domain parameters, with synthetic ICAO Appendix H vector coverage for the IM pseudorandom field mapping and mapped DH/ECDH generators. ECDH Chip Authentication Mapping (CAM) is handled for PACE secure messaging and requires the chip's final CAM data object to be present. EF.CardSecurity is read and parsed when present. If a master list is supplied and EF.CardSecurity CMS verification succeeds against that trust store, trusted EF.CardSecurity chip-authentication public keys can satisfy the CAM proof before DG14 is read. When DG14 is read, the CAM proof is also checked against DG14 chip-authentication public keys and can satisfy chip-authentication status; otherwise the reader falls back to the separate Chip Authentication flow when available. Well-formed but unknown DG14/CardAccess/CardSecurity `SecurityInfo` records are preserved as redacted `UnknownSecurityInfo` values so callers can detect unrecognized security capabilities without exposing raw chip data; malformed `SecurityInfos` wrappers or overlong records fail closed.
 
 Extended mode reads (not supported by all passports) can be enabled through `PassportScanOptions.useExtendedMode`.
 This will increase the number of bytes that can be read in a call and may be required for some passports that use long AA keys (some Australian passports for example).
 
-A custom Active Authentication challenge can be provided to `PassportReader` to ensure that the challenge/response was specifically executed in the session and not replayed. Treat the challenge and signature as sensitive. Do not send active-authentication data, raw chip data, or passport images to a backend unless the host app has explicit user consent, retention rules, transport controls, and a privacy-reviewed validation workflow.
+A custom Active Authentication challenge can be provided to `PassportReader` to ensure that the challenge/response was specifically executed in the session and not replayed. Custom challenges must be exactly 8 bytes and malformed custom challenges are rejected before an NFC scan starts. Treat the challenge and signature as sensitive. Do not send active-authentication data, raw chip data, or passport images to a backend unless the host app has explicit user consent, retention rules, transport controls, and a privacy-reviewed validation workflow.
 
 Raw passport dump import/export APIs are not part of this fork's public surface. Low-level NFC, BAC, PACE, secure-messaging, AES/DES/OpenSSL, certificate-wrapper, and raw data-group parser types are module-internal implementation details, not app-level scan APIs. They may process sensitive keys, IVs, APDU payloads, secure-messaging bytes, certificates, hashes, or decrypted chip data. Apps should use `PassportReader.readPassportIdentity(...)` or the safe `PassportChipReading` abstraction rather than constructing NFC, BAC, session-key, cryptographic, certificate, or raw data-group flows directly.
 
@@ -213,7 +205,7 @@ Before tagging this fork for app consumption, run:
 scripts/release_check.sh
 ```
 
-The release check script runs the required iOS package build, iOS build-for-testing, external API surface probe, privacy scan, CoreNFC delegate-boundary check, whitespace check, and a targeted risky diagnostics search. Review any search hits before tagging.
+The release check script runs the required iOS package build, iOS build-for-testing, full iOS Simulator test suite, external API surface probe, privacy scan, CoreNFC delegate-boundary check, whitespace check, and a targeted risky diagnostics search. Review any search hits before tagging. Set `IOS_TEST_DESTINATION` if your local simulator name or OS differs from the default.
 
 `swift test` may fail in this environment because SwiftPM evaluates the package against macOS while the OpenSSL dependency requires a newer macOS target. Use the iOS/Xcode path above unless the package manifest is deliberately changed to support macOS tests.
 
@@ -248,14 +240,8 @@ The LDS Security Object hash list is parsed directly from DER, so all DG1-DG16 h
 When no master list is supplied, signer-chain trust is not checked rather than failed. Apps should present that as an incomplete trust-anchor configuration, not as evidence that the passport or chip data is bad.
 
 ## Troubleshooting
-* If when doing the initial Mutual Authenticate challenge, you get an error with and SW1 code 0x63, SW2 code 0x00, reason: No information given, then this is usualy because your MRZ key is incorrect, and possibly because your passport number is not quite right.  If your passport number in the MRZ contains a '<' then you need to include this in the MRZKey - the checksum should work out correct too.  For more details, check out App-D2 in the ICAO 9303 Part 11 document (https://www.icao.int/publications/Documents/9303_p11_cons_en.pdf)
-<br><br>e.g. if the bottom line on the MRZ looks like:
-12345678<8AUT7005233M2507237<<<<<<<<<<<<<<06
-<br><br>
-In this case the passport number is 12345678 but is padded out with an additonal <. This needs to be included in the MRZ key used for BAC.
-e.g. 12345678<870052332507237 would be the key used.
-
-
+- If authentication fails with `PassportReaderFailure.reason == .accessKeyRejected`, ask the user to re-check the passport number, date of birth, and expiration date used to derive the access key. Some passports use filler characters in the machine-readable zone; host apps should derive the key with a reviewed MRZ helper rather than logging or displaying the derived access key.
+- If a scan fails after the phone has already connected to the chip, use the safe retry metadata on `PassportReaderFailure` to decide whether to ask the user to try again. Do not expose low-level status words, APDU bytes, MRZ text, or derived key material in app UI, logs, crash reports, or support diagnostics.
 
 ## To do
 There are a number of things I'd like to implement in no particular order:

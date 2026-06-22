@@ -73,3 +73,49 @@ enum LDSStringDecoder {
         return zeroCount >= bytes.count / 4
     }
 }
+
+@available(iOS 13, macOS 10.15, *)
+enum LDSDateDecoder {
+    static func decodeEightDigitDate(_ bytes: [UInt8]) throws -> String {
+        guard bytes.count == 8,
+              bytes.allSatisfy({ byte in byte >= 0x30 && byte <= 0x39 }) else {
+            throw NFCPassportReaderError.InvalidASN1Structure
+        }
+
+        let value = String(decoding: bytes, as: UTF8.self)
+        guard isValidEightDigitCalendarDate(value) else {
+            throw NFCPassportReaderError.InvalidASN1Structure
+        }
+
+        return value
+    }
+
+    private static func isValidEightDigitCalendarDate(_ value: String) -> Bool {
+        guard let year = Int(value.prefix(4)),
+              let month = Int(value.dropFirst(4).prefix(2)),
+              let day = Int(value.suffix(2)) else {
+            return false
+        }
+
+        guard year >= 1 else {
+            return false
+        }
+
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? calendar.timeZone
+
+        var components = DateComponents()
+        components.calendar = calendar
+        components.timeZone = calendar.timeZone
+        components.year = year
+        components.month = month
+        components.day = day
+
+        guard let date = calendar.date(from: components) else {
+            return false
+        }
+
+        let resolved = calendar.dateComponents([.year, .month, .day], from: date)
+        return resolved.year == year && resolved.month == month && resolved.day == day
+    }
+}

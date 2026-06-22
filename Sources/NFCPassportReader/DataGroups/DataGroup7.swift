@@ -42,7 +42,11 @@ class DataGroup7 : DataGroup {
     override func parse(_ data: [UInt8]) throws {
         var tag = try getNextTag()
         try verifyTag(tag, equals: 0x02)
-        _ = try getNextValue()
+        let imageCount = try getNextValue()
+        guard imageCount.count == 1,
+              let declaredImageCount = imageCount.first else {
+            throw NFCPassportReaderError.InvalidASN1Structure
+        }
         
         var totalImageDataLength = 0
         while hasUnreadBody {
@@ -52,6 +56,9 @@ class DataGroup7 : DataGroup {
             guard item.count <= Self.maxImageDataLength else {
                 throw NFCPassportReaderError.UnknownImageFormat
             }
+            guard item.isEmpty || Self.canDecodeImageData(item) else {
+                throw NFCPassportReaderError.UnknownImageFormat
+            }
             totalImageDataLength += item.count
             guard totalImageDataLength <= Self.maxTotalImageDataLength else {
                 throw NFCPassportReaderError.UnknownImageFormat
@@ -59,7 +66,10 @@ class DataGroup7 : DataGroup {
             imageDataItems.append(item)
         }
 
-        imageData = imageDataItems.first ?? []
+        guard imageDataItems.count == Int(declaredImageCount) else {
+            throw NFCPassportReaderError.InvalidASN1Structure
+        }
+        imageData = imageDataItems.first { !$0.isEmpty } ?? []
     }
 
     override func removeSensitiveDataForPrivacy() {

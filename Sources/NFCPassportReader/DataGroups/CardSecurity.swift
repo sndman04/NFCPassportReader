@@ -21,6 +21,9 @@ class CardSecurity {
     }
 
     func verifySignature(trustedCertificatesURL: URL?) throws {
+        signatureVerified = false
+        signerTrusted = false
+
         defer {
             signedData.removeAll(keepingCapacity: false)
         }
@@ -32,5 +35,13 @@ class CardSecurity {
         securityInfos = try SecurityInfosParser.parse([UInt8](content))
         signatureVerified = true
         signerTrusted = trustedCertificatesURL != nil
+    }
+
+    func removeSensitiveDataForPrivacy() {
+        securityInfos.forEach { $0.removeSensitiveDataForPrivacy() }
+        securityInfos.removeAll(keepingCapacity: false)
+        signatureVerified = false
+        signerTrusted = false
+        signedData.removeAll(keepingCapacity: false)
     }
 }

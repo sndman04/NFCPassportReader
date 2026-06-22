@@ -140,4 +140,31 @@ class DataGroup {
             )
         }
     }
+
+    func parseTagList(_ value: [UInt8], allowTrailingIncompleteTag: Bool = false) throws -> Set<Int> {
+        var offset = 0
+        var tags = Set<Int>()
+
+        while offset < value.count {
+            let first = value[offset]
+            offset += 1
+
+            if first & 0x1F == 0x1F {
+                guard offset < value.count else {
+                    if allowTrailingIncompleteTag {
+                        return tags
+                    }
+                    throw NFCPassportReaderError.InvalidASN1Structure
+                }
+
+                let second = value[offset]
+                offset += 1
+                tags.insert((Int(first) << 8) | Int(second))
+            } else {
+                tags.insert(Int(first))
+            }
+        }
+
+        return tags
+    }
 }

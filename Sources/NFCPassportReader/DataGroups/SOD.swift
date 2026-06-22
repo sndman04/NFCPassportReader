@@ -59,10 +59,11 @@ import OpenSSL
 class SOD : DataGroup {
     
     public private(set) var pkcs7CertificateData : [UInt8] = []
-    private var asn1Root : SimpleASN1Node!
+    private var asn1Root : SimpleASN1Node?
     private var pubKey : OpaquePointer?
 
     private static let idSignedData = "1.2.840.113549.1.7.2"
+    private static let idLdsSecurityObject = "2.23.136.1.1.1"
     private static let idMessageDigest = "1.2.840.113549.1.9.4"
 
     private static let digestAlgorithmNamesByOID: [String: String] = [
@@ -110,11 +111,21 @@ class SOD : DataGroup {
     }
 
     private func signedDataItem() throws -> SimpleASN1Node {
-        guard asn1Root.tag == 0x30,
-              asn1Root.children.count >= 2,
-              asn1Root.children[0].objectIdentifier == Self.idSignedData,
-              asn1Root.children[1].tag == 0xA0,
-              let signedData = asn1Root.children[1].children.first(where: { $0.tag == 0x30 }) else {
+        guard let asn1Root,
+              asn1Root.tag == 0x30,
+              asn1Root.children.count == 2,
+              let contentType = asn1Root.children.first,
+              let explicitContent = asn1Root.children.dropFirst().first,
+              contentType.objectIdentifier == Self.idSignedData,
+              explicitContent.tag == 0xA0,
+              explicitContent.children.count == 1,
+              let signedData = explicitContent.children.first,
+              signedData.tag == 0x30,
+              signedData.children.count >= 4,
+              signedData.children.first?.tag == 0x02,
+              signedData.children.dropFirst().first?.tag == 0x31,
+              signedData.children.dropFirst(2).first?.tag == 0x30,
+              signedData.children.last?.tag == 0x31 else {
             throw OpenSSLError.UnableToExtractSignedDataFromPKCS7("Data in invalid format")
         }
         return signedData
@@ -124,7 +135,9 @@ class SOD : DataGroup {
         let signedData = try signedDataItem()
         guard let signerInfos = signedData.children.last,
               signerInfos.tag == 0x31,
-              let signerInfo = signerInfos.children.first(where: { $0.tag == 0x30 }) else {
+              !signerInfos.children.isEmpty,
+              signerInfos.children.allSatisfy({ $0.tag == 0x30 }),
+              let signerInfo = signerInfos.children.first else {
             throw OpenSSLError.UnableToExtractSignedDataFromPKCS7("Data in invalid format")
         }
         return signerInfo
@@ -139,26 +152,26 @@ class SOD : DataGroup {
 
     private func signatureAlgorithmItem(in signerInfo: SimpleASN1Node) throws -> SimpleASN1Node {
         if let signedAttributeIndex = signerInfo.children.firstIndex(where: { $0.tag == 0xA0 }),
-           signedAttributeIndex + 1 < signerInfo.children.count {
-            return signerInfo.children[signedAttributeIndex + 1]
+           let item = signerInfo.children.dropFirst(signedAttributeIndex + 1).first {
+            return item
         }
 
-        guard signerInfo.children.count > 3 else {
+        guard let item = signerInfo.children.dropFirst(3).first else {
             throw OpenSSLError.UnableToExtractSignedDataFromPKCS7("Data in invalid format")
         }
-        return signerInfo.children[3]
+        return item
     }
 
     private func signatureItem(in signerInfo: SimpleASN1Node) throws -> SimpleASN1Node {
         if let signedAttributeIndex = signerInfo.children.firstIndex(where: { $0.tag == 0xA0 }),
-           signedAttributeIndex + 2 < signerInfo.children.count {
-            return signerInfo.children[signedAttributeIndex + 2]
+           let item = signerInfo.children.dropFirst(signedAttributeIndex + 2).first {
+            return item
         }
 
-        guard signerInfo.children.count > 4 else {
+        guard let item = signerInfo.children.dropFirst(4).first else {
             throw OpenSSLError.UnableToExtractSignedDataFromPKCS7("Data in invalid format")
         }
-        return signerInfo.children[4]
+        return item
     }
     
     /// Returns the public key from the embedded X509 certificate
@@ -195,9 +208,15 @@ class SOD : DataGroup {
     /// - Throws: Error if we can't find or read the encapsulated content
     func getEncapsulatedContent() throws -> Data {
         let signedData = try signedDataItem()
-        guard signedData.children.count >= 3,
-              let eContent = signedData.children[2].children.first(where: { $0.tag == 0xA0 }),
-              let content = eContent.children.first(where: { $0.tag == 0x04 }) else {
+        guard let encapContentInfo = signedData.children.dropFirst(2).first,
+              encapContentInfo.tag == 0x30,
+              encapContentInfo.children.count == 2,
+              encapContentInfo.children.first?.objectIdentifier == Self.idLdsSecurityObject,
+              let eContent = encapContentInfo.children.dropFirst().first,
+              eContent.tag == 0xA0,
+              eContent.children.count == 1,
+              let content = eContent.children.first,
+              content.tag == 0x04 else {
             
             throw OpenSSLError.UnableToExtractSignedDataFromPKCS7("Data in invalid format")
         }
@@ -210,8 +229,11 @@ class SOD : DataGroup {
     /// - Throws: Error if we can't find or read the digest algorithm
     func getEncapsulatedContentDigestAlgorithm() throws -> String {
         let signedData = try signedDataItem()
-        guard signedData.children.count >= 2,
-              let digestAlgorithmOID = signedData.children[1].children.first?.children.first?.objectIdentifier,
+        guard let digestAlgorithms = signedData.children.dropFirst().first,
+              digestAlgorithms.tag == 0x31,
+              !digestAlgorithms.children.isEmpty,
+              digestAlgorithms.children.allSatisfy({ $0.tag == 0x30 }),
+              let digestAlgorithmOID = digestAlgorithms.children.first?.children.first?.objectIdentifier,
               let digestAlgorithm = Self.digestAlgorithmNamesByOID[digestAlgorithmOID] else {
             throw OpenSSLError.UnableToExtractSignedDataFromPKCS7("Data in invalid format")
         }
@@ -256,18 +278,21 @@ class SOD : DataGroup {
         let signerInfo = try signerInfoItem()
         let signedAttrs = try signedAttributesItem(in: signerInfo)
         
-        // Find the messageDigest in the signedAttributes section
-        var sigData : Data?
-        for attrObj in signedAttrs.children where attrObj.tag == 0x30 {
-            if attrObj.children.first?.objectIdentifier == Self.idMessageDigest {
-                if attrObj.children.count >= 2,
-                   let digestVal = attrObj.children[1].children.first(where: { $0.tag == 0x04 }) {
-                    sigData = Data(digestVal.value)
-                }
-            }
+        let messageDigestAttributes = signedAttrs.children.filter {
+            $0.tag == 0x30 && $0.children.first?.objectIdentifier == Self.idMessageDigest
+        }
+        guard messageDigestAttributes.count == 1,
+              let messageDigestAttribute = messageDigestAttributes.first,
+              messageDigestAttribute.children.count == 2,
+              let attrValues = messageDigestAttribute.children.dropFirst().first,
+              attrValues.tag == 0x31,
+              attrValues.children.count == 1,
+              let digestVal = attrValues.children.first,
+              digestVal.tag == 0x04 else {
+            throw OpenSSLError.UnableToExtractSignedDataFromPKCS7("No messageDigest Returned")
         }
         
-        guard let messageDigest = sigData else { throw OpenSSLError.UnableToExtractSignedDataFromPKCS7("No messageDigest Returned") }
+        let messageDigest = Data(digestVal.value)
         
         return messageDigest
     }

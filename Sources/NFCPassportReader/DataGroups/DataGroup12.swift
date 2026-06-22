@@ -8,6 +8,13 @@ import Foundation
 
 @available(iOS 13, macOS 10.15, *)
 class DataGroup12 : DataGroup {
+    private static let maxTextValueLength = 64 * 1024
+    private static let maxNestedTagLength = 4
+    private static let maxImageDataLength = 10 * 1024 * 1024
+    private static let jpegHeader: [UInt8] = [0xff, 0xd8, 0xff]
+    private static let jpeg2000BitmapHeader: [UInt8] = [0x00, 0x00, 0x00, 0x0c, 0x6a, 0x50, 0x20, 0x20, 0x0d, 0x0a]
+    private static let jpeg2000CodestreamBitmapHeader: [UInt8] = [0xff, 0x4f, 0xff, 0x51]
+
     public private(set) var issuingAuthority : String?
     public private(set) var dateOfIssue : String?
     public private(set) var otherPersonsDetails : String?
@@ -28,32 +35,36 @@ class DataGroup12 : DataGroup {
         var tag = try getNextTag()
         try verifyTag(tag, equals: 0x5C)
 
-        // Skip the taglist - ideally we would check this but...
-        let _ = try getNextValue()
+        let tagList = try getNextValue()
+        let declaredTags = try parseTagList(tagList, allowTrailingIncompleteTag: !hasUnreadBody)
         
         while hasUnreadBody {
             tag = try getNextTag()
+            guard declaredTags.contains(tag) else {
+                throw NFCPassportReaderError.InvalidASN1Structure
+            }
+
             let val = try getNextValue()
             
             switch tag {
             case 0x5F19:
-                issuingAuthority = LDSStringDecoder.decode(val)
+                issuingAuthority = try decodeTextValue(val)
             case 0x5F26:
-                dateOfIssue = parseDateOfIssue(value: val)
+                dateOfIssue = try parseDateOfIssue(value: val)
             case 0xA0:
-                otherPersonsDetails = parseOtherPersonsDetails(value: val)
+                otherPersonsDetails = try parseOtherPersonsDetails(value: val)
             case 0x5F1B:
-                endorsementsOrObservations = LDSStringDecoder.decode(val)
+                endorsementsOrObservations = try decodeTextValue(val)
             case 0x5F1C:
-                taxOrExitRequirements = LDSStringDecoder.decode(val)
+                taxOrExitRequirements = try decodeTextValue(val)
             case 0x5F1D:
-                frontImage = val
+                frontImage = try validatedImageData(val)
             case 0x5F1E:
-                rearImage = val
+                rearImage = try validatedImageData(val)
             case 0x5F55:
-                personalizationTime = LDSStringDecoder.decode(val)
+                personalizationTime = try decodeTextValue(val)
             case 0x5F56:
-                personalizationDeviceSerialNr = LDSStringDecoder.decode(val)
+                personalizationDeviceSerialNr = try decodeTextValue(val)
             default:
                 break
             }
@@ -75,29 +86,70 @@ class DataGroup12 : DataGroup {
         super.removeSensitiveDataForPrivacy()
     }
     
-    private func parseDateOfIssue(value: [UInt8]) -> String? {
+    private func parseDateOfIssue(value: [UInt8]) throws -> String? {
         if value.count == 4 {
-            return decodeBCD(value: value)
+            return try decodeBCD(value: value)
         } else {
-            return decodeASCII(value: value)
+            return try decodeASCII(value: value)
         }
     }
     
-    private func decodeASCII(value: [UInt8]) -> String? {
-        return LDSStringDecoder.decode(value)
+    private func decodeASCII(value: [UInt8]) throws -> String? {
+        return try LDSDateDecoder.decodeEightDigitDate(value)
     }
     
-    private func decodeBCD(value: [UInt8]) -> String? {
-        binToHexRep(value)
+    private func decodeBCD(value: [UInt8]) throws -> String? {
+        var digits = ""
+        digits.reserveCapacity(value.count * 2)
+        for byte in value {
+            let high = byte >> 4
+            let low = byte & 0x0F
+            guard high <= 9, low <= 9 else {
+                throw NFCPassportReaderError.InvalidASN1Structure
+            }
+            digits.append(String(high))
+            digits.append(String(low))
+        }
+        return try LDSDateDecoder.decodeEightDigitDate(Array(digits.utf8))
     }
 
-    private func parseOtherPersonsDetails(value: [UInt8]) -> String? {
+    private func parseOtherPersonsDetails(value: [UInt8]) throws -> String? {
+        try validateTextLength(value)
+
         if let nestedValues = decodeNestedTextValues(value), !nestedValues.isEmpty {
             return nestedValues.joined(separator: "\n")
         }
 
-        let decoded = LDSStringDecoder.decode(value).trimmingCharacters(in: .whitespacesAndNewlines)
+        let decoded = try decodeTextValue(value).trimmingCharacters(in: .whitespacesAndNewlines)
         return decoded.isEmpty ? nil : decoded
+    }
+
+    private func decodeTextValue(_ value: [UInt8]) throws -> String {
+        try validateTextLength(value)
+        return LDSStringDecoder.decode(value)
+    }
+
+    private func validateTextLength(_ value: [UInt8]) throws {
+        guard value.count <= Self.maxTextValueLength else {
+            throw NFCPassportReaderError.InvalidASN1Structure
+        }
+    }
+
+    private func validatedImageData(_ data: [UInt8]) throws -> [UInt8] {
+        guard data.isEmpty || Self.canDecodeImageData(data) else {
+            throw NFCPassportReaderError.UnknownImageFormat
+        }
+        return data
+    }
+
+    private static func canDecodeImageData<T: Collection>(_ data: T) -> Bool where T.Element == UInt8 {
+        data.count > 0 &&
+            data.count <= maxImageDataLength &&
+            (
+                data.starts(with: jpegHeader) ||
+                data.starts(with: jpeg2000BitmapHeader) ||
+                data.starts(with: jpeg2000CodestreamBitmapHeader)
+            )
     }
 
     private func decodeNestedTextValues(_ value: [UInt8], depth: Int = 0) -> [String]? {
@@ -112,7 +164,7 @@ class DataGroup12 : DataGroup {
             guard let tag = readTLVTag(value, position: &pos),
                   let length = readTLVLength(value, position: &pos),
                   length >= 0,
-                  pos + length <= value.count else {
+                  length <= value.count - pos else {
                 return nil
             }
 
@@ -150,6 +202,9 @@ class DataGroup12 : DataGroup {
                 let next = value[position]
                 tag.append(next)
                 position += 1
+                guard tag.count <= Self.maxNestedTagLength else {
+                    return nil
+                }
                 if next & 0x80 == 0 {
                     break
                 }

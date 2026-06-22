@@ -11,7 +11,7 @@ import OpenSSL
 @available(iOS 13, macOS 10.15, *)
 class ChipAuthenticationPublicKeyInfo : SecurityInfo {
     var oid : String
-    var pubKey : OpaquePointer
+    private(set) var pubKey : OpaquePointer?
     var keyId : Int?
     private let ownsPublicKey: Bool
     
@@ -29,9 +29,14 @@ class ChipAuthenticationPublicKeyInfo : SecurityInfo {
     }
 
     deinit {
-        if ownsPublicKey {
+        removeSensitiveDataForPrivacy()
+    }
+
+    override func removeSensitiveDataForPrivacy() {
+        if ownsPublicKey, let pubKey {
             EVP_PKEY_free(pubKey)
         }
+        pubKey = nil
     }
     
     public override func getObjectIdentifier() -> String {

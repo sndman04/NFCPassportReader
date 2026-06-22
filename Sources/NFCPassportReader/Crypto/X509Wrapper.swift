@@ -27,6 +27,9 @@ enum CertificateItem : String {
 
 @available(iOS 13, macOS 10.15, *)
 class X509Wrapper {
+    private static let maxCertificateDigestLength = Int(EVP_MAX_MD_SIZE)
+    private static let maxCertificateSerialLength = 64
+
     let cert : OpaquePointer
     
     public init?( with cert: OpaquePointer? ) {
@@ -79,9 +82,13 @@ class X509Wrapper {
         
         var n : UInt32 = 0
         let md = UnsafeMutablePointer<UInt8>.allocate(capacity: Int(EVP_MAX_MD_SIZE))
-        defer { md.deinitialize(count: Int(EVP_MAX_MD_SIZE)); md.deallocate() }
+        defer { md.deallocate() }
         
-        X509_digest(cert, fdig, md, &n)
+        guard X509_digest(cert, fdig, md, &n) == 1,
+              n > 0,
+              n <= EVP_MAX_MD_SIZE else {
+            return nil
+        }
         let arr = UnsafeMutableBufferPointer(start: md, count: Int(n)).map({ binToHexRep($0) }).joined(separator: ":")
         return arr
     }
@@ -104,8 +111,32 @@ class X509Wrapper {
     }
     
     func getSerialNumber() -> String? {
-        let serialNr = String( ASN1_INTEGER_get(X509_get_serialNumber(cert)), radix:16, uppercase: true )
-        return serialNr
+        return X509Wrapper.serialNumberString(from: X509_get_serialNumber(cert))
+    }
+
+    static func serialNumberString(from serial: UnsafePointer<ASN1_INTEGER>?) -> String? {
+        guard let serial,
+              let serialBN = ASN1_INTEGER_to_BN(serial, nil) else {
+            return nil
+        }
+        defer { BN_free(serialBN) }
+
+        guard BN_is_negative(serialBN) == 0 else {
+            return nil
+        }
+
+        let byteCount = (BN_num_bits(serialBN) + 7) / 8
+        guard byteCount > 0,
+              byteCount <= X509Wrapper.maxCertificateSerialLength else {
+            return nil
+        }
+
+        var serialBytes = [UInt8](repeating: 0, count: Int(byteCount))
+        guard BN_bn2bin(serialBN, &serialBytes) == byteCount else {
+            return nil
+        }
+
+        return serialBytes.map { binToHexRep($0) }.joined()
     }
     
     func getSignatureAlgorithm() -> String? {
@@ -138,15 +169,17 @@ class X509Wrapper {
         guard let out = BIO_new( BIO_s_mem()) else { return nil }
         defer { BIO_free(out) }
         
-        X509_NAME_print_ex(out, name, 0, UInt(ASN1_STRFLGS_ESC_2253 |
-                                                ASN1_STRFLGS_ESC_CTRL |
-                                                ASN1_STRFLGS_ESC_MSB |
-                                                ASN1_STRFLGS_UTF8_CONVERT |
-                                                ASN1_STRFLGS_DUMP_UNKNOWN |
-                                                ASN1_STRFLGS_DUMP_DER | XN_FLAG_SEP_COMMA_PLUS |
-                                                XN_FLAG_DN_REV |
-                                                XN_FLAG_FN_SN |
-                                                XN_FLAG_DUMP_UNKNOWN_FIELDS))
+        guard X509_NAME_print_ex(out, name, 0, UInt(ASN1_STRFLGS_ESC_2253 |
+                                                    ASN1_STRFLGS_ESC_CTRL |
+                                                    ASN1_STRFLGS_ESC_MSB |
+                                                    ASN1_STRFLGS_UTF8_CONVERT |
+                                                    ASN1_STRFLGS_DUMP_UNKNOWN |
+                                                    ASN1_STRFLGS_DUMP_DER | XN_FLAG_SEP_COMMA_PLUS |
+                                                    XN_FLAG_DN_REV |
+                                                    XN_FLAG_FN_SN |
+                                                    XN_FLAG_DUMP_UNKNOWN_FIELDS)) >= 0 else {
+            return nil
+        }
         issuer = OpenSSLUtils.bioToString(bio: out)
         
         return issuer
@@ -166,7 +199,9 @@ class X509Wrapper {
         guard let b = BIO_new(BIO_s_mem()) else { return nil }
         defer { BIO_free(b) }
         
-        ASN1_TIME_print(b, date)
+        guard ASN1_TIME_print(b, date) == 1 else {
+            return nil
+        }
         return OpenSSLUtils.bioToString(bio: b)
     }
     

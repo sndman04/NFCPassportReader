@@ -82,46 +82,70 @@ class SecurityInfo {
         true
     }
 
+    func removeSensitiveDataForPrivacy() {
+    }
+
     static func getInstance(
         oid: String,
         requiredData: SimpleASN1Node,
         requiredDataDER: [UInt8],
         optionalData: SimpleASN1Node?
-    ) -> SecurityInfo? {
+    ) throws -> SecurityInfo? {
         if ChipAuthenticationPublicKeyInfo.checkRequiredIdentifier(oid) {
-            let subjectPublicKeyInfo = try? OpenSSLUtils.readPublicKey(data: requiredDataDER)
-            if let subjectPublicKeyInfo {
-                return ChipAuthenticationPublicKeyInfo(
-                    oid: oid,
-                    pubKey: subjectPublicKeyInfo,
-                    keyId: optionalData?.integerValue
-                )
+            guard optionalData == nil || optionalData?.integerValue != nil else {
+                throw NFCPassportReaderError.InvalidASN1Structure
             }
 
-            return nil
+            guard let subjectPublicKeyInfo = try? OpenSSLUtils.readPublicKey(data: requiredDataDER) else {
+                throw NFCPassportReaderError.InvalidASN1Structure
+            }
+
+            return ChipAuthenticationPublicKeyInfo(
+                oid: oid,
+                pubKey: subjectPublicKeyInfo,
+                keyId: optionalData?.integerValue
+            )
         } else if ChipAuthenticationInfo.checkRequiredIdentifier(oid) {
+            guard let version = requiredData.integerValue,
+                  version == 1,
+                  optionalData == nil || optionalData?.integerValue != nil else {
+                throw NFCPassportReaderError.InvalidASN1Structure
+            }
+
             return ChipAuthenticationInfo(
                 oid: oid,
-                version: requiredData.integerValue ?? -1,
+                version: version,
                 keyId: optionalData?.integerValue
             )
         } else if PACEInfo.checkRequiredIdentifier(oid) {
+            guard let version = requiredData.integerValue,
+                  version == 2,
+                  optionalData == nil || optionalData?.integerValue != nil else {
+                throw NFCPassportReaderError.InvalidASN1Structure
+            }
+
             return PACEInfo(
                 oid: oid,
-                version: requiredData.integerValue ?? -1,
+                version: version,
                 parameterId: optionalData?.integerValue
             )
         } else if ActiveAuthenticationInfo.checkRequiredIdentifier(oid) {
+            guard let version = requiredData.integerValue,
+                  version == 1,
+                  optionalData == nil || optionalData?.objectIdentifier != nil else {
+                throw NFCPassportReaderError.InvalidASN1Structure
+            }
+
             if let signatureAlgorithmOID = optionalData?.objectIdentifier {
                 return ActiveAuthenticationInfo(
                     oid: oid,
-                    version: requiredData.integerValue ?? -1,
+                    version: version,
                     signatureAlgorithmOID: signatureAlgorithmOID
                 )
             } else {
                 return ActiveAuthenticationInfo(
                     oid: oid,
-                    version: requiredData.integerValue ?? -1
+                    version: version
                 )
             }
         }

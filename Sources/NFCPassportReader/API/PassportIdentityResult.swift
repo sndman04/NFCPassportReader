@@ -36,7 +36,7 @@ public struct PassportIdentityResult: Sendable, Equatable {
     public let trustLevel: PassportTrustLevel
     public let certificateTrustMetadata: PassportCertificateTrustMetadata
 
-    init(passport: NFCPassportModel) {
+    init(passport: NFCPassportModel, photoPolicy: PassportPhotoPolicy = .read) {
         self.documentType = passport.documentType
         self.documentSubType = passport.documentSubType
         self.documentNumber = passport.documentNumber
@@ -52,13 +52,13 @@ public struct PassportIdentityResult: Sendable, Equatable {
         self.placeOfBirth = passport.placeOfBirth
         self.residenceAddress = passport.residenceAddress
         self.phoneNumber = passport.phoneNumber
-        if let dg2 = passport.getDataGroup(.DG2) as? DataGroup2 {
+        if photoPolicy == .read, let dg2 = passport.getDataGroup(.DG2) as? DataGroup2 {
             self.hasFaceImage = !dg2.imageDataItems.isEmpty
         } else {
             self.hasFaceImage = false
         }
         if let dg7 = passport.getDataGroup(.DG7) as? DataGroup7 {
-            self.hasSignatureImage = !dg7.imageDataItems.isEmpty
+            self.hasSignatureImage = dg7.imageDataItems.contains { !$0.isEmpty }
         } else {
             self.hasSignatureImage = false
         }

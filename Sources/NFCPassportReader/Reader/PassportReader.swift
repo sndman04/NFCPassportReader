@@ -40,9 +40,11 @@ extension PassportReaderTrackingDelegate {
 @MainActor
 public class PassportReader : NSObject {
     private typealias NFCCheckedContinuation = CheckedContinuation<NFCPassportModel, Error>
+    private static let nanosecondsPerSecond: UInt64 = 1_000_000_000
     private var nfcContinuation: NFCCheckedContinuation?
     private let scanStateLock = NSLock()
     private var scanInProgress = false
+    private var activeScanID: UInt64 = 0
     private let eventLogger: PassportReaderEventLogger
     private var progressHandler: PassportReaderProgressHandler?
     private var scanTimeoutTask: Task<Void, Never>?
@@ -116,8 +118,9 @@ public class PassportReader : NSObject {
 
         self.pacePolicy = pacePolicy
         try validatePACEPolicyBeforeSession(skipPACE: skipPACE)
+        try validateActiveAuthenticationChallengeBeforeSession(aaChallenge)
 
-        guard beginScanIfPossible() else {
+        guard let scanID = beginScanIfPossible() else {
             pendingPACECredential = nil
             eventLogger.log(.readFailed(.unexpectedReadFailure))
             throw NFCPassportReaderError.ScanAlreadyInProgress
@@ -137,14 +140,13 @@ public class PassportReader : NSObject {
         self.securityPolicy = securityPolicy
         
         self.effectivePhotoPolicy = securityPolicy.apply(to: photoPolicy)
-        self.dataGroupsToRead.removeAll()
-        self.dataGroupsToRead.append(
-            contentsOf: PassportDataGroupReadPolicy.requestedDataGroups(
-                tags: tags,
-                photoPolicy: photoPolicy,
-                securityPolicy: securityPolicy
-            )
+        let initialRequest = Self.initialDataGroupReadRequest(
+            tags: tags,
+            photoPolicy: photoPolicy,
+            securityPolicy: securityPolicy
         )
+        self.dataGroupsToRead.removeAll()
+        self.dataGroupsToRead.append(contentsOf: initialRequest.dataGroups)
         self.dataGroupsToRead.forEach { self.passport.recordDataGroupReadStatus(.requested, for: $0) }
         self.nfcViewDisplayMessageHandler = customDisplayMessage
         self.progressHandler = progressHandler
@@ -153,43 +155,34 @@ public class PassportReader : NSObject {
         self.bacHandler = nil
         self.caHandler = nil
         self.paceHandler = nil
-        
-        // If no tags specified, read all
-        if self.dataGroupsToRead.count == 0 {
-            // Start off with .COM, will always read (and .SOD but we'll add that after), and then add the others from the COM
-            self.dataGroupsToRead.append(contentsOf:[.COM, .SOD] )
-            self.readAllDatagroups = true
-        } else {
-            // We are reading specific datagroups
-            self.readAllDatagroups = false
-        }
+        self.readAllDatagroups = initialRequest.readAllDataGroups
 
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation({ (continuation: NFCCheckedContinuation) in
-                guard self.storeActiveScanContinuation(continuation) else {
+                guard self.storeActiveScanContinuation(continuation, scanID: scanID) else {
                     continuation.resume(throwing: NFCPassportReaderError.UserCanceled)
                     return
                 }
 
                 guard NFCTagReaderSession.readingAvailable else {
-                    self.failActiveScan(error: .NFCNotSupported)
+                    self.failActiveScan(error: .NFCNotSupported, scanID: scanID)
                     return
                 }
 
                 guard let readerSession = PassportNFCSessionFactory.makeTagReaderSession(delegate: self) else {
-                    self.failActiveScan(error: .UnexpectedError)
+                    self.failActiveScan(error: .UnexpectedError, scanID: scanID)
                     return
                 }
 
                 self.readerSession = readerSession
                 self.updateReaderSessionMessage( alertMessage: NFCViewDisplayMessage.requestPresentPassport )
                 self.emitProgress(.waitingForPassport)
-                self.startTimeoutTask(operationTimeout)
+                self.startTimeoutTask(operationTimeout, scanID: scanID)
                 readerSession.begin()
             })
         } onCancel: {
             Task { @MainActor in
-                self.cancelRead()
+                self.cancelRead(scanID: scanID)
             }
         }
     }
@@ -351,7 +344,11 @@ public class PassportReader : NSObject {
             progressHandler: progressHandler,
             customDisplayMessage: customDisplayMessage
         )
-        return makeIdentityResultAndScrubPassport(passport, photoPolicy: securityPolicy.apply(to: photoPolicy))
+        return makeIdentityResultAndScrubPassport(
+            passport,
+            photoPolicy: securityPolicy.apply(to: photoPolicy),
+            securityPolicy: securityPolicy
+        )
     }
 
     public func readPassportIdentity(
@@ -388,7 +385,11 @@ public class PassportReader : NSObject {
             progressHandler: progressHandler,
             customDisplayMessage: customDisplayMessage
         )
-        return makeIdentityResultAndScrubPassport(passport, photoPolicy: securityPolicy.apply(to: photoPolicy))
+        return makeIdentityResultAndScrubPassport(
+            passport,
+            photoPolicy: securityPolicy.apply(to: photoPolicy),
+            securityPolicy: securityPolicy
+        )
     }
 
     func readPassportIdentity(
@@ -421,7 +422,11 @@ public class PassportReader : NSObject {
             progressHandler: progressHandler,
             customDisplayMessage: customDisplayMessage
         )
-        return makeIdentityResultAndScrubPassport(passport, photoPolicy: securityPolicy.apply(to: photoPolicy))
+        return makeIdentityResultAndScrubPassport(
+            passport,
+            photoPolicy: securityPolicy.apply(to: photoPolicy),
+            securityPolicy: securityPolicy
+        )
     }
 
     public func readPassportIdentity(
@@ -440,12 +445,17 @@ public class PassportReader : NSObject {
         )
         return makeIdentityResultAndScrubPassport(
             passport,
-            photoPolicy: options.securityPolicy.apply(to: options.photoPolicy)
+            photoPolicy: options.securityPolicy.apply(to: options.photoPolicy),
+            securityPolicy: options.securityPolicy
         )
     }
 
     public func cancelRead() {
-        failActiveScan(error: .UserCanceled, invalidationReason: .userCanceled)
+        failActiveScan(error: .UserCanceled, invalidationReason: .userCanceled, scanID: currentScanID())
+    }
+
+    private func cancelRead(scanID: UInt64) {
+        failActiveScan(error: .UserCanceled, invalidationReason: .userCanceled, scanID: scanID)
     }
 }
 
@@ -453,15 +463,17 @@ public class PassportReader : NSObject {
 extension PassportReader : @preconcurrency NFCTagReaderSessionDelegate {
     // MARK: - NFCTagReaderSessionDelegate
     public func tagReaderSessionDidBecomeActive(_ session: NFCTagReaderSession) {
+        guard currentScanID(for: session) != nil else { return }
         // If necessary, you may perform additional operations on session start.
         // At this point RF polling is enabled.
         eventLogger.log(.sessionStarted)
     }
     
     public func tagReaderSession(_ session: NFCTagReaderSession, didInvalidateWithError error: Error) {
+        guard let scanID = currentScanID(for: session) else { return }
+
         // If necessary, you may handle the error. Note session is no longer valid.
         // You must create a new session to restart RF polling.
-        self.readerSession?.invalidate()
         self.readerSession = nil
 
         if let readerError = error as? NFCReaderError, readerError.code == NFCReaderError.readerSessionInvalidationErrorUserCanceled
@@ -485,18 +497,20 @@ extension PassportReader : @preconcurrency NFCTagReaderSessionDelegate {
             } else {
                 eventLogger.log(.sessionInvalidated(.unknown))
             }
-            failActiveScan(error: userError)
+            failActiveScan(error: userError, scanID: scanID)
         }
     }
     
     public func tagReaderSession(_ session: NFCTagReaderSession, didDetect tags: [NFCTag]) {
+        guard let scanID = currentScanID(for: session) else { return }
+
         eventLogger.log(.tagDetected)
         emitProgress(.tagDetected)
         if tags.count > 1 {
             eventLogger.log(.multipleTagsDetected)
 
             let errorMessage = NFCViewDisplayMessage.error(.MoreThanOneTagFound)
-            self.invalidateSession(errorMessage: errorMessage, error: NFCPassportReaderError.MoreThanOneTagFound)
+            self.invalidateSession(errorMessage: errorMessage, error: NFCPassportReaderError.MoreThanOneTagFound, scanID: scanID)
             return
         }
 
@@ -505,7 +519,7 @@ extension PassportReader : @preconcurrency NFCTagReaderSessionDelegate {
             eventLogger.log(.invalidTagDetected)
 
             let errorMessage = NFCViewDisplayMessage.error(NFCPassportReaderError.TagNotValid)
-            self.invalidateSession(errorMessage: errorMessage, error: NFCPassportReaderError.TagNotValid)
+            self.invalidateSession(errorMessage: errorMessage, error: NFCPassportReaderError.TagNotValid, scanID: scanID)
             return
         }
 
@@ -516,11 +530,11 @@ extension PassportReader : @preconcurrency NFCTagReaderSessionDelegate {
             eventLogger.log(.invalidTagDetected)
 
             let errorMessage = NFCViewDisplayMessage.error(NFCPassportReaderError.TagNotValid)
-            self.invalidateSession(errorMessage:errorMessage, error: NFCPassportReaderError.TagNotValid)
+            self.invalidateSession(errorMessage:errorMessage, error: NFCPassportReaderError.TagNotValid, scanID: scanID)
             return
         }
-        
-        Task { [passportTag] in
+
+        Task { [passportTag, scanID] in
             do {
                 // CoreNFC's async connect API is not fully Sendable-annotated in the SDK.
                 // Keep the unsafe boundary at the external transport call, then return to
@@ -528,6 +542,7 @@ extension PassportReader : @preconcurrency NFCTagReaderSessionDelegate {
                 nonisolated(unsafe) let sessionToConnect = session
                 nonisolated(unsafe) let tagToConnect = tag
                 try await sessionToConnect.connect(to: tagToConnect)
+                guard self.isActiveScan(scanID, session: session) else { return }
                 self.eventLogger.log(.tagConnected)
                 self.updateReaderSessionMessage( alertMessage: NFCViewDisplayMessage.authenticatingWithPassport(0) )
                 self.emitProgress(.authenticating(progress: 0))
@@ -540,40 +555,15 @@ extension PassportReader : @preconcurrency NFCTagReaderSessionDelegate {
                     tagReader.preferExtendedReadAmount()
                 }
                 
-                var lastRenderedProgress: Int?
-                var lastRenderedDataGroup: DataGroupId?
-                var lastRenderedGeneration = self.progressRenderGeneration
-                tagReader.progress = { [unowned self] (progress) in
-                    let clampedProgress = min(max(progress, 0), 100)
-                    let currentDataGroup = self.currentlyReadingDataGroup
-                    let currentGeneration = self.progressRenderGeneration
-                    let shouldRenderProgress = currentGeneration != lastRenderedGeneration
-                        || currentDataGroup != lastRenderedDataGroup
-                        || lastRenderedProgress == nil
-                        || clampedProgress == 100
-                        || clampedProgress - (lastRenderedProgress ?? 0) >= 5
-                    guard shouldRenderProgress else { return }
-
-                    lastRenderedGeneration = currentGeneration
-                    lastRenderedProgress = clampedProgress
-                    lastRenderedDataGroup = currentDataGroup
-                    let normalizedProgress = Double(clampedProgress) / 100.0
-                    if let dgId = self.currentlyReadingDataGroup {
-                        self.updateReaderSessionMessage( alertMessage: NFCViewDisplayMessage.readingDataGroupProgress(dgId, clampedProgress) )
-                        self.emitProgress(.readingDataGroup(dgId, progress: normalizedProgress))
-                    } else {
-                        self.updateReaderSessionMessage( alertMessage: NFCViewDisplayMessage.authenticatingWithPassport(clampedProgress) )
-                        self.emitProgress(.authenticating(progress: normalizedProgress))
-                    }
-                }
+                tagReader.progress = self.makeTagReaderProgressHandler(scanID: scanID)
                 
-                let passportModel = try await self.startReading( tagReader : tagReader)
-                self.completeActiveScan(returning: passportModel)
+                let passportModel = try await self.startReading(tagReader: tagReader, scanID: scanID)
+                self.completeActiveScan(returning: passportModel, scanID: scanID)
 
                 
             } catch let error as NFCPassportReaderError {
                 let errorMessage = NFCViewDisplayMessage.error(error)
-                self.invalidateSession(errorMessage: errorMessage, error: error)
+                self.invalidateSession(errorMessage: errorMessage, error: error, scanID: scanID)
             } catch {
 
                 // .readerTransceiveErrorTagResponseError is thrown when a "connection lost" scenario is forced by moving the phone away from the NFC chip
@@ -583,10 +573,10 @@ extension PassportReader : @preconcurrency NFCTagReaderSessionDelegate {
                     nfcError.errorCode == NFCReaderError.readerTransceiveErrorTagConnectionLost.rawValue {
                     self.eventLogger.log(.sessionInvalidated(.connectionLost))
                     let errorMessage = NFCViewDisplayMessage.error(NFCPassportReaderError.ConnectionError)
-                    self.invalidateSession(errorMessage: errorMessage, error: NFCPassportReaderError.ConnectionError)
+                    self.invalidateSession(errorMessage: errorMessage, error: NFCPassportReaderError.ConnectionError, scanID: scanID)
                 } else {
                     let errorMessage = NFCViewDisplayMessage.error(NFCPassportReaderError.Unknown(error))
-                    self.invalidateSession(errorMessage: errorMessage, error: NFCPassportReaderError.Unknown(error))
+                    self.invalidateSession(errorMessage: errorMessage, error: NFCPassportReaderError.Unknown(error), scanID: scanID)
                 }
             }
         }
@@ -600,31 +590,103 @@ extension PassportReader : @preconcurrency NFCTagReaderSessionDelegate {
         progressHandler?(event)
     }
 
+    func makeTagReaderProgressHandler(scanID: UInt64) -> (Int) -> Void {
+        var lastRenderedProgress: Int?
+        var lastRenderedDataGroup: DataGroupId?
+        var lastRenderedGeneration = progressRenderGeneration
+
+        return { [weak self] progress in
+            guard let self, self.isActiveScan(scanID) else { return }
+
+            let clampedProgress = min(max(progress, 0), 100)
+            let currentDataGroup = self.currentlyReadingDataGroup
+            let currentGeneration = self.progressRenderGeneration
+            let shouldRenderProgress = currentGeneration != lastRenderedGeneration
+                || currentDataGroup != lastRenderedDataGroup
+                || lastRenderedProgress == nil
+                || clampedProgress == 100
+                || clampedProgress - (lastRenderedProgress ?? 0) >= 5
+            guard shouldRenderProgress else { return }
+
+            lastRenderedGeneration = currentGeneration
+            lastRenderedProgress = clampedProgress
+            lastRenderedDataGroup = currentDataGroup
+            let normalizedProgress = Double(clampedProgress) / 100.0
+            if let dgId = self.currentlyReadingDataGroup {
+                self.updateReaderSessionMessage(alertMessage: NFCViewDisplayMessage.readingDataGroupProgress(dgId, clampedProgress))
+                self.emitProgress(.readingDataGroup(dgId, progress: normalizedProgress))
+            } else {
+                self.updateReaderSessionMessage(alertMessage: NFCViewDisplayMessage.authenticatingWithPassport(clampedProgress))
+                self.emitProgress(.authenticating(progress: normalizedProgress))
+            }
+        }
+    }
+
     private func makeIdentityResultAndScrubPassport(
         _ passport: NFCPassportModel,
-        photoPolicy: PassportPhotoPolicy
+        photoPolicy: PassportPhotoPolicy,
+        securityPolicy: PassportReaderSecurityPolicy
     ) -> PassportChipReadResult {
-        let result = PassportChipReadResult(passport: passport, photoPolicy: photoPolicy)
+        let result = PassportChipReadResult(
+            passport: passport,
+            photoPolicy: photoPolicy,
+            securityPolicy: securityPolicy
+        )
         passport.removeSensitiveDataForPrivacy()
         return result
     }
 
-    func startTimeoutTask(_ operationTimeout: TimeInterval?) {
+    func startTimeoutTask(_ operationTimeout: TimeInterval?, scanID: UInt64) {
         scanTimeoutTask?.cancel()
-        guard let operationTimeout, operationTimeout.isFinite, operationTimeout > 0 else {
+        guard let nanoseconds = Self.safeTimeoutNanoseconds(for: operationTimeout) else {
             scanTimeoutTask = nil
             return
         }
 
-        let maxSafeSeconds = TimeInterval(UInt64.max / 1_000_000_000)
-        let timeoutSeconds = min(operationTimeout, maxSafeSeconds)
-
         scanTimeoutTask = Task { @MainActor [weak self] in
-            let nanoseconds = UInt64(timeoutSeconds * 1_000_000_000)
             try? await Task.sleep(nanoseconds: nanoseconds)
             guard !Task.isCancelled else { return }
-            self?.failActiveScan(error: .TimeOutError, invalidationReason: .timeout)
+            self?.failActiveScan(error: .TimeOutError, invalidationReason: .timeout, scanID: scanID)
         }
+    }
+
+    static func safeTimeoutNanoseconds(for operationTimeout: TimeInterval?) -> UInt64? {
+        guard let operationTimeout, operationTimeout.isFinite, operationTimeout > 0 else {
+            return nil
+        }
+
+        let maxWholeSeconds = TimeInterval(UInt64.max / nanosecondsPerSecond)
+        let clampedSeconds = min(operationTimeout, maxWholeSeconds)
+        let wholeSeconds = UInt64(clampedSeconds.rounded(.down))
+        let fractionalSeconds = clampedSeconds - TimeInterval(wholeSeconds)
+        let fractionalNanoseconds = UInt64(
+            (fractionalSeconds * TimeInterval(nanosecondsPerSecond)).rounded(.down)
+        )
+        let wholeNanoseconds = wholeSeconds * nanosecondsPerSecond
+
+        guard UInt64.max - wholeNanoseconds >= fractionalNanoseconds else {
+            return UInt64.max
+        }
+        return wholeNanoseconds + fractionalNanoseconds
+    }
+
+    static func initialDataGroupReadRequest(
+        tags: [DataGroupId],
+        photoPolicy: PassportPhotoPolicy,
+        securityPolicy: PassportReaderSecurityPolicy
+    ) -> (dataGroups: [DataGroupId], readAllDataGroups: Bool) {
+        let requestedDataGroups = PassportDataGroupReadPolicy.requestedDataGroups(
+            tags: tags,
+            photoPolicy: photoPolicy,
+            securityPolicy: securityPolicy
+        )
+
+        guard requestedDataGroups.isEmpty else {
+            return (requestedDataGroups, false)
+        }
+
+        // Legacy empty-tag reads expand from COM after the mandatory startup groups are read.
+        return ([.COM, .SOD], true)
     }
 
     func cancelTimeoutTask() {
@@ -632,43 +694,85 @@ extension PassportReader : @preconcurrency NFCTagReaderSessionDelegate {
         scanTimeoutTask = nil
     }
 
-    private func beginScanIfPossible() -> Bool {
+    func beginScanIfPossible() -> UInt64? {
         scanStateLock.lock()
         defer { scanStateLock.unlock() }
 
-        guard !scanInProgress else { return false }
+        guard !scanInProgress else { return nil }
         scanInProgress = true
-        return true
+        shouldNotReportNextReaderSessionInvalidationErrorUserCanceled = false
+        activeScanID &+= 1
+        if activeScanID == 0 {
+            activeScanID = 1
+        }
+        return activeScanID
     }
 
-    private func storeActiveScanContinuation(_ continuation: NFCCheckedContinuation) -> Bool {
+    private func storeActiveScanContinuation(_ continuation: NFCCheckedContinuation, scanID: UInt64) -> Bool {
         scanStateLock.lock()
         defer { scanStateLock.unlock() }
 
-        guard scanInProgress else { return false }
+        guard scanInProgress, activeScanID == scanID else { return false }
         nfcContinuation = continuation
         return true
     }
 
-    private func takeActiveScanContinuation() -> NFCCheckedContinuation? {
+    private func takeActiveScanState(scanID: UInt64) -> (matched: Bool, continuation: NFCCheckedContinuation?) {
         scanStateLock.lock()
         defer { scanStateLock.unlock() }
 
+        guard scanInProgress, activeScanID == scanID else { return (false, nil) }
         scanInProgress = false
+        shouldNotReportNextReaderSessionInvalidationErrorUserCanceled = false
         let continuation = nfcContinuation
         nfcContinuation = nil
-        return continuation
+        return (true, continuation)
     }
 
-    func completeActiveScan(returning passportModel: NFCPassportModel) {
-        guard let continuation = takeActiveScanContinuation() else { return }
+    func currentScanID() -> UInt64 {
+        scanStateLock.lock()
+        defer { scanStateLock.unlock() }
+
+        return activeScanID
+    }
+
+    private func currentScanID(for session: NFCTagReaderSession) -> UInt64? {
+        scanStateLock.lock()
+        defer { scanStateLock.unlock() }
+
+        guard scanInProgress, readerSession === session else { return nil }
+        return activeScanID
+    }
+
+    func isActiveScan(_ scanID: UInt64, session: NFCTagReaderSession? = nil) -> Bool {
+        scanStateLock.lock()
+        defer { scanStateLock.unlock() }
+
+        guard scanInProgress, activeScanID == scanID else { return false }
+        if let session {
+            return readerSession === session
+        }
+        return true
+    }
+
+    func ensureActiveScan(_ scanID: UInt64) throws {
+        guard isActiveScan(scanID) else {
+            throw NFCPassportReaderError.UserCanceled
+        }
+    }
+
+    func completeActiveScan(returning passportModel: NFCPassportModel, scanID: UInt64) {
+        let activeScan = takeActiveScanState(scanID: scanID)
+        guard activeScan.matched else { return }
         cancelTimeoutTask()
         progressHandler = nil
         discardSensitiveAuthenticationState()
-        continuation.resume(returning: passportModel)
+        activeScan.continuation?.resume(returning: passportModel)
     }
 
-    func failActiveScan(error: NFCPassportReaderError, invalidationReason: PassportReaderSessionInvalidationReason? = nil) {
+    func failActiveScan(error: NFCPassportReaderError, invalidationReason: PassportReaderSessionInvalidationReason? = nil, scanID: UInt64) {
+        let activeScan = takeActiveScanState(scanID: scanID)
+        guard activeScan.matched else { return }
         if let invalidationReason {
             eventLogger.log(.sessionInvalidated(invalidationReason))
         }
@@ -676,10 +780,9 @@ extension PassportReader : @preconcurrency NFCTagReaderSessionDelegate {
         self.readerSession?.invalidate()
         self.readerSession = nil
         discardSensitiveScanStateAfterFailure()
-        guard let continuation = takeActiveScanContinuation() else { return }
         progressHandler = nil
         eventLogger.log(.readFailed(error.privacySafeFailureReason))
-        continuation.resume(throwing: error)
+        activeScan.continuation?.resume(throwing: error)
     }
 
     func discardSensitiveScanStateAfterFailure() {
@@ -704,56 +807,62 @@ extension PassportReader : @preconcurrency NFCTagReaderSessionDelegate {
         aaChallenge = nil
         nfcViewDisplayMessageHandler = nil
     }
+
+    #if DEBUG
+    func suppressNextReaderSessionUserCancelForTesting() {
+        shouldNotReportNextReaderSessionInvalidationErrorUserCanceled = true
+    }
+
+    var isNextReaderSessionUserCancelSuppressedForTesting: Bool {
+        shouldNotReportNextReaderSessionInvalidationErrorUserCanceled
+    }
+    #endif
 }
 
 @available(iOS 15, *)
 extension PassportReader {
     
-    func startReading(tagReader : TagReader) async throws -> NFCPassportModel {
+    func startReading(tagReader: TagReader, scanID: UInt64) async throws -> NFCPassportModel {
+        try ensureActiveScan(scanID)
         trackingDelegate?.nfcTagDetected()
 
         if !skipPACE {
             do {
+                try ensureActiveScan(scanID)
                 trackingDelegate?.paceStarted()
                 eventLogger.log(.paceStarted)
                 emitProgress(.paceStarted)
 
                 let data = try await tagReader.readCardAccess()
+                try ensureActiveScan(scanID)
                 let cardAccess = try CardAccess(data)
                 passport.cardAccess = cardAccess
 
                 trackingDelegate?.readCardAccess(cardAccess: cardAccess)
 
-                if let cardSecurityData = try? await tagReader.readCardSecurity() {
-                    passport.cardSecurity = try? makeCardSecurity(from: cardSecurityData)
+                let cardSecurityData = try? await tagReader.readCardSecurity()
+                try ensureActiveScan(scanID)
+                if let cardSecurityData {
+                    try storeCardSecurity(from: cardSecurityData)
                 }
                  
-                let paceInfos = cardAccess.paceInfos
-                let implementedPACEInfos = paceInfos.filter { $0.isImplementedForReading }
-                let orderedPACEInfos = implementedPACEInfos.isEmpty ? paceInfos : implementedPACEInfos
-                guard !orderedPACEInfos.isEmpty else {
+                guard let paceInfo = cardAccess.preferredPACEInfo else {
                     throw NFCPassportReaderError.NotYetSupported("PACE not supported")
                 }
 
                 try validatePACEPolicyBeforeAttempt()
 
-                var lastPACEError: Error?
-                var didPACE = false
-                for paceInfo in orderedPACEInfos {
-                    do {
-                        let paceHandler = PACEHandler(paceInfo: paceInfo, tagReader: tagReader)
-                        try await paceHandler.doPACE(accessKey: paceKey ?? mrzKey, keyReference: paceKeyReference)
-                        passport.paceChipAuthenticationMappingResult = paceHandler.chipAuthenticationMappingResult
-                        didPACE = true
-                        break
-                    } catch {
-                        lastPACEError = error
+                let paceHandler = PACEHandler(paceInfo: paceInfo, tagReader: tagReader)
+                self.paceHandler = paceHandler
+                defer {
+                    paceHandler.removeSensitiveData()
+                    if self.paceHandler === paceHandler {
+                        self.paceHandler = nil
                     }
                 }
-
-                if let lastPACEError, !didPACE {
-                    throw lastPACEError
-                }
+                try await paceHandler.doPACE(accessKey: paceKey ?? mrzKey, keyReference: paceKeyReference)
+                try ensureActiveScan(scanID)
+                passport.paceChipAuthenticationMappingResult = paceHandler.chipAuthenticationMappingResult
 
                 passport.PACEStatus = .success
                 verifyTrustedCardSecurityCAMIfPossible()
@@ -762,6 +871,7 @@ extension PassportReader {
 
                 trackingDelegate?.paceSucceeded()
             } catch {
+                try ensureActiveScan(scanID)
                 trackingDelegate?.paceFailed()
 
                 passport.PACEStatus = .failed
@@ -773,15 +883,19 @@ extension PassportReader {
             }
             
             _ = try await tagReader.selectPassportApplication()
+            try ensureActiveScan(scanID)
         }
         
         // If either PACE isn't supported, we failed whilst doing PACE or we didn't even attempt it, then fall back to BAC
         if passport.PACEStatus != .success {
             do {
+                try ensureActiveScan(scanID)
                 trackingDelegate?.bacStarted()
-                try await doBACAuthentication(tagReader : tagReader)
+                try await doBACAuthentication(tagReader: tagReader, scanID: scanID)
+                try ensureActiveScan(scanID)
                 trackingDelegate?.bacSucceeded()
             } catch {
+                try ensureActiveScan(scanID)
                 trackingDelegate?.bacFailed()
                 eventLogger.log(.bacFailed)
                 throw error
@@ -789,9 +903,11 @@ extension PassportReader {
         }
         
         // Now to read the datagroups
-        try await readDataGroups(tagReader: tagReader)
+        try await readDataGroups(tagReader: tagReader, scanID: scanID)
 
-        try await doActiveAuthenticationIfNeccessary(tagReader : tagReader)
+        try await doActiveAuthenticationIfNeccessary(tagReader: tagReader, scanID: scanID)
+
+        try ensureActiveScan(scanID)
 
         self.updateReaderSessionMessage(alertMessage: NFCViewDisplayMessage.successfulRead)
         self.shouldNotReportNextReaderSessionInvalidationErrorUserCanceled = true
@@ -799,6 +915,7 @@ extension PassportReader {
         self.readerSession = nil
 
         // If we have a masterlist url set then use that and verify the passport now
+        try ensureActiveScan(scanID)
         eventLogger.log(.verificationStarted)
         emitProgress(.verifyingSOD)
         emitProgress(.verifyingDataGroups)
@@ -831,6 +948,14 @@ extension PassportReader {
         }
     }
 
+    func validateActiveAuthenticationChallengeBeforeSession(_ challenge: [UInt8]?) throws {
+        guard let challenge else { return }
+        guard NFCPassportModel.isValidActiveAuthenticationChallenge(challenge) else {
+            pendingPACECredential = nil
+            throw NFCPassportReaderError.MissingMandatoryFields
+        }
+    }
+
     func validatePACEPolicyBeforeAttempt() throws {
         switch pacePolicy {
         case .allowBACFallback, .requirePACEWhenAdvertised:
@@ -856,6 +981,29 @@ extension PassportReader {
         }
     }
 
+    #if DEBUG
+    func configurePACEPolicyForTesting(
+        _ policy: PassportReaderPACEPolicy,
+        paceKey: String? = nil,
+        paceKeyReference: PassportPACEKeyReference = .mrz,
+        pendingPACEKey: String? = nil,
+        pendingPACEKeyReference: PassportPACEKeyReference = .mrz
+    ) {
+        self.pacePolicy = policy
+        self.paceKey = paceKey
+        self.paceKeyReference = paceKeyReference
+        if let pendingPACEKey {
+            self.pendingPACECredential = (pendingPACEKey, pendingPACEKeyReference)
+        } else {
+            self.pendingPACECredential = nil
+        }
+    }
+    #endif
+
+    func storeCardSecurity(from data: [UInt8]) throws {
+        passport.cardSecurity = try makeCardSecurity(from: data)
+    }
+
     private func makeCardSecurity(from data: [UInt8]) throws -> CardSecurity {
         let cardSecurity = try CardSecurity(data)
         if let masterListURL {
@@ -874,14 +1022,17 @@ extension PassportReader {
         }
 
         let publicKeyInfos = cardSecurity.securityInfos.compactMap { $0 as? ChipAuthenticationPublicKeyInfo }
+        passport.paceChipAuthenticationMappingResult = nil
         if camResult.verifies(using: publicKeyInfos) {
             passport.chipAuthenticationStatus = .success
-            passport.paceChipAuthenticationMappingResult = nil
+        } else {
+            passport.chipAuthenticationStatus = .failed
         }
     }
     
     
-    func doActiveAuthenticationIfNeccessary( tagReader : TagReader) async throws {
+    func doActiveAuthenticationIfNeccessary(tagReader: TagReader, scanID: UInt64) async throws {
+        try ensureActiveScan(scanID)
         guard self.passport.activeAuthenticationSupported else {
             return
         }
@@ -892,6 +1043,7 @@ extension PassportReader {
 
         let challenge = aaChallenge ?? generateRandomUInt8Array(8)
         let response = try await tagReader.doInternalAuthentication(challenge: challenge, useExtendedMode: useExtendedMode)
+        try ensureActiveScan(scanID)
         self.passport.verifyActiveAuthentication( challenge:challenge, signature:response.data )
         if self.passport.activeAuthenticationPassed {
             eventLogger.log(.activeAuthenticationSucceeded)
@@ -900,7 +1052,8 @@ extension PassportReader {
     }
     
 
-    func doBACAuthentication(tagReader : TagReader) async throws {
+    func doBACAuthentication(tagReader: TagReader, scanID: UInt64) async throws {
+        try ensureActiveScan(scanID)
         self.currentlyReadingDataGroup = nil
 
         eventLogger.log(.bacStarted)
@@ -910,23 +1063,27 @@ extension PassportReader {
 
         self.bacHandler = BACHandler( tagReader: tagReader )
         try await bacHandler?.performBACAndGetSessionKeys( mrzKey: mrzKey )
+        try ensureActiveScan(scanID)
         eventLogger.log(.bacSucceeded)
         emitProgress(.bacSucceeded)
 
         self.passport.BACStatus = .success
     }
 
-    func readDataGroups( tagReader: TagReader ) async throws {
+    func readDataGroups(tagReader: TagReader, scanID: UInt64) async throws {
+        try ensureActiveScan(scanID)
         
         // Read COM
         var DGsToRead = [DataGroupId]()
 
         self.updateReaderSessionMessage( alertMessage: NFCViewDisplayMessage.readingDataGroupProgress(.COM, 0) )
         
-        if let com = try await readDataGroup(tagReader:tagReader, dgId:.COM) as? COM {
+        if let com = try await readDataGroup(tagReader: tagReader, dgId: .COM, scanID: scanID) as? COM {
+            try ensureActiveScan(scanID)
             self.passport.addDataGroup( .COM, dataGroup:com )
             self.addDatagroupsToRead(com: com, to: &DGsToRead)
         }
+        try ensureActiveScan(scanID)
         DGsToRead.forEach { self.passport.recordDataGroupReadStatus(.advertised, for: $0) }
         
         if DGsToRead.contains( .DG14 ) {
@@ -936,7 +1093,8 @@ extension PassportReader {
                 DGsToRead.removeAll { $0 == .DG14 }
 
                 // Do Chip Authentication
-                if let dg14 = try await readDataGroup(tagReader:tagReader, dgId:.DG14) as? DataGroup14 {
+                if let dg14 = try await readDataGroup(tagReader: tagReader, dgId: .DG14, scanID: scanID) as? DataGroup14 {
+                    try ensureActiveScan(scanID)
                     self.passport.addDataGroup( .DG14, dataGroup:dg14 )
                     if let camResult = passport.paceChipAuthenticationMappingResult {
                         let publicKeyInfos = dg14.securityInfos.compactMap { $0 as? ChipAuthenticationPublicKeyInfo }
@@ -948,26 +1106,40 @@ extension PassportReader {
                         }
                     }
 
-                    let caHandler = ChipAuthenticationHandler(dg14: dg14, tagReader: tagReader)
-                    self.caHandler = caHandler
-                     
-                    if caHandler.isChipAuthenticationSupported && self.passport.chipAuthenticationStatus != .success {
-                        eventLogger.log(.chipAuthenticationStarted)
-                        emitProgress(.chipAuthenticationStarted)
-                        do {
-                            // Do Chip authentication and then continue reading datagroups
-                            try await caHandler.doChipAuthentication()
-                            self.passport.chipAuthenticationStatus = .success
-                            eventLogger.log(.chipAuthenticationSucceeded)
-                            emitProgress(.chipAuthenticationSucceeded)
-                        } catch {
-                            eventLogger.log(.chipAuthenticationFailedFallbackToBAC)
-                            emitProgress(.chipAuthenticationFailedFallbackToBAC)
-                            self.passport.chipAuthenticationStatus = .failed
-                            
-                            // Failed Chip Auth, need to re-establish BAC
-                            try await doBACAuthentication(tagReader: tagReader)
+                    do {
+                        let caHandler = try ChipAuthenticationHandler(dg14: dg14, tagReader: tagReader)
+                        self.caHandler = caHandler
+
+                        if caHandler.isChipAuthenticationSupported && self.passport.chipAuthenticationStatus != .success {
+                            eventLogger.log(.chipAuthenticationStarted)
+                            emitProgress(.chipAuthenticationStarted)
+                            do {
+                                // Do Chip authentication and then continue reading datagroups
+                                try await caHandler.doChipAuthentication()
+                                try ensureActiveScan(scanID)
+                                self.passport.chipAuthenticationStatus = .success
+                                eventLogger.log(.chipAuthenticationSucceeded)
+                                emitProgress(.chipAuthenticationSucceeded)
+                            } catch {
+                                try ensureActiveScan(scanID)
+                                eventLogger.log(.chipAuthenticationFailedFallbackToBAC)
+                                emitProgress(.chipAuthenticationFailedFallbackToBAC)
+                                self.passport.chipAuthenticationStatus = .failed
+
+                                caHandler.removeSensitiveData()
+                                if self.caHandler === caHandler {
+                                    self.caHandler = nil
+                                }
+
+                                // Failed Chip Auth, need to re-establish BAC
+                                try await doBACAuthentication(tagReader: tagReader, scanID: scanID)
+                            }
                         }
+                    } catch {
+                        try ensureActiveScan(scanID)
+                        eventLogger.log(.chipAuthenticationFailedFallbackToBAC)
+                        emitProgress(.chipAuthenticationFailedFallbackToBAC)
+                        self.passport.chipAuthenticationStatus = .failed
                     }
                 }
             }
@@ -980,16 +1152,19 @@ extension PassportReader {
             skipSecureElements: skipSecureElements,
             photoPolicy: effectivePhotoPolicy
         ).apply(to: DGsToRead)
+        try ensureActiveScan(scanID)
         recordSkippedDataGroups(advertised: advertisedDataGroups, selected: DGsToRead)
         for dgId in DGsToRead {
-            if let dg = try await readDataGroup(tagReader:tagReader, dgId:dgId) {
+            if let dg = try await readDataGroup(tagReader: tagReader, dgId: dgId, scanID: scanID) {
+                try ensureActiveScan(scanID)
                 self.passport.addDataGroup( dgId, dataGroup:dg )
             }
         }
     }
     
-    func readDataGroup( tagReader : TagReader, dgId : DataGroupId ) async throws -> DataGroup?  {
+    func readDataGroup(tagReader: TagReader, dgId: DataGroupId, scanID: UInt64) async throws -> DataGroup? {
 
+        try ensureActiveScan(scanID)
         self.currentlyReadingDataGroup = dgId
         progressRenderGeneration += 1
         eventLogger.log(.readingDataGroup(dgId))
@@ -1002,10 +1177,13 @@ extension PassportReader {
         repeat {
             do {
                 let response = try await tagReader.readDataGroup(dataGroup:dgId)
+                try ensureActiveScan(scanID)
                 let dg = try DataGroupParser().parseDG(data: response)
+                try ensureActiveScan(scanID)
                 self.passport.recordDataGroupReadStatus(.read, for: dgId)
                 return dg
             } catch let error as NFCPassportReaderError {
+                try ensureActiveScan(scanID)
                 eventLogger.log(.dataGroupReadFailed(dgId))
                 self.passport.recordDataGroupReadStatus(.failed, for: dgId)
                 nfcPassportReaderError = error
@@ -1013,7 +1191,8 @@ extension PassportReader {
                 var redoBAC = false
                 if error.shouldRetryDataGroupReadAfterChipAuthentication {
                     // Check if we have done Chip Authentication, if so, set it to nil and try to redo BAC
-                    if self.caHandler != nil {
+                    if let caHandler = self.caHandler {
+                        caHandler.removeSensitiveData()
                         self.caHandler = nil
                         redoBAC = true
                     } else {
@@ -1021,11 +1200,13 @@ extension PassportReader {
                         throw error
                     }
                 } else if error.shouldSkipDataGroupAndRedoBAC {
-                    // Can't read this element as we aren't allowed - remove it and return out so we re-do BAC
-                    if !self.dataGroupsToRead.isEmpty {
-                        self.dataGroupsToRead.removeFirst()
-                    }
-                    redoBAC = true
+                    // The chip reported this group as unavailable for the current session. Reset BAC so
+                    // following groups keep their best chance of succeeding, but do not retry this one.
+                    Self.removeDataGroup(dgId, from: &self.dataGroupsToRead)
+                    eventLogger.log(.unsupportedDataGroup(dgId))
+                    self.passport.recordDataGroupReadStatus(.unsupported, for: dgId)
+                    try await doBACAuthentication(tagReader: tagReader, scanID: scanID)
+                    return nil
                 } else if error.shouldRedoBACForDataGroupRead {
                     // Can't read this element security objects now invalid - and return out so we re-do BAC
                     redoBAC = true
@@ -1042,7 +1223,7 @@ extension PassportReader {
                 
                 if redoBAC {
                     // Redo BAC and try again
-                    try await doBACAuthentication(tagReader : tagReader)
+                    try await doBACAuthentication(tagReader: tagReader, scanID: scanID)
                 } else {
                     // Some other error lets have another try
                 }
@@ -1054,12 +1235,13 @@ extension PassportReader {
         throw nfcPassportReaderError
     }
 
-    func invalidateSession(errorMessage: NFCViewDisplayMessage, error: NFCPassportReaderError) {
+    func invalidateSession(errorMessage: NFCViewDisplayMessage, error: NFCPassportReaderError, scanID: UInt64) {
+        guard isActiveScan(scanID) else { return }
         // Mark the next 'invalid session' error as not reportable (we're about to cause it by invalidating the
         // session). The real error is reported back with the call to the completed handler
         self.shouldNotReportNextReaderSessionInvalidationErrorUserCanceled = true
         self.readerSession?.invalidate(errorMessage: self.nfcViewDisplayMessageHandler?(errorMessage) ?? errorMessage.description)
-        failActiveScan(error: error)
+        failActiveScan(error: error, scanID: scanID)
     }
     
     internal func addDatagroupsToRead(com: COM, to DGsToRead: inout [DataGroupId]) {
@@ -1068,6 +1250,10 @@ extension PassportReader {
         
         // SOD should not be present in COM, but just in case we check before adding it so its not read twice
         if !DGsToRead.contains(.SOD) { DGsToRead.insert(.SOD, at: 0) }
+    }
+
+    internal static func removeDataGroup(_ dataGroup: DataGroupId, from dataGroups: inout [DataGroupId]) {
+        dataGroups.removeAll { $0 == dataGroup }
     }
 
     private func recordSkippedDataGroups(advertised: [DataGroupId], selected: [DataGroupId]) {

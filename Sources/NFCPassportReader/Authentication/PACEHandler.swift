@@ -106,7 +106,8 @@ class PACEHandler {
     }
 
     func doPACE(accessKey: String, keyReference: PassportPACEKeyReference) async throws {
-        defer { removeSensitiveData(clearMappingResult: false) }
+        var completed = false
+        defer { removeSensitiveData(clearMappingResult: !completed) }
 
         guard isPACESupported else {
             throw NFCPassportReaderError.NotYetSupported( "PACE not supported" )
@@ -137,6 +138,7 @@ class PACEHandler {
 
         let (encKey, macKey) = try await self.doStep4KeyAgreement( pcdKeyPair: ephemeralKeyPair, passportPublicKey: passportPublicKey)
         try self.paceCompleted( ksEnc: encKey, ksMac: macKey )
+        completed = true
     }
     
     /// Handles an error during the PACE process
@@ -168,6 +170,10 @@ class PACEHandler {
             
         let data = response.data
         let encryptedNonce = try unwrapDO(tag: 0x80, wrappedData: data)
+        let expectedNonceLength = try Self.expectedNonceLength(cipherAlg: cipherAlg, keyLength: keyLength)
+        guard encryptedNonce.count == expectedNonceLength else {
+            throw NFCPassportReaderError.PACEError("Step1 Nonce", "Invalid passport nonce length")
+        }
 
         let decryptedNonce: [UInt8]
         if self.cipherAlg == "DESede" {
@@ -181,6 +187,9 @@ class PACEHandler {
         }
         guard !decryptedNonce.isEmpty else {
             throw NFCPassportReaderError.PACEError("Step1 Nonce", "Unable to decrypt passport nonce")
+        }
+        guard decryptedNonce.count == expectedNonceLength else {
+            throw NFCPassportReaderError.PACEError("Step1 Nonce", "Invalid decrypted nonce length")
         }
         return decryptedNonce
     }
@@ -337,30 +346,24 @@ class PACEHandler {
         let step4Data = wrapDO(b:0x85, arr:pcdAuthToken)
         let response = try await tagReader.sendGeneralAuthenticate(data:step4Data, isLast:true)
             
-        guard let tvlResp = TKBERTLVRecord.sequenceOfRecords(from: Data(response.data)),
-              let tokenRecord = tvlResp.first,
-              tokenRecord.tag == 0x86 else {
-            throw NFCPassportReaderError.PACEError("Step3 KeyAgreement", "Passport authentication token missing")
-        }
+        let (receivedAuthenticationToken, encryptedCAMData) = try Self.authenticationTokenAndCAMData(from: response.data)
 
         // Calculate expected authentication token
         let expectedAuthenticationToken = try self.generateAuthenticationToken( publicKey: pcdKeyPair, macKey: macKey)
 
-        let receivedAuthenticationToken = [UInt8](tokenRecord.value)
-
-        guard receivedAuthenticationToken == expectedAuthenticationToken else {
+        guard Self.constantTimeEqual(receivedAuthenticationToken, expectedAuthenticationToken) else {
             throw NFCPassportReaderError.PACEError("Step3 KeyAgreement", "Passport authentication token mismatch")
         }
 
         if mappingType == .CAM {
-            guard let encryptedCAMData = tvlResp.first(where: { $0.tag == 0x8A })?.value,
+            guard let encryptedCAMData,
                   !encryptedCAMData.isEmpty else {
                 throw NFCPassportReaderError.PACEError("Step3 KeyAgreement", "PACE CAM data missing")
             }
 
             chipAuthenticationMappingResult = try PACEChipAuthenticationMappingResult(
                 mappingPublicKey: chipMappingPublicKey,
-                encryptedChipAuthenticationData: [UInt8](encryptedCAMData),
+                encryptedChipAuthenticationData: encryptedCAMData,
                 encryptionKey: encKey
             )
         }
@@ -441,6 +444,62 @@ extension PACEHandler {
         let authToken = [UInt8](maccedPublicKeyDataObject[0..<8])
         return authToken
     }
+
+    nonisolated static func authenticationTokenAndCAMData(from responseData: [UInt8]) throws -> (authenticationToken: [UInt8], encryptedCAMData: [UInt8]?) {
+        guard let tlvResponse = TKBERTLVRecord.sequenceOfRecords(from: Data(responseData)) else {
+            throw NFCPassportReaderError.PACEError("Step3 KeyAgreement", "Passport authentication token missing")
+        }
+
+        let tokenRecords = tlvResponse.filter { $0.tag == 0x86 }
+        let camRecords = tlvResponse.filter { $0.tag == 0x8A }
+        guard !tokenRecords.isEmpty else {
+            throw NFCPassportReaderError.PACEError("Step3 KeyAgreement", "Passport authentication token missing")
+        }
+        guard tokenRecords.count == 1 else {
+            throw NFCPassportReaderError.PACEError("Step3 KeyAgreement", "Malformed passport authentication response")
+        }
+        guard camRecords.count <= 1,
+              tlvResponse.allSatisfy({ $0.tag == 0x86 || $0.tag == 0x8A }) else {
+            throw NFCPassportReaderError.PACEError("Step3 KeyAgreement", "Malformed passport authentication response")
+        }
+
+        let tokenRecord = tokenRecords[0]
+        guard tokenRecord.value.count == 8 else {
+            throw NFCPassportReaderError.PACEError("Step3 KeyAgreement", "Invalid passport authentication token length")
+        }
+
+        let camData = camRecords.first.map { [UInt8]($0.value) }
+        return ([UInt8](tokenRecord.value), camData)
+    }
+
+    nonisolated static func expectedNonceLength(cipherAlg: String, keyLength: Int) throws -> Int {
+        switch cipherAlg {
+            case "DESede":
+                return 16
+            case "AES":
+                if keyLength == 192 || keyLength == 256 {
+                    return 32
+                }
+                if keyLength == 128 {
+                    return 16
+                }
+                throw NFCPassportReaderError.UnsupportedCipherAlgorithm
+            default:
+                throw NFCPassportReaderError.UnsupportedCipherAlgorithm
+        }
+    }
+
+    nonisolated static func constantTimeEqual(_ lhs: [UInt8], _ rhs: [UInt8]) -> Bool {
+        guard lhs.count == rhs.count else {
+            return false
+        }
+
+        var difference: UInt8 = 0
+        for index in lhs.indices {
+            difference |= lhs[index] ^ rhs[index]
+        }
+        return difference == 0
+    }
     
     /// Encodes a PublicKey as an TLV strucuture based on TR-SAC 1.01 4.5.1 and 4.5.2
     /// - Parameters:
@@ -476,6 +535,24 @@ extension PACEHandler {
     /// - Parameter the mrz key
     /// - Returns a encoded key based on the mrz key that can be used for PACE
     func createPaceKey(from accessKey: String, keyReference: PassportPACEKeyReference = .mrz) throws -> [UInt8] {
+        try Self.createPaceKey(
+            from: accessKey,
+            keyReference: keyReference,
+            cipherAlg: cipherAlg,
+            keyLength: keyLength
+        )
+    }
+
+    nonisolated static func createPaceKey(
+        from accessKey: String,
+        keyReference: PassportPACEKeyReference = .mrz,
+        cipherAlg: String,
+        keyLength: Int
+    ) throws -> [UInt8] {
+        guard !accessKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw NFCPassportReaderError.PACEError("Key derivation", "Missing PACE credential")
+        }
+
         let buf: [UInt8] = Array(accessKey.utf8)
         let hash = calcSHA1Hash(buf)
         
@@ -509,7 +586,7 @@ extension PACEHandler {
         primeBitLength: Int
     ) throws -> [UInt8] {
         let nonceLength = integratedMappingNonceLength(cipherAlg: cipherAlg, keyLength: keyLength)
-        let blockLength = integratedMappingInputBlockLength(cipherAlg: cipherAlg, keyLength: keyLength)
+        let blockLength = try integratedMappingInputBlockLength(cipherAlg: cipherAlg, keyLength: keyLength)
         guard passportNonce.count == blockLength,
               terminalNonce.count == nonceLength else {
             throw NFCPassportReaderError.PACEError("Step2IM", "Invalid Integrated Mapping nonce length")
@@ -546,15 +623,12 @@ extension PACEHandler {
         return output
     }
 
-    private func integratedMappingInputBlockLength() -> Int {
-        PACEHandler.integratedMappingInputBlockLength(cipherAlg: cipherAlg, keyLength: keyLength)
+    private func integratedMappingInputBlockLength() throws -> Int {
+        try PACEHandler.integratedMappingInputBlockLength(cipherAlg: cipherAlg, keyLength: keyLength)
     }
 
-    nonisolated private static func integratedMappingInputBlockLength(cipherAlg: String, keyLength: Int) -> Int {
-        if cipherAlg == "AES", keyLength > 128 {
-            return 32
-        }
-        return 16
+    nonisolated private static func integratedMappingInputBlockLength(cipherAlg: String, keyLength: Int) throws -> Int {
+        try expectedNonceLength(cipherAlg: cipherAlg, keyLength: keyLength)
     }
 
     private func integratedMappingTruncatedKey(_ key: [UInt8]) -> [UInt8] {

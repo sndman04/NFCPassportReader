@@ -185,6 +185,7 @@ extension OpenSSLError: LocalizedError {
 enum PassiveAuthenticationError: Error {
     case UnableToParseSODHashes(String)
     case InvalidDataGroupHash(String)
+    case NoDataGroupHashesCompared(String)
     case SODMissing(String)
 }
 
@@ -196,6 +197,8 @@ extension PassiveAuthenticationError: LocalizedError {
                 return NSLocalizedString("Unable to parse the SOD data group hashes.", comment: "UnableToParseSODHashes")
             case .InvalidDataGroupHash:
                 return NSLocalizedString("Data group hash is missing or does not match.", comment: "InvalidDataGroupHash")
+            case .NoDataGroupHashesCompared:
+                return NSLocalizedString("No read data group hashes could be compared.", comment: "NoDataGroupHashesCompared")
             case .SODMissing:
                 return NSLocalizedString("Data group SOD is missing or was not read.", comment: "SODMissing")
                 

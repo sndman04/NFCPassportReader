@@ -17,6 +17,8 @@ import Foundation
 class TagReader: @unchecked Sendable {
     private static let maxChainedResponseBytes = 2 * 1024 * 1024
     private static let maxGetResponseSegments = 512
+    private static let initialFileHeaderReadLength = 6
+    private static let maxDataGroupFileBytes = 24 * 1024 * 1024
 
     var tag : NFCISO7816Tag
     var secureMessaging : SecureMessaging?
@@ -58,6 +60,10 @@ class TagReader: @unchecked Sendable {
     }
     
     func doInternalAuthentication( challenge: [UInt8], useExtendedMode: Bool ) async throws -> ResponseAPDU {
+        guard NFCPassportModel.isValidActiveAuthenticationChallenge(challenge) else {
+            throw NFCPassportReaderError.MissingMandatoryFields
+        }
+
         let randNonce = Data(challenge)
         
         var responseLength = 256
@@ -104,10 +110,9 @@ class TagReader: @unchecked Sendable {
     func sendMSESetATIntAuth( oid: String, keyId: Int? ) async throws -> ResponseAPDU {
         
         let cmd : NFCISO7816APDU
-        let oidBytes = oidToBytes(oid: oid, replaceTag: true)
+        let oidBytes = try Self.mseAlgorithmIdentifierData(oid: oid)
         
-        if let keyId = keyId, keyId != 0 {
-            let keyIdBytes = wrapDO(b:0x84, arr:intToBytes(val:keyId, removePadding: true))
+        if let keyIdBytes = try Self.mseKeyIdentifierData(keyId: keyId) {
             let data = oidBytes + keyIdBytes
             
             cmd = NFCISO7816APDU(instructionClass: 00, instructionCode: 0x22, p1Parameter: 0x41, p2Parameter: 0xA4, data: Data(data), expectedResponseLength: 256)
@@ -121,7 +126,7 @@ class TagReader: @unchecked Sendable {
     
     func sendMSESetATMutualAuth( oid: String, keyType: UInt8 ) async throws -> ResponseAPDU {
         
-        let oidBytes = oidToBytes(oid: oid, replaceTag: true)
+        let oidBytes = try Self.mseAlgorithmIdentifierData(oid: oid)
         let keyTypeBytes = wrapDO( b: 0x83, arr:[keyType])
         
         let data = oidBytes + keyTypeBytes
@@ -129,6 +134,27 @@ class TagReader: @unchecked Sendable {
         let cmd = NFCISO7816APDU(instructionClass: 00, instructionCode: 0x22, p1Parameter: 0xC1, p2Parameter: 0xA4, data: Data(data), expectedResponseLength: -1)
         
         return try await send( cmd: cmd )
+    }
+
+    static func mseAlgorithmIdentifierData(oid: String) throws -> [UInt8] {
+        let oidBytes = oidToBytes(oid: oid, replaceTag: true)
+        guard !oidBytes.isEmpty else {
+            throw NFCPassportReaderError.InvalidDataPassed("Invalid MSE algorithm identifier")
+        }
+        return oidBytes
+    }
+
+    static func mseKeyIdentifierData(keyId: Int?) throws -> [UInt8]? {
+        guard let keyId, keyId != 0 else {
+            return nil
+        }
+
+        let keyIdValue = intToBytes(val: keyId, removePadding: true)
+        guard !keyIdValue.isEmpty else {
+            throw NFCPassportReaderError.InvalidDataPassed("Invalid MSE key identifier")
+        }
+
+        return wrapDO(b: 0x84, arr: keyIdValue)
     }
     
 
@@ -176,28 +202,16 @@ class TagReader: @unchecked Sendable {
     func selectFileAndRead( tag: [UInt8]) async throws -> [UInt8] {
         var resp = try await selectFile(tag: tag )
             
-        // Read first 4 bytes of header to see how big the data structure is
-        guard let readHeaderCmd = NFCISO7816APDU(data:Data([0x00, 0xB0, 0x00, 0x00, 0x00, 0x00,0x04])) else {
+        // Read enough bytes to cover the tag plus the largest ASN.1 length field we accept.
+        guard let readHeaderCmd = NFCISO7816APDU(data:Data([0x00, 0xB0, 0x00, 0x00, 0x00, 0x00, UInt8(Self.initialFileHeaderReadLength)])) else {
             throw NFCPassportReaderError.UnexpectedError
         }
         resp = try await self.send( cmd: readHeaderCmd )
 
-        // Header looks like:  <tag><length of data><nextTag> e.g.60145F01 -
-        // the total length is the 2nd value plus the two header 2 bytes
-        // We've read 4 bytes so we now need to read the remaining bytes from offset 4
-        guard resp.data.count >= 4 else {
-            throw NFCPassportReaderError.InvalidASN1Structure
-        }
-
-        let (len, o) = try asn1Length(resp.data[1..<4])
-        var remaining = Int(len)
-        var amountRead = o + 1
-
-        guard amountRead <= resp.data.count else {
-            throw NFCPassportReaderError.InvalidASN1Structure
-        }
-        
-        var data = [UInt8](resp.data[..<amountRead])
+        let initialRead = try Self.parseInitialFileRead(resp.data)
+        var data = initialRead.data
+        var remaining = initialRead.remaining
+        var amountRead = data.count
         data.reserveCapacity(amountRead + remaining)
         
         while remaining > 0 {
@@ -238,6 +252,29 @@ class TagReader: @unchecked Sendable {
 
         data.append(contentsOf: chunk)
         remaining -= chunk.count
+    }
+
+    static func parseInitialFileRead(_ responseData: [UInt8]) throws -> (data: [UInt8], remaining: Int) {
+        guard responseData.count >= 2 else {
+            throw NFCPassportReaderError.InvalidASN1Structure
+        }
+
+        let lengthFieldEnd = min(responseData.count, initialFileHeaderReadLength)
+        let (bodyLength, lengthFieldSize) = try asn1Length(responseData[1..<lengthFieldEnd])
+        let headerLength = 1 + lengthFieldSize
+
+        guard headerLength <= responseData.count,
+              bodyLength <= maxDataGroupFileBytes,
+              headerLength <= maxDataGroupFileBytes - bodyLength else {
+            throw NFCPassportReaderError.InvalidASN1Structure
+        }
+
+        let declaredFileLength = headerLength + bodyLength
+        let retainedLength = min(responseData.count, declaredFileLength)
+        let retainedData = [UInt8](responseData[..<retainedLength])
+        let remaining = declaredFileLength - retainedLength
+
+        return (retainedData, remaining)
     }
 
     static func validateChainedResponseBudget(currentByteCount: Int, incomingByteCount: Int, segmentCount: Int) throws {
@@ -316,7 +353,7 @@ class TagReader: @unchecked Sendable {
         // Some commands may have bigger response than expected. Read the whole response using INS 0xC0 (GET RESPONSE).
         var getResponseSegments = 0
         while (sw1 == 0x61) {
-            let getResponseCmd = NFCISO7816APDU(instructionClass: 0x0, instructionCode: 0xC0, p1Parameter: 0x0, p2Parameter: 0x0, data: Data(), expectedResponseLength: Int(sw2))
+            let getResponseCmd = NFCISO7816APDU(instructionClass: 0x0, instructionCode: 0xC0, p1Parameter: 0x0, p2Parameter: 0x0, data: Data(), expectedResponseLength: Self.getResponseLength(sw2: sw2))
             let nextSegment: Data
             // Overwrite sw1 and sw2.
             (nextSegment, sw1, sw2) = try await tag.sendCommand(apdu: getResponseCmd)
@@ -347,6 +384,10 @@ class TagReader: @unchecked Sendable {
         }
 
         return rep
+    }
+
+    static func getResponseLength(sw2: UInt8) -> Int {
+        sw2 == 0 ? 256 : Int(sw2)
     }
 
     static func isSuccessStatus(sw1: UInt8, sw2: UInt8) -> Bool {

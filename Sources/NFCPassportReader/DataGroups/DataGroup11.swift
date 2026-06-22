@@ -8,6 +8,8 @@ import Foundation
 
 @available(iOS 13, macOS 10.15, *)
 class DataGroup11 : DataGroup {
+    private static let maxTextValueLength = 64 * 1024
+
     
     public private(set) var fullName : String?
     public private(set) var personalNumber : String?
@@ -31,36 +33,41 @@ class DataGroup11 : DataGroup {
     override func parse(_ data: [UInt8]) throws {
         var tag = try getNextTag()
         try verifyTag(tag, equals: 0x5C)
-        _ = try getNextValue()
+        let tagList = try getNextValue()
+        let declaredTags = try parseTagList(tagList, allowTrailingIncompleteTag: !hasUnreadBody)
         
         while hasUnreadBody {
             tag = try getNextTag()
-            let val = LDSStringDecoder.decode(try getNextValue())
+            guard declaredTags.contains(tag) else {
+                throw NFCPassportReaderError.InvalidASN1Structure
+            }
+
+            let value = try getNextValue()
             switch tag {
             case 0x5F0E:
-                fullName = val
+                fullName = try decodeTextValue(value)
             case 0x5F10:
-                personalNumber = val
+                personalNumber = try decodeTextValue(value)
             case 0x5F11:
-                placeOfBirth = val
+                placeOfBirth = try decodeTextValue(value)
             case 0x5F2B:
-                dateOfBirth = val
+                dateOfBirth = try LDSDateDecoder.decodeEightDigitDate(value)
             case 0x5F42:
-                address = val
+                address = try decodeTextValue(value)
             case 0x5F12:
-                telephone = val
+                telephone = try decodeTextValue(value)
             case 0x5F13:
-                profession = val
+                profession = try decodeTextValue(value)
             case 0x5F14:
-                title = val
+                title = try decodeTextValue(value)
             case 0x5F15:
-                personalSummary = val
+                personalSummary = try decodeTextValue(value)
             case 0x5F16:
-                proofOfCitizenship = val
+                proofOfCitizenship = try decodeTextValue(value)
             case 0x5F17:
-                tdNumbers = val
+                tdNumbers = try decodeTextValue(value)
             case 0x5F18:
-                custodyInfo = val
+                custodyInfo = try decodeTextValue(value)
             default:
                 break
             }
@@ -81,5 +88,12 @@ class DataGroup11 : DataGroup {
         tdNumbers = nil
         custodyInfo = nil
         super.removeSensitiveDataForPrivacy()
+    }
+
+    private func decodeTextValue(_ value: [UInt8]) throws -> String {
+        guard value.count <= Self.maxTextValueLength else {
+            throw NFCPassportReaderError.InvalidASN1Structure
+        }
+        return LDSStringDecoder.decode(value)
     }
 }

@@ -29,4 +29,9 @@ class CardAccess {
     required init( _ data : [UInt8] ) throws {
         securityInfos = try SecurityInfosParser.parse(data)
     }
+
+    func removeSensitiveDataForPrivacy() {
+        securityInfos.forEach { $0.removeSensitiveDataForPrivacy() }
+        securityInfos.removeAll(keepingCapacity: false)
+    }
 }

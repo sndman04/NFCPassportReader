@@ -22,8 +22,7 @@ struct PACEChipAuthenticationMappingResult {
         }
 
         let decryptedData = AESDecrypt(key: encryptionKey, message: encryptedChipAuthenticationData, iv: iv)
-        let unpaddedData = unpad(decryptedData)
-        guard !unpaddedData.isEmpty else {
+        guard let unpaddedData = strictUnpad(decryptedData), !unpaddedData.isEmpty else {
             throw NFCPassportReaderError.PACEError("CAM verification", "Unable to decrypt CAM data")
         }
 
@@ -33,10 +32,13 @@ struct PACEChipAuthenticationMappingResult {
 
     func verifies(using publicKeyInfos: [ChipAuthenticationPublicKeyInfo]) -> Bool {
         publicKeyInfos.contains { publicKeyInfo in
+            guard let pubKey = publicKeyInfo.pubKey else {
+                return false
+            }
             var mappingPublicKey = mappingPublicKey
             var chipAuthenticationData = chipAuthenticationData
             return NFCPRVerifyECDHCAMPublicKey(
-                publicKeyInfo.pubKey,
+                pubKey,
                 &mappingPublicKey,
                 mappingPublicKey.count,
                 &chipAuthenticationData,

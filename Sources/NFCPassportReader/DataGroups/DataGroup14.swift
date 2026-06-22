@@ -26,6 +26,7 @@ class DataGroup14 : DataGroup {
     }
 
     override func removeSensitiveDataForPrivacy() {
+        securityInfos.forEach { $0.removeSensitiveDataForPrivacy() }
         securityInfos.removeAll(keepingCapacity: false)
         super.removeSensitiveDataForPrivacy()
     }

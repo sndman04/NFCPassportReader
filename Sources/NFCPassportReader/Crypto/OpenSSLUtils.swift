@@ -11,8 +11,12 @@ import CryptoTokenKit
 
 @available(iOS 13, macOS 10.15, *)
 class OpenSSLUtils {
+    private static let maxBIOStringLength = 64 * 1024
     private static let maxNativeParserInputLength = 2 * 1024 * 1024
     private static let maxPublicKeyDERLength = 64 * 1024
+    private static let maxOpenSSLStringParameterLength = 4096
+    private static let maxSignatureInputLength = 64 * 1024
+    private static let maxSignatureOutputLength = 64 * 1024
     private static let maxSharedSecretLength = 8192
 
     /// Returns any OpenSSL error as a string.
@@ -37,12 +41,15 @@ class OpenSSLUtils {
     static func bioToString( bio : OpaquePointer ) -> String {
         
         let len = BIO_ctrl(bio, BIO_CTRL_PENDING, 0, nil)
-        guard len > 0 else {
+        guard len > 0,
+              len <= maxBIOStringLength else {
             return ""
         }
 
         var buffer = [CChar](repeating: 0, count: len+1)
-        BIO_read(bio, &buffer, Int32(len))
+        guard BIO_read(bio, &buffer, Int32(len)) == len else {
+            return ""
+        }
         
         return buffer.withUnsafeBufferPointer { pointer in
             String(decoding: UnsafeRawBufferPointer(start: pointer.baseAddress, count: len), as: UTF8.self)
@@ -56,7 +63,9 @@ class OpenSSLUtils {
     }
     
     static func sk_X509_value(_ sk : OpaquePointer?, _ idx : Int32 ) -> OpaquePointer? {
-        guard let sk else { return nil }
+        guard let sk,
+              idx >= 0,
+              idx < sk_X509_num(sk) else { return nil }
         let p = OPENSSL_sk_value(ossl_check_const_X509_sk_type(sk), (idx))
         let op = OpaquePointer(p)
         return op
@@ -68,7 +77,9 @@ class OpenSSLUtils {
         guard let out = BIO_new(BIO_s_mem()) else { return "" }
         defer { BIO_free( out) }
         
-        PEM_write_bio_X509(out, x509);
+        guard PEM_write_bio_X509(out, x509) == 1 else {
+            return ""
+        }
         let str = OpenSSLUtils.bioToString( bio:out )
         
         return str
@@ -85,8 +96,11 @@ class OpenSSLUtils {
         
         guard let inf = BIO_new(BIO_s_mem()) else { throw OpenSSLError.UnableToGetX509CertificateFromPKCS7("Unable to allocate input buffer") }
         defer { BIO_free(inf) }
-        let _ = pkcs7Der.withUnsafeBytes { (ptr) in
+        let bytesWritten = pkcs7Der.withUnsafeBytes { (ptr) in
             BIO_write(inf, ptr.baseAddress?.assumingMemoryBound(to: Int8.self), Int32(pkcs7Der.count))
+        }
+        guard bytesWritten == pkcs7Der.count else {
+            throw OpenSSLError.UnableToGetX509CertificateFromPKCS7("Unable to write PKCS7 DER data")
         }
         guard let p7 = d2i_PKCS7_bio(inf, nil) else { throw OpenSSLError.UnableToGetX509CertificateFromPKCS7("Unable to read PKCS7 DER data") }
         defer { PKCS7_free(p7) }
@@ -132,32 +146,15 @@ class OpenSSLUtils {
     /// - Parameter CAFile: The URL path of a file containing the list of certificates used to try to discover and build a trust chain
     /// - Returns: either the X509 issue signing certificate that was used to sign the passed in X509 certificate or an error
     static func verifyTrustAndGetIssuerCertificate( x509 : X509Wrapper, CAFile : URL ) -> Result<X509Wrapper, OpenSSLError> {
-                
-        guard let cert_ctx = X509_STORE_new() else { return .failure(OpenSSLError.UnableToVerifyX509CertificateForSOD("Unable to create certificate store")) }
-        defer { X509_STORE_free(cert_ctx) }
-        
-        X509_STORE_set_verify_cb(cert_ctx) { (ok, ctx) -> Int32 in
-            let cert_error = X509_STORE_CTX_get_error(ctx)
-            
-            var ret : Int32 = ok
-            if ok == 0 {
-                // OpenSSL V3 made a change to fail verification for certificates using explicit parameters
-                // However the ICAO spec requires no implicit parameters
-                // So if we have the explict params error - we ignore it and return 1 (no error) for this error
-                if cert_error == X509_V_ERR_EC_KEY_EXPLICIT_PARAMS {
-                    // Ignoring this
-                    ret = 1
-                } else {
-                }
-            }
-            
-            return ret;
+        let cert_ctx: OpaquePointer
+        do {
+            cert_ctx = try makeX509Store(CAFile: CAFile)
+        } catch let error as OpenSSLError {
+            return .failure(error)
+        } catch {
+            return .failure(OpenSSLError.UnableToVerifyX509CertificateForSOD("Unable to create certificate store"))
         }
-        
-        guard let lookup = X509_STORE_add_lookup(cert_ctx, X509_LOOKUP_file()) else { return .failure(OpenSSLError.UnableToVerifyX509CertificateForSOD("Unable to add lookup to store")) }
-        
-        // Load masterList.pem file
-        var rc = X509_LOOKUP_ctrl(lookup, X509_L_FILE_LOAD, CAFile.path, Int(X509_FILETYPE_PEM), nil)
+        defer { X509_STORE_free(cert_ctx) }
         
         guard let store = X509_STORE_CTX_new() else {
             return .failure(OpenSSLError.UnableToVerifyX509CertificateForSOD("Unable to create new X509_STORE_CTX"))
@@ -165,7 +162,7 @@ class OpenSSLUtils {
         defer { X509_STORE_CTX_free(store) }
         
         X509_STORE_set_flags(cert_ctx, 0)
-        rc = X509_STORE_CTX_init(store, cert_ctx, x509.cert, nil)
+        let rc = X509_STORE_CTX_init(store, cert_ctx, x509.cert, nil)
         if rc == 0 {
             return .failure(OpenSSLError.UnableToVerifyX509CertificateForSOD("Unable to initialise X509_STORE_CTX"))
         }
@@ -180,6 +177,11 @@ class OpenSSLUtils {
         
         // Get chain and issue certificate is the last cert in the chain
         let chain = X509_STORE_CTX_get1_chain(store);
+        defer {
+            if let chain {
+                OSSL_STACK_OF_X509_free(chain)
+            }
+        }
         let nrCertsInChain = sk_X509_num(chain)
         if nrCertsInChain > 1 {
             let cert = sk_X509_value(chain, nrCertsInChain-1)
@@ -220,8 +222,11 @@ class OpenSSLUtils {
         guard let out = BIO_new(BIO_s_mem()) else { throw OpenSSLError.VerifyAndReturnSODEncapsulatedData("CMS - Unable to allocate output buffer") }
         defer { BIO_free(out) }
 
-        let _ = cmsDer.withUnsafeBytes { (ptr) in
+        let bytesWritten = cmsDer.withUnsafeBytes { (ptr) in
             BIO_write(inf, ptr.baseAddress?.assumingMemoryBound(to: UInt8.self), Int32(cmsDer.count))
+        }
+        guard bytesWritten == cmsDer.count else {
+            throw OpenSSLError.VerifyAndReturnSODEncapsulatedData("CMS - Unable to write DER data")
         }
 
         guard let cms = d2i_CMS_bio(inf, nil) else {
@@ -245,12 +250,15 @@ class OpenSSLUtils {
             throw OpenSSLError.VerifyAndReturnSODEncapsulatedData("CMS - Verification of P7 failed - unable to verify signature")
         }
         let len = BIO_ctrl(out, BIO_CTRL_PENDING, 0, nil)
-        guard len > 0 else {
+        guard len > 0,
+              len <= maxNativeParserInputLength else {
             throw OpenSSLError.VerifyAndReturnSODEncapsulatedData("CMS - Verification returned no content")
         }
 
         var buffer = [UInt8](repeating: 0, count: len)
-        BIO_read(out, &buffer, Int32(len))
+        guard BIO_read(out, &buffer, Int32(len)) == len else {
+            throw OpenSSLError.VerifyAndReturnSODEncapsulatedData("CMS - Unable to read verified content")
+        }
         let sigData = Data(buffer)
         
         return sigData
@@ -335,8 +343,11 @@ class OpenSSLUtils {
         guard let inf = BIO_new(BIO_s_mem()) else { throw OpenSSLError.UnableToReadECPublicKey("Unable to allocate output buffer") }
         defer { BIO_free(inf) }
         
-        let _ = data.withUnsafeBytes { (ptr) in
+        let bytesWritten = data.withUnsafeBytes { (ptr) in
             BIO_write(inf, ptr.baseAddress?.assumingMemoryBound(to: UInt8.self), Int32(data.count))
+        }
+        guard bytesWritten == data.count else {
+            throw OpenSSLError.UnableToReadECPublicKey("Unable to write public key data")
         }
         
         guard let key = d2i_PUBKEY_bio(inf, nil) else { throw OpenSSLError.UnableToReadECPublicKey("Failed to load") }
@@ -349,6 +360,10 @@ class OpenSSLUtils {
     /// - Parameter pubKey: The RSA Public Key
     /// - Returns: The decrypted signature data
     static func decryptRSASignature( signature : Data, pubKey : OpaquePointer ) throws -> [UInt8] {
+        guard !signature.isEmpty,
+              signature.count <= maxSignatureInputLength else {
+            throw OpenSSLError.UnableToDecryptRSASignature("Invalid RSA signature size")
+        }
         
         guard let ctx = EVP_PKEY_CTX_new(pubKey, nil) else {
             throw OpenSSLError.UnableToDecryptRSASignature("Unable to create verification context")
@@ -372,7 +387,9 @@ class OpenSSLUtils {
             )
         }
 
-        guard sizeResult == 1 else {
+        guard sizeResult == 1,
+              outputLength > 0,
+              outputLength <= maxSignatureOutputLength else {
             let error = OpenSSLUtils.getOpenSSLError()
             throw OpenSSLError.UnableToDecryptRSASignature( "RSA signature recovery failed - \(error)" )
         }
@@ -390,7 +407,9 @@ class OpenSSLUtils {
             }
         }
 
-        if recoverResult != 1 {
+        guard recoverResult == 1,
+              outputLength > 0,
+              outputLength <= outputBuf.count else {
             let error = OpenSSLUtils.getOpenSSLError()
             throw OpenSSLError.UnableToDecryptRSASignature( "RSA signature recovery failed - \(error)" )
         }
@@ -426,6 +445,7 @@ class OpenSSLUtils {
     /// - Returns: True if the signature was verified
     static func verifyECDSASignature( publicKey:OpaquePointer, signature: [UInt8], data: [UInt8], digestType: String = "" ) -> Bool {
         guard !signature.isEmpty,
+              signature.count <= maxSignatureInputLength,
               signature.count.isMultiple(of: 2),
               let ecsig = ECDSA_SIG_new() else {
             return false
@@ -435,21 +455,36 @@ class OpenSSLUtils {
         defer { ECDSA_SIG_free(ecsig) }
         let sigData = signature
         let l = sigData.count / 2
-        sigData.withUnsafeBufferPointer { (unsafeBufPtr) in
-            guard let unsafePointer = unsafeBufPtr.baseAddress else { return }
+        let didSetSignature = sigData.withUnsafeBufferPointer { (unsafeBufPtr) -> Bool in
+            guard let unsafePointer = unsafeBufPtr.baseAddress else { return false }
             let r = BN_bin2bn(unsafePointer, Int32(l), nil)
             let s = BN_bin2bn((unsafePointer + l), Int32(l), nil)
-            ECDSA_SIG_set0(ecsig, r, s)
+            guard let r,
+                  let s,
+                  ECDSA_SIG_set0(ecsig, r, s) == 1 else {
+                BN_free(r)
+                BN_free(s)
+                return false
+            }
+            return true
         }
+        guard didSetSignature else {
+            return false
+        }
+
         let sigSize = i2d_ECDSA_SIG(ecsig, nil)
-        guard sigSize > 0 else {
+        guard sigSize > 0,
+              sigSize <= maxSignatureOutputLength else {
             return false
         }
 
         var derBytes = [UInt8](repeating: 0, count: Int(sigSize))
-        derBytes.withUnsafeMutableBufferPointer { (unsafeBufPtr) in
+        let encodedSize = derBytes.withUnsafeMutableBufferPointer { (unsafeBufPtr) in
             var unsafePointer = unsafeBufPtr.baseAddress
-            let _ = i2d_ECDSA_SIG(ecsig, &unsafePointer)
+            return i2d_ECDSA_SIG(ecsig, &unsafePointer)
+        }
+        guard encodedSize == sigSize else {
+            return false
         }
         
         let rc = verifySignature(data: data, signature: derBytes, pubKey: publicKey, digestType: digestType)
@@ -463,6 +498,10 @@ class OpenSSLUtils {
     /// - Parameter digestType: the type of hash to use (empty string to use no digest type)
     /// - Returns: True if the signature was verified
     static func verifySignature( data : [UInt8], signature : [UInt8], pubKey : OpaquePointer, digestType: String ) -> Bool {
+        guard !signature.isEmpty,
+              signature.count <= maxSignatureInputLength else {
+            return false
+        }
         
         let digestType = digestType.lowercased()
         let digest = digestName(forSignatureType: digestType)
@@ -619,13 +658,17 @@ class OpenSSLUtils {
             return []
         }
 
+        guard let cipherNamePointer = strdup(cipherName) else {
+            return []
+        }
+        defer {
+            free(cipherNamePointer)
+        }
+
         var params = [
-            OSSL_PARAM_construct_utf8_string(OSSL_MAC_PARAM_CIPHER, strdup(cipherName), 0),
+            OSSL_PARAM_construct_utf8_string(OSSL_MAC_PARAM_CIPHER, cipherNamePointer, 0),
             OSSL_PARAM_construct_end()
         ]
-        defer {
-            free(params[0].data)
-        }
 
         var output = [UInt8](repeating: 0, count: 32)
         var outputLength = 0
@@ -702,21 +745,32 @@ class OpenSSLUtils {
             defer { BN_free(dhPubKey) }
 
             let nrBytes = (BN_num_bits(dhPubKey)+7)/8
+            guard nrBytes > 0,
+                  nrBytes <= maxPublicKeyDERLength else {
+                return nil
+            }
             data = [UInt8](repeating: 0, count: Int(nrBytes))
-            _ = BN_bn2bin(dhPubKey, &data)
+            guard BN_bn2bin(dhPubKey, &data) == nrBytes else {
+                return nil
+            }
         } else if v == EVP_PKEY_EC {
 
             var length = 0
             guard EVP_PKEY_get_octet_string_param(key, OSSL_PKEY_PARAM_PUB_KEY, nil, 0, &length) == 1,
-                  length > 0 else {
+                  length > 0,
+                  length <= maxPublicKeyDERLength else {
                 return nil
             }
 
             data = [UInt8](repeating: 0, count: length)
-            guard EVP_PKEY_get_octet_string_param(key, OSSL_PKEY_PARAM_PUB_KEY, &data, data.count, &length) == 1 else {
+            guard EVP_PKEY_get_octet_string_param(key, OSSL_PKEY_PARAM_PUB_KEY, &data, data.count, &length) == 1,
+                  length > 0,
+                  length <= data.count else {
                 return nil
             }
             data = [UInt8](data.prefix(length))
+        } else {
+            return nil
         }
         
         return data
@@ -816,15 +870,18 @@ class OpenSSLUtils {
             ]
 
             return createPublicKey(algorithm: "DHX", params: &fromDataParams)
-        } else {
+        } else if keyType == EVP_PKEY_EC {
             var groupNameLength = 0
             guard EVP_PKEY_get_utf8_string_param(params, OSSL_PKEY_PARAM_GROUP_NAME, nil, 0, &groupNameLength) == 1,
-                  groupNameLength > 0 else {
+                  groupNameLength > 0,
+                  groupNameLength <= maxOpenSSLStringParameterLength else {
                 return nil
             }
 
             var groupName = [CChar](repeating: 0, count: groupNameLength + 1)
-            guard EVP_PKEY_get_utf8_string_param(params, OSSL_PKEY_PARAM_GROUP_NAME, &groupName, groupName.count, &groupNameLength) == 1 else {
+            guard EVP_PKEY_get_utf8_string_param(params, OSSL_PKEY_PARAM_GROUP_NAME, &groupName, groupName.count, &groupNameLength) == 1,
+                  groupNameLength > 0,
+                  groupNameLength < groupName.count else {
                 return nil
             }
 
@@ -836,6 +893,8 @@ class OpenSSLUtils {
             ]
 
             return createPublicKey(algorithm: "EC", params: &fromDataParams)
+        } else {
+            return nil
         }
     }
     
@@ -863,7 +922,9 @@ class OpenSSLUtils {
 
         var secret = [UInt8](repeating: 0, count: keyLen)
         guard EVP_PKEY_derive(ctx, &secret, &keyLen) == 1,
-              keyLen > 0 else {
+              keyLen > 0,
+              keyLen <= maxSharedSecretLength,
+              keyLen <= secret.count else {
             throw NFCPassportReaderError.InvalidDataPassed("Unable to derive shared secret")
         }
         secret = [UInt8](secret.prefix(keyLen))
