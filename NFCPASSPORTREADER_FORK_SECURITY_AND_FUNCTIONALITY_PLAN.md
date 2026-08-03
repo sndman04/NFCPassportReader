@@ -6063,6 +6063,10 @@ Status: implemented and fork-tested; paired app source verification completed, w
   - Xcode continued to emit the known package-scheme `IDERunDestination` metadata diagnostic despite successful requested builds and tests; changed source emitted no compiler warning.
 - Paired app verification: all changed app/test files passed Swift parser checks and `git diff --check`. The full app Xcode build remains subject to the project-loading stall recorded in the first pass.
 - Physical real-chip testing remains required because synthetic tests cannot reproduce issuer-specific transport warnings, secure-messaging envelopes, antenna placement, or image encodings.
+- Git integration and release state:
+  - Committed the fork interoperability, diagnostics, tests, and documentation as `409f456` (`Improve foreign passport scan interoperability and failure clarity`), fast-forwarded local `main`, deleted the temporary work branch, and pushed `origin/main` without rewriting history.
+  - Rebasing was required only in the paired app because its private remote `main` had advanced independently from the local checkout. The single unpushed passport change was replayed cleanly on the fetched remote tip as `da54d35d` (`Improve foreign passport scanning and failure guidance`) and pushed as a fast-forward; no remote app commit was rewritten.
+  - No new `notary-*` app-consumption tag was created. `notary-2.3.1-privacy.4` remains immutable at `b444515`; create the next annotated suffix only after the documented app build and physical-passport matrix pass. The app-side changes remain compatible with its current pinned revision in the meantime.
 
 ### Option A: Remote Fork
 
