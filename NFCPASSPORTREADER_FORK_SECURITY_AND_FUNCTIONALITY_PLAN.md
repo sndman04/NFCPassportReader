@@ -6066,7 +6066,8 @@ Status: implemented and fork-tested; paired app source verification completed, w
 - Git integration and release state:
   - Committed the fork interoperability, diagnostics, tests, and documentation as `409f456` (`Improve foreign passport scan interoperability and failure clarity`), fast-forwarded local `main`, deleted the temporary work branch, and pushed `origin/main` without rewriting history.
   - Rebasing was required only in the paired app because its private remote `main` had advanced independently from the local checkout. The single unpushed passport change was replayed cleanly on the fetched remote tip as `da54d35d` (`Improve foreign passport scanning and failure guidance`) and pushed as a fast-forward; no remote app commit was rewritten.
-  - No new `notary-*` app-consumption tag was created. `notary-2.3.1-privacy.4` remains immutable at `b444515`; create the next annotated suffix only after the documented app build and physical-passport matrix pass. The app-side changes remain compatible with its current pinned revision in the meantime.
+  - At the user's explicit direction, publish the current maintained release line as the new immutable annotated tag `notary-2.3.1-privacy.5`; do not move the existing `notary-2.3.1-privacy.4` tag at `b444515`. The new tag includes the foreign-passport interoperability changes, clearer privacy-safe failures, regressions, and this release record.
+  - Publishing `notary-2.3.1-privacy.5` does not assert that the outstanding full app Xcode build or physical-passport matrix has passed. Keep those release limitations visible, and keep the paired app on its existing `privacy.4` commit pin until that consumption decision and verification are performed separately.
 
 ### Option A: Remote Fork
 
