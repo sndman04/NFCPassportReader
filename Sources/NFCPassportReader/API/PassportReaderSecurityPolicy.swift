@@ -47,6 +47,16 @@ public struct PassportReaderSecurityPolicy: Sendable, Equatable {
             throw NFCPassportReaderError.SecurityPolicyViolation
         }
     }
+
+    var requiresChipAuthenticationWhenSupported: Bool {
+        verificationRequirement == .chipAuthenticationWhenSupported
+            || verificationRequirement == .fullVerificationWhenSupported
+    }
+
+    var requiresActiveAuthenticationWhenSupported: Bool {
+        verificationRequirement == .activeAuthenticationWhenSupported
+            || verificationRequirement == .fullVerificationWhenSupported
+    }
 }
 
 /// Verification strictness for `PassportReaderSecurityPolicy`.

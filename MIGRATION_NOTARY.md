@@ -31,7 +31,7 @@ let result = try await reader.readPassportIdentity(
     customDisplayMessage: { message in
         switch message {
         case .requestPresentPassport:
-            return "Hold the top of your iPhone near the passport chip."
+            return "Start with the top of your iPhone against the passport's rear cover. Move it slowly until it connects, then hold it still."
         case .successfulRead:
             return "Passport chip read."
         default:
@@ -53,7 +53,9 @@ Use `.identityOnly` or `.identityWithPhoto` only after confirming Notary Journal
 
 `PassportReaderSecurityPolicy.notaryRecommended` currently allows passport photo presence in the safe result and requires passive-authentication integrity checks to pass when verification is attempted. If Notary Journal needs a softer rollout while validating real passports, use `.default` temporarily and document the reason in this file before tagging.
 
-`PassportScanOptions.notaryStrict` uses `.allowBACFallback` for current passport interoperability while Notary validates its passport population. After real-device coverage confirms the rollout path, the app can choose `.requirePACEWhenAdvertised` or `.requireExplicitCredential(.can)` for workflows where fallback should be blocked.
+`PassportScanOptions.notaryStrict` uses `.allowBACFallback`, short-length NFC commands, and a 90-second operation timeout for current passport interoperability while Notary validates its passport population. Some chips reject extended-length commands even though their data is otherwise readable. After real-device coverage confirms the rollout path, the app can choose `.requirePACEWhenAdvertised`, `.requireExplicitCredential(.can)`, or a custom extended-mode option for workflows and passport populations where those choices have been validated.
+
+When Notary requires passive authentication but does not require Chip or Active Authentication, it may use a custom profile containing `.COM`, `.SOD`, `.DG1`, and only the app-visible optional groups it needs. Omitting DG14/DG15 avoids invoking optional authentication on chips that advertise those files but reject the corresponding command flow. Optional image/parser incompatibility can produce a successful result without `faceImageData`; keep the existing visual/manual fallback available when the photo is absent.
 
 Use `result.identity`, `result.verificationResult`, `result.trustLevel`, and `result.certificateTrustMetadata` for app-facing mapping. Passive authentication verifies the groups that were actually read; app copy should not imply unread optional groups were checked.
 
@@ -67,12 +69,13 @@ For private interoperability tracking, use `PassportInteroperabilityRecord` with
 
 ```swift
 catch let error as NFCPassportReaderError {
-    let failure = error.privacySafeFailure(at: .unknown)
-    // Use failure.reason, failure.stage, failure.isRetryLikelyToHelp, and failure.recoverySuggestion.
+    let failure = reader.privacySafeFailure(for: error)
+    // Show failure.userMessage followed by failure.recoverySuggestion.
+    // failure.stage and failure.verificationReason are safe typed support context.
 }
 ```
 
-Do not display or log `error.value`; use `privacySafeFailure` or `privacySafeFailure(at:)` instead.
+Do not display or log `error.value`. Prefer `reader.privacySafeFailure(for:)` after a scan so the failure includes the captured stage and safe verification category. The error-only `privacySafeFailure` and `privacySafeFailure(at:)` mappings remain available when no reader instance is in scope.
 
 ## Test Injection
 

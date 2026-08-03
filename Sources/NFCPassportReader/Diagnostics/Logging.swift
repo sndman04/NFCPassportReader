@@ -40,6 +40,7 @@ public enum PassportReaderLogEvent: Sendable, CustomStringConvertible {
     case chipAuthenticationFailedFallbackToBAC
     case activeAuthenticationStarted
     case activeAuthenticationSucceeded
+    case activeAuthenticationFailed
     case readingDataGroup(DataGroupId)
     case unsupportedDataGroup(DataGroupId)
     case dataGroupReadFailed(DataGroupId)
@@ -83,6 +84,8 @@ public enum PassportReaderLogEvent: Sendable, CustomStringConvertible {
             return "Active authentication started"
         case .activeAuthenticationSucceeded:
             return "Active authentication succeeded"
+        case .activeAuthenticationFailed:
+            return "Active authentication failed"
         case .readingDataGroup(let dataGroup):
             return "Reading \(dataGroup.getName())"
         case .unsupportedDataGroup(let dataGroup):
@@ -206,9 +209,11 @@ extension NFCPassportReaderError {
             return .unexpectedReadFailure
         case .InvalidMRZKey:
             return .accessKeyRejected
-        case .UnsupportedDataGroup, .NotImplemented, .NotYetSupported, .UnsupportedCipherAlgorithm, .UnsupportedMappingType:
+        case .UnsupportedDataGroup, .UnknownImageFormat, .NotImplemented, .NotYetSupported,
+             .UnsupportedCipherAlgorithm, .UnsupportedMappingType:
             return .unsupportedPassport
-        case .InvalidResponseChecksum, .InvalidHashAlgorithmSpecified:
+        case .InvalidResponseChecksum, .InvalidHashAlgorithmSpecified,
+             .ChipAuthenticationFailed, .ActiveAuthenticationFailed:
             return .verificationFailed
         default:
             return .unexpectedReadFailure
@@ -232,7 +237,16 @@ extension NFCPassportReaderError {
 
     var shouldSkipDataGroupAndRedoBAC: Bool {
         switch self {
-        case .ResponseError(_, 0x69, 0x82), .ResponseError(_, 0x6A, 0x82):
+        case .ResponseError(_, 0x69, 0x82):
+            return true
+        default:
+            return false
+        }
+    }
+
+    var shouldSkipUnavailableDataGroupWithoutReauthentication: Bool {
+        switch self {
+        case .ResponseError(_, 0x6A, 0x82):
             return true
         default:
             return false
@@ -260,6 +274,27 @@ extension NFCPassportReaderError {
     var isUnsupportedDataGroupRead: Bool {
         switch self {
         case .UnsupportedDataGroup:
+            return true
+        default:
+            return false
+        }
+    }
+
+    var isDeterministicDataGroupReadFailure: Bool {
+        switch self {
+        case .InvalidResponse,
+             .MissingMandatoryFields,
+             .CannotDecodeASN1Length,
+             .InvalidASN1Value,
+             .InvalidASN1Structure,
+             .DataGroupNotRead,
+             .UnknownTag,
+             .UnknownImageFormat,
+             .NotImplemented,
+             .UnsupportedCipherAlgorithm,
+             .UnsupportedMappingType,
+             .InvalidDataPassed,
+             .NotYetSupported:
             return true
         default:
             return false

@@ -104,7 +104,9 @@ Security policies can disallow passport photo reads even when a broader scan pro
 
 `PassportIdentityResult.dateOfIssue` exposes the normalized DG12 issue date when DG12 is read and the chip provides it. DG1 MRZ birth and expiry dates are rejected unless their `YYMMDD` content has a valid month and day, and DG11 date-of-birth and DG12 issue-date values are rejected unless their `YYYYMMDD` content is a real Gregorian calendar date. This lets apps fill issue-date fields without reopening raw DG12 model access.
 
-`PassportScanOptions` provides reviewed combinations of profile, timeout, photo policy, authentication flags, security policy, and PACE policy. `.notaryStrict` is the recommended starting point for Notary Journal style workflows; `.identityOnly` keeps collection minimal when the app does not need photo or optional verification groups.
+`PassportScanOptions` provides reviewed combinations of profile, timeout, photo policy, authentication flags, security policy, and PACE policy. `.notaryStrict` is the recommended starting point for Notary Journal style workflows. It uses broadly compatible short-length NFC commands and a 90-second operation timeout because some otherwise ICAO-compatible foreign passport chips reject extended-length commands or need more time for photo reads. `.identityOnly` keeps collection minimal when the app does not need photo or optional verification groups.
+
+Requested optional groups are best-effort unless the selected security policy requires the associated authentication mechanism. A missing optional file no longer forces BAC reauthentication after a successful PACE session, deterministic parser/format failures are not retried, and an unsupported DG2 image format can complete the identity and passive-authentication scan without returning `faceImageData`. Host apps that need a photo must check whether `faceImageData` is present and explain that limitation to the user. Valid READ BINARY data returned with the standard end-of-file warning is retained instead of being treated as a failed read.
 
 PACE policy defaults to `.allowBACFallback` for current passport interoperability. Use `.requirePACEWhenAdvertised` only after validating the target passport population with real devices, and use `.requireExplicitCredential(.can)`, `.pin`, or `.puk` when the workflow has collected that credential and should fail rather than fall back to MRZ-derived PACE/BAC.
 
@@ -125,8 +127,9 @@ do {
     let result = try await passportReader.readPassportIdentity(mrzKey: mrzKey, options: .notaryStrict)
     let verification = result.verificationResult
 } catch let error as NFCPassportReaderError {
-    let failure = error.privacySafeFailure(at: .readingDataGroup(.DG2))
-    // Use failure.reason, failure.stage, failure.isRetryLikelyToHelp, and failure.recoverySuggestion.
+    let failure = passportReader.privacySafeFailure(for: error)
+    // Show failure.userMessage and failure.recoverySuggestion. The captured stage
+    // and verificationReason explain the safe high-level cause without raw NFC data.
 }
 ```
 
@@ -241,7 +244,10 @@ When no master list is supplied, signer-chain trust is not checked rather than f
 
 ## Troubleshooting
 - If authentication fails with `PassportReaderFailure.reason == .accessKeyRejected`, ask the user to re-check the passport number, date of birth, and expiration date used to derive the access key. Some passports use filler characters in the machine-readable zone; host apps should derive the key with a reviewed MRZ helper rather than logging or displaying the derived access key.
-- If a scan fails after the phone has already connected to the chip, use the safe retry metadata on `PassportReaderFailure` to decide whether to ask the user to try again. Do not expose low-level status words, APDU bytes, MRZ text, or derived key material in app UI, logs, crash reports, or support diagnostics.
+- If a scan fails after the phone has already connected to the chip, show `PassportReaderFailure.userMessage` followed by `recoverySuggestion`. The failure includes a privacy-safe stage and, for policy failures, a verification category so the app can distinguish positioning, access-key, optional-feature, and authenticity-check failures without exposing low-level details.
+- Error-specific safe messages distinguish multiple tags, non-passport NFC tags, malformed/unsupported chip data, unsupported photo formats, secure-response failures, and scans that are already in progress. Use these messages rather than parsing `safeDescription`, status words, or underlying errors.
+- Passport chip placement varies. Start with the top of the phone against the passport's rear cover, move it slowly until it connects, and then hold it still. Keep `.notaryStrict` short-command mode unless extended-length behavior has been validated against the intended passport population.
+- Do not expose low-level status words, APDU bytes, MRZ text, derived key material, certificate details, or image bytes in app UI, logs, crash reports, or support diagnostics.
 
 ## To do
 There are a number of things I'd like to implement in no particular order:

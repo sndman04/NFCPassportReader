@@ -67,6 +67,7 @@ final class PassportReaderLoggingTests: XCTestCase {
             .chipAuthenticationStarted,
             .chipAuthenticationFailedFallbackToBAC,
             .activeAuthenticationStarted,
+            .activeAuthenticationFailed,
             .readingDataGroup(.DG2),
             .unsupportedDataGroup(.DG15),
             .verificationStarted,
@@ -109,6 +110,7 @@ final class PassportReaderLoggingTests: XCTestCase {
         XCTAssertEqual(NFCPassportReaderError.InvalidMRZKey.privacySafeFailureReason.description, "access key rejected")
         XCTAssertEqual(NFCPassportReaderError.UnsupportedDataGroup.privacySafeFailureReason.description, "unsupported passport")
         XCTAssertEqual(NFCPassportReaderError.InvalidResponseChecksum.privacySafeFailureReason.description, "verification failed")
+        XCTAssertEqual(NFCPassportReaderError.ActiveAuthenticationFailed.privacySafeFailureReason.description, "verification failed")
         XCTAssertEqual(NFCPassportReaderError.ScanAlreadyInProgress.privacySafeFailureReason.description, "read failed")
     }
 
@@ -123,6 +125,7 @@ final class PassportReaderLoggingTests: XCTestCase {
             .bacSucceeded,
             .chipAuthenticationStarted,
             .activeAuthenticationStarted,
+            .activeAuthenticationFailed,
             .readingDataGroup(.DG2, progress: 0.7),
             .verifyingSOD,
             .verifyingDataGroups,
@@ -142,7 +145,7 @@ final class PassportReaderLoggingTests: XCTestCase {
         XCTAssertFalse(message.contains("Wrong length"))
         XCTAssertFalse(message.contains("0x6C"))
         XCTAssertFalse(message.contains("0x20"))
-        XCTAssertEqual(message, "Sorry, there was a problem reading the passport. Please try again.")
+        XCTAssertEqual(message, "The passport chip could not be read. Try scanning the passport again.")
     }
 
     func testASN1DebugDescriptionRedactsParsedValues() throws {
@@ -604,12 +607,49 @@ final class PassportReaderLoggingTests: XCTestCase {
         let dataGroupFailure = NFCPassportReaderError.ConnectionError.privacySafeFailure(at: .readingDataGroup(.DG2))
         XCTAssertEqual(dataGroupFailure.stage, .readingDataGroup(.DG2))
         XCTAssertTrue(dataGroupFailure.isRetryLikelyToHelp)
-        XCTAssertTrue(dataGroupFailure.recoverySuggestion.localizedCaseInsensitiveContains("steady"))
+        XCTAssertTrue(dataGroupFailure.recoverySuggestion.localizedCaseInsensitiveContains("stead"))
 
         let accessKeyFailure = NFCPassportReaderError.InvalidMRZKey.privacySafeFailure
         XCTAssertEqual(accessKeyFailure.reason, .accessKeyRejected)
         XCTAssertFalse(accessKeyFailure.isRetryLikelyToHelp)
         XCTAssertFalse(accessKeyFailure.recoverySuggestion.localizedCaseInsensitiveContains("MRZ"))
+        XCTAssertTrue(accessKeyFailure.userMessage.localizedCaseInsensitiveContains("passport number"))
+
+        let verificationFailure = PassportReaderFailure(
+            reason: .verificationFailed,
+            stage: .securityPolicyValidation,
+            verificationReason: .hashMismatch
+        )
+        XCTAssertTrue(verificationFailure.userMessage.localizedCaseInsensitiveContains("did not match"))
+        XCTAssertFalse(verificationFailure.userMessage.localizedCaseInsensitiveContains("hash"))
+
+        let multipleTagFailure = NFCPassportReaderError.MoreThanOneTagFound.privacySafeFailure
+        XCTAssertTrue(multipleTagFailure.userMessage.localizedCaseInsensitiveContains("more than one"))
+        XCTAssertFalse(multipleTagFailure.userMessage.localizedCaseInsensitiveContains("status"))
+
+        let imageFailure = NFCPassportReaderError.UnknownImageFormat.privacySafeFailure(
+            at: .readingDataGroup(.DG2)
+        )
+        XCTAssertEqual(imageFailure.reason, .unsupportedPassport)
+        XCTAssertTrue(imageFailure.userMessage.localizedCaseInsensitiveContains("photo"))
+
+        let malformedFailure = NFCPassportReaderError.InvalidASN1Structure.privacySafeFailure(
+            at: .readingDataGroup(.DG11)
+        )
+        XCTAssertTrue(malformedFailure.userMessage.localizedCaseInsensitiveContains("could not understand"))
+        XCTAssertFalse(malformedFailure.userMessage.localizedCaseInsensitiveContains("ASN"))
+    }
+
+    func testProgressEventsMapToPrivacySafeFailureStages() {
+        XCTAssertEqual(PassportReaderProgressEvent.waitingForPassport.scanStage, .waitingForPassport)
+        XCTAssertEqual(PassportReaderProgressEvent.paceStarted.scanStage, .pace)
+        XCTAssertEqual(PassportReaderProgressEvent.bacStarted.scanStage, .bac)
+        XCTAssertEqual(
+            PassportReaderProgressEvent.readingDataGroup(.DG2, progress: 0.5).scanStage,
+            .readingDataGroup(.DG2)
+        )
+        XCTAssertEqual(PassportReaderProgressEvent.activeAuthenticationFailed.scanStage, .activeAuthentication)
+        XCTAssertEqual(PassportReaderProgressEvent.verifyingSOD.scanStage, .passiveAuthentication)
     }
 
     func testChipAuthenticationRetryClassificationDoesNotRequirePublicErrorValue() {
@@ -623,13 +663,53 @@ final class PassportReaderLoggingTests: XCTestCase {
 
     func testDataGroupRetryPolicyUsesTypedStatusWords() {
         XCTAssertTrue(NFCPassportReaderError.ResponseError("redacted", 0x69, 0x82).shouldSkipDataGroupAndRedoBAC)
-        XCTAssertTrue(NFCPassportReaderError.ResponseError("redacted", 0x6A, 0x82).shouldSkipDataGroupAndRedoBAC)
+        XCTAssertFalse(NFCPassportReaderError.ResponseError("redacted", 0x6A, 0x82).shouldSkipDataGroupAndRedoBAC)
+        XCTAssertTrue(
+            NFCPassportReaderError.ResponseError("redacted", 0x6A, 0x82)
+                .shouldSkipUnavailableDataGroupWithoutReauthentication
+        )
         XCTAssertTrue(NFCPassportReaderError.ResponseError("redacted", 0x69, 0x88).shouldRedoBACForDataGroupRead)
         XCTAssertTrue(NFCPassportReaderError.ResponseError("redacted", 0x62, 0x82).shouldReduceReadAmountAndRedoBAC)
         XCTAssertTrue(NFCPassportReaderError.ResponseError("redacted", 0x67, 0x00).shouldReduceReadAmountAndRedoBAC)
         XCTAssertTrue(NFCPassportReaderError.ResponseError("redacted", 0x6C, 0x20).shouldReduceReadAmountAndRedoBAC)
         XCTAssertTrue(NFCPassportReaderError.UnsupportedDataGroup.isUnsupportedDataGroupRead)
         XCTAssertFalse(NFCPassportReaderError.InvalidMRZKey.shouldRedoBACForDataGroupRead)
+        XCTAssertTrue(NFCPassportReaderError.InvalidASN1Structure.isDeterministicDataGroupReadFailure)
+        XCTAssertTrue(NFCPassportReaderError.UnknownImageFormat.isDeterministicDataGroupReadFailure)
+        XCTAssertFalse(NFCPassportReaderError.ConnectionError.isDeterministicDataGroupReadFailure)
+        XCTAssertFalse(NFCPassportReaderError.InvalidResponseChecksum.isDeterministicDataGroupReadFailure)
+    }
+
+    @available(iOS 15, *)
+    @MainActor
+    func testOptionalDataGroupParserFailuresDoNotAbortPermissiveAuthenticationPolicy() {
+        let reader = PassportReader()
+
+        XCTAssertTrue(reader.shouldContinueAfterOptionalDataGroupFailure(.InvalidASN1Structure, dataGroup: .DG11))
+        XCTAssertTrue(reader.shouldContinueAfterOptionalDataGroupFailure(.InvalidASN1Structure, dataGroup: .DG15))
+        XCTAssertTrue(reader.shouldContinueAfterOptionalDataGroupFailure(.UnknownImageFormat, dataGroup: .DG2))
+        XCTAssertFalse(reader.shouldContinueAfterOptionalDataGroupFailure(.InvalidASN1Structure, dataGroup: .DG1))
+        XCTAssertFalse(reader.shouldContinueAfterOptionalDataGroupFailure(.InvalidResponseChecksum, dataGroup: .DG11))
+    }
+
+    @available(iOS 15, *)
+    @MainActor
+    func testActiveAuthenticationRetriesOnlyExtendedLengthCompatibilityErrors() {
+        XCTAssertTrue(PassportReader.shouldRetryActiveAuthenticationWithoutExtendedMode(
+            after: NFCPassportReaderError.ResponseError("redacted", 0x67, 0x00)
+        ))
+        XCTAssertTrue(PassportReader.shouldRetryActiveAuthenticationWithoutExtendedMode(
+            after: NFCPassportReaderError.ResponseError("redacted", 0x6C, 0x00)
+        ))
+        XCTAssertTrue(PassportReader.shouldRetryActiveAuthenticationWithoutExtendedMode(
+            after: NFCPassportReaderError.ResponseError("redacted", 0x6E, 0x00)
+        ))
+        XCTAssertFalse(PassportReader.shouldRetryActiveAuthenticationWithoutExtendedMode(
+            after: NFCPassportReaderError.InvalidResponseChecksum
+        ))
+        XCTAssertFalse(PassportReader.shouldRetryActiveAuthenticationWithoutExtendedMode(
+            after: NFCPassportReaderError.ConnectionError
+        ))
     }
 
     @MainActor
@@ -646,6 +726,28 @@ final class PassportReaderLoggingTests: XCTestCase {
         XCTAssertTrue(TagReader.isSuccessStatus(sw1: 0x90, sw2: 0x00))
         XCTAssertFalse(TagReader.isSuccessStatus(sw1: 0x90, sw2: 0x01))
         XCTAssertFalse(TagReader.isSuccessStatus(sw1: 0x91, sw2: 0x00))
+    }
+
+    @available(iOS 15, *)
+    func testReadBinaryAcceptsEndOfFileWarningOnlyWhenDataWasReturned() {
+        XCTAssertTrue(TagReader.isReadBinaryEndOfFileWarning(
+            instructionCode: 0xB0,
+            sw1: 0x62,
+            sw2: 0x82,
+            hasData: true
+        ))
+        XCTAssertFalse(TagReader.isReadBinaryEndOfFileWarning(
+            instructionCode: 0xB0,
+            sw1: 0x62,
+            sw2: 0x82,
+            hasData: false
+        ))
+        XCTAssertFalse(TagReader.isReadBinaryEndOfFileWarning(
+            instructionCode: 0xA4,
+            sw1: 0x62,
+            sw2: 0x82,
+            hasData: true
+        ))
     }
 
     @available(iOS 15, *)
@@ -988,6 +1090,17 @@ final class PassportReaderLoggingTests: XCTestCase {
         ))
     }
 
+    func testRecordedActiveAuthenticationFailureIsTypedAndDoesNotRetainBytes() {
+        let model = NFCPassportModel()
+
+        model.recordActiveAuthenticationFailure()
+
+        XCTAssertTrue(model.activeAuthenticationAttempted)
+        XCTAssertFalse(model.activeAuthenticationPassed)
+        XCTAssertTrue(model.activeAuthenticationChallenge.isEmpty)
+        XCTAssertTrue(model.activeAuthenticationSignature.isEmpty)
+    }
+
     func testAddingAuthenticationDataGroupsInvalidatesDerivedAuthenticationState() throws {
         let model = NFCPassportModel()
         model.verifyActiveAuthentication(
@@ -1203,8 +1316,8 @@ final class PassportReaderLoggingTests: XCTestCase {
         XCTAssertFalse(strict.skipSecureElements)
         XCTAssertFalse(strict.skipCA)
         XCTAssertFalse(strict.skipPACE)
-        XCTAssertTrue(strict.useExtendedMode)
-        XCTAssertEqual(strict.operationTimeout, 60)
+        XCTAssertFalse(strict.useExtendedMode)
+        XCTAssertEqual(strict.operationTimeout, 90)
         XCTAssertEqual(strict.photoPolicy, .read)
         XCTAssertEqual(strict.securityPolicy, .notaryRecommended)
 

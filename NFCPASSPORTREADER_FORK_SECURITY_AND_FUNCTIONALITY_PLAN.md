@@ -6008,6 +6008,62 @@ Status: implemented and focused-test verified in this pass.
   Result: iOS package build, iOS build-for-testing, full iOS Simulator package tests, API surface check, privacy scan, NFC boundary check, whitespace check, and risky-pattern reporting completed successfully. The full simulator suite ran 304 tests with no failures.
 - Final whitespace and targeted risky-pattern scans passed. `git diff --check` produced no output. A production sink scan over `PACEHandler.swift` found no forced operations, runtime traps, raw logging, persistence, network, raw export, or related diagnostic sinks. A broader touched-file scan only hit expected secure-messaging/APDU/key synthetic test fixtures and planning-document privacy wording.
 
+### 2026-08-03 Foreign-Passport Interoperability And Failure Clarity Pass
+
+Status: implemented in the fork and paired Notary Journal source; fork release checks passed. App Xcode loading and physical-passport validation remain follow-up verification.
+
+- Investigated the failed foreign-passport report without retaining or requesting client identity data. No country allowlist or Brazil-specific rejection was found.
+- Identified interoperability risks that could affect Brazilian and other foreign passports:
+  - `.notaryStrict` and the app requested extended-length NFC mode even though some otherwise ICAO-compatible chips reject extended command encoding.
+  - the initial six-byte EF header read was encoded as an extended command even though its response is small;
+  - DG15 automatically triggered Active Authentication and made command or signature failures fatal even when the configured policy required only passive authentication;
+  - malformed or unsupported optional data groups could abort a scan after the required identity and signature groups had been read;
+  - the NFC sheet could report success before passive authentication and security-policy validation completed;
+  - app error mapping discarded the reader's last safe scan stage, making unrelated failures look identical;
+  - app OCR accepted a lenient MRZ candidate after check-digit failure, and the one-line MRZ path did not validate all check digits before deriving chip access fields.
+- Changed `.notaryStrict` to use short-length mode with a 90-second timeout, and changed the small initial EF header request to an explicitly short command.
+- Added a short-mode Active Authentication retry for extended-command compatibility errors. Active Authentication failure is now recorded as a typed failed verification check and is fatal only when the selected security policy requires Active Authentication. No challenge or signature bytes are retained after the failure.
+- Made parser/feature failures for non-required optional data groups non-fatal while keeping required COM, SOD, DG1, requested photo data, and policy-required authentication groups fail-closed. Transport, integrity, and secure-messaging failures are not swallowed.
+- Moved the successful NFC message and session invalidation until after passive authentication and security-policy validation.
+- Added `PassportReader.privacySafeFailure(for:)`, captured scan stages, a typed Active Authentication failure event/error, and `PassportReaderFailure.userMessage` plus optional `verificationReason`. Messages distinguish placement/timeout, connection, access-key, unsupported-feature, data-group, authentication, signature, signed-data mismatch, trust-list, and final-policy failures without exposing status words, MRZ values, keys, raw groups, certificate contents, or images.
+- Updated the paired Notary Journal app to:
+  - use short-length mode and a 90-second timeout;
+  - request the identity/photo/passive-authentication groups it uses while omitting optional DG14/DG15 because the app policy does not require Chip or Active Authentication;
+  - track privacy-safe progress stages and combine a plain-language cause with an actionable recovery suggestion;
+  - give rear-cover chip-placement guidance;
+  - require valid MRZ check digits, including the one-line fallback, and prevent invalid MRZ-like OCR from being reinterpreted as unlabeled access-key fallback data;
+  - include synthetic Brazilian TD3 MRZ and failure-copy regressions. No real passport values or fixtures were added.
+- Updated `readme.md` and `MIGRATION_NOTARY.md` with the short-command/90-second compatibility default, rear-cover placement guidance, and the captured privacy-safe failure API.
+- Fork release check:
+  `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer scripts/release_check.sh`
+  Result: iOS build, iOS build-for-testing, the full iOS Simulator suite (308 tests, 0 failures), external API surface check, privacy scan, CoreNFC boundary check, and whitespace check all passed. Xcode continued to print its package-scheme `IDERunDestination` metadata diagnostic even though all requested builds and tests succeeded; this is an Xcode project-model diagnostic, not a warning emitted by changed source.
+- Paired app source verification passed Swift parser checks for all three changed files, `plutil` validation for the unchanged project file, `git diff --check`, and a targeted logging/sensitive-vocabulary review. Changed production code adds no identity, MRZ-value, status-word, raw-byte, key, certificate, or image logging.
+- App `xcodebuild` verification could not reach project loading or compilation in this environment. Multiple attempts, including an isolated derived-data path and package-update suppression, produced no resolver/compiler output for more than 60 seconds and were stopped; no source compiler warning or error was emitted. Re-run the app build and focused `IDScanServicesTests` on a healthy Xcode checkout before release.
+- Do not tag the fork solely from synthetic validation. Run a non-identifying physical-device matrix covering at least the reported Brazilian passport class, BAC and PACE chips, DG2 photo reads, optional DG14/DG15 presence, timeout/connection recovery, and every displayed failure category. Record only country/feature-class outcomes, never document numbers, names, dates, images, MRZ text, APDUs, keys, or certificate dumps.
+- Release migration remains explicit: publish a new immutable annotated `notary-*` fork tag and update Notary Journal's package pin only after the app build and on-device matrix pass. The app-side short-command, timeout, optional-authentication omission, MRZ validation, and failure-stage copy are source-compatible with its current pinned fork revision in the meantime.
+
+### 2026-08-03 Second Foreign-Passport Failure Audit
+
+Status: implemented and fork-tested; paired app source verification completed, with the previously documented app Xcode project-loading limitation still outstanding.
+
+- Re-audited the end-to-end failure path after the first interoperability pass: NFC response classification, secure-messaging recovery, PACE/BAC transitions, deterministic read/parser failures, optional group semantics, photo parsing, privacy-safe error mapping, and the app alert boundary.
+- Found and fixed four additional failure risks:
+  - ISO 7816 READ BINARY status `62 82` can legitimately return the final file bytes with an end-of-file warning. The reader previously discarded those valid bytes, reduced the chunk size, forced BAC, and retried. It now accepts this warning only for READ BINARY, only when bytes were returned, and only when response bytes are safe to use (plain transport or a successfully unwrapped secure-messaging response).
+  - A missing optional file (`6A 82`) previously forced BAC even after a successful PACE session. The reader now records the group as unsupported and continues with the established secure-messaging session. Security-status failures (`69 82`) retain the conservative BAC recovery path.
+  - Deterministic parser and unsupported-format failures were retried by re-reading the entire group. This could double a large DG2 read and turn a recoverable optional-photo incompatibility into a timeout. Those failures now exit immediately to the required/optional policy decision; transient and integrity failures retain their existing retry/fail-closed behavior.
+  - DG2 parser/image-format incompatibility was treated as mandatory whenever photo reading was requested. Photo reading is now best-effort unless a future explicit policy requires it: identity and passive authentication may complete without `faceImageData`, while COM, SOD, DG1, policy-required authentication, transport integrity, and secure messaging remain fail-closed.
+- Expanded privacy-safe error copy without exposing underlying strings or status words. Typed messages now distinguish multiple NFC tags, non-passport tags, scans already in progress, unsupported photo formats, malformed chip data, secure-response failures, unsupported verification methods, PACE/setup failure, and invalid scan inputs. `PassportReaderFailure` accepts a safe message override while preserving typed reason, stage, verification detail, and recovery metadata.
+- Updated the paired Notary Journal error boundary to retain exact safe reader categories before they collapse to the broad failure reason. Added plain-language app copy for multiple tags, invalid tags, unsupported photos, malformed data at the named user-facing read stage, secure-channel failures, and access-setup failures. No low-level error strings or numeric status values are displayed or logged.
+- Added focused regressions for conditional end-of-file warning acceptance, missing-group recovery classification, deterministic non-retry classification, optional DG2 format failure, expanded failure messages, and paired-app failure copy. All fixtures remain synthetic.
+- Updated README and Notary migration guidance for best-effort optional photos, PACE-preserving missing-file handling, deterministic non-retry behavior, and error-specific safe copy.
+- Fork verification:
+  - iOS build-for-testing and the full iOS Simulator suite passed with 309 tests and no failures.
+  - The release script's iOS build, iOS test build, and 309-test suite passed. Its first API-surface phase attempt then ran out of disk while cloning a duplicate OpenSSL cache; this occurred after all source compilation/tests and was not a source failure.
+  - Removed only task-generated Xcode DerivedData caches, restored the offloaded release scripts, and reran `scripts/api_surface_check.sh`, `scripts/privacy_scan.sh`, `scripts/nfc_boundary_check.sh`, and `git diff --check`; all passed.
+  - Xcode continued to emit the known package-scheme `IDERunDestination` metadata diagnostic despite successful requested builds and tests; changed source emitted no compiler warning.
+- Paired app verification: all changed app/test files passed Swift parser checks and `git diff --check`. The full app Xcode build remains subject to the project-loading stall recorded in the first pass.
+- Physical real-chip testing remains required because synthetic tests cannot reproduce issuer-specific transport warnings, secure-messaging envelopes, antenna placement, or image encodings.
+
 ### Option A: Remote Fork
 
 Preferred long-term route:

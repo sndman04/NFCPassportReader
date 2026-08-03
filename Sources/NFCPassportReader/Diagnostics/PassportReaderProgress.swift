@@ -27,6 +27,7 @@ public enum PassportReaderProgressEvent: Sendable, Equatable, CustomStringConver
     case chipAuthenticationFailedFallbackToBAC
     case activeAuthenticationStarted
     case activeAuthenticationSucceeded
+    case activeAuthenticationFailed
     case readingDataGroup(DataGroupId, progress: Double?)
     case verifyingSOD
     case verifyingDataGroups
@@ -60,6 +61,8 @@ public enum PassportReaderProgressEvent: Sendable, Equatable, CustomStringConver
             return "Active authentication started"
         case .activeAuthenticationSucceeded:
             return "Active authentication succeeded"
+        case .activeAuthenticationFailed:
+            return "Active authentication failed"
         case .readingDataGroup(let dataGroup, _):
             return "Reading \(dataGroup.getName())"
         case .verifyingSOD:
@@ -70,8 +73,33 @@ public enum PassportReaderProgressEvent: Sendable, Equatable, CustomStringConver
             return "Passport chip read complete"
         }
     }
+
+    /// Privacy-safe scan stage corresponding to this progress event.
+    public var scanStage: PassportReaderScanStage {
+        switch self {
+        case .waitingForPassport:
+            return .waitingForPassport
+        case .tagDetected, .authenticating:
+            return .connecting
+        case .paceStarted, .paceSucceeded, .paceFailedFallbackToBAC:
+            return .pace
+        case .bacStarted, .bacSucceeded:
+            return .bac
+        case .chipAuthenticationStarted,
+             .chipAuthenticationSucceeded,
+             .chipAuthenticationFailedFallbackToBAC:
+            return .chipAuthentication
+        case .activeAuthenticationStarted, .activeAuthenticationSucceeded, .activeAuthenticationFailed:
+            return .activeAuthentication
+        case .readingDataGroup(let dataGroup, _):
+            return .readingDataGroup(dataGroup)
+        case .verifyingSOD, .verifyingDataGroups:
+            return .passiveAuthentication
+        case .complete:
+            return .unknown
+        }
+    }
 }
 
 @available(iOS 13, macOS 10.15, *)
 public typealias PassportReaderProgressHandler = @Sendable (PassportReaderProgressEvent) -> Void
-

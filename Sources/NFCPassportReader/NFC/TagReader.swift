@@ -202,10 +202,16 @@ class TagReader: @unchecked Sendable {
     func selectFileAndRead( tag: [UInt8]) async throws -> [UInt8] {
         var resp = try await selectFile(tag: tag )
             
-        // Read enough bytes to cover the tag plus the largest ASN.1 length field we accept.
-        guard let readHeaderCmd = NFCISO7816APDU(data:Data([0x00, 0xB0, 0x00, 0x00, 0x00, 0x00, UInt8(Self.initialFileHeaderReadLength)])) else {
-            throw NFCPassportReaderError.UnexpectedError
-        }
+        // Use a short-length command for the small header read. Some otherwise
+        // ICAO-compatible chips reject extended-length READ BINARY commands.
+        let readHeaderCmd = NFCISO7816APDU(
+            instructionClass: 0x00,
+            instructionCode: 0xB0,
+            p1Parameter: 0x00,
+            p2Parameter: 0x00,
+            data: Data(),
+            expectedResponseLength: Self.initialFileHeaderReadLength
+        )
         resp = try await self.send( cmd: readHeaderCmd )
 
         let initialRead = try Self.parseInitialFileRead(resp.data)
@@ -366,13 +372,20 @@ class TagReader: @unchecked Sendable {
             data.append(contentsOf: nextSegment)
         }
 
+        let responseDataCanBeUsed = secureMessaging == nil || Self.isSuccessStatus(sw1: sw1, sw2: sw2)
         var rep = ResponseAPDU(data: [UInt8](data), sw1: sw1, sw2: sw2)
         
         if let sm = self.secureMessaging {
             rep = try sm.unprotect(rapdu:rep)
         }
         
-        if !Self.isSuccessStatus(sw1: rep.sw1, sw2: rep.sw2) {
+        let readBinaryEndOfFileWarning = Self.isReadBinaryEndOfFileWarning(
+            instructionCode: cmd.instructionCode,
+            sw1: rep.sw1,
+            sw2: rep.sw2,
+            hasData: responseDataCanBeUsed && !rep.data.isEmpty
+        )
+        if !Self.isSuccessStatus(sw1: rep.sw1, sw2: rep.sw2), !readBinaryEndOfFileWarning {
             let tagError: NFCPassportReaderError
             if (rep.sw1 == 0x63 && rep.sw2 == 0x00) {
                 tagError = NFCPassportReaderError.InvalidMRZKey
@@ -392,6 +405,15 @@ class TagReader: @unchecked Sendable {
 
     static func isSuccessStatus(sw1: UInt8, sw2: UInt8) -> Bool {
         sw1 == 0x90 && sw2 == 0x00
+    }
+
+    static func isReadBinaryEndOfFileWarning(
+        instructionCode: UInt8,
+        sw1: UInt8,
+        sw2: UInt8,
+        hasData: Bool
+    ) -> Bool {
+        instructionCode == 0xB0 && sw1 == 0x62 && sw2 == 0x82 && hasData
     }
 
     static func decodeError( sw1: UInt8, sw2:UInt8 ) -> String {

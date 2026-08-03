@@ -514,6 +514,13 @@ class NFCPassportModel: @unchecked Sendable {
         }
     }
 
+    func recordActiveAuthenticationFailure() {
+        activeAuthenticationAttempted = true
+        activeAuthenticationPassed = false
+        activeAuthenticationChallenge.removeAll(keepingCapacity: false)
+        activeAuthenticationSignature.removeAll(keepingCapacity: false)
+    }
+
     nonisolated static func isValidActiveAuthenticationInput(challenge: [UInt8], signature: [UInt8]) -> Bool {
         isValidActiveAuthenticationChallenge(challenge)
             && !signature.isEmpty

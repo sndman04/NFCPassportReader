@@ -20,8 +20,8 @@ public struct PassportScanOptions: Sendable, Equatable {
         skipSecureElements: false,
         skipCA: false,
         skipPACE: false,
-        useExtendedMode: true,
-        operationTimeout: 60,
+        useExtendedMode: false,
+        operationTimeout: 90,
         photoPolicy: .read,
         securityPolicy: .notaryRecommended,
         pacePolicy: .allowBACFallback

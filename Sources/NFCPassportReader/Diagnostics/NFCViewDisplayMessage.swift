@@ -32,20 +32,11 @@ extension NFCViewDisplayMessage {
                 let progressString = handleProgress(percentualProgress: progress)
                 return "Reading \(dataGroup)...\n\n\(progressString)"
             case .error(let tagError):
-                switch tagError {
-                    case NFCPassportReaderError.TagNotValid:
-                        return "Tag not valid."
-                    case NFCPassportReaderError.MoreThanOneTagFound:
-                        return "More than one NFC tag was found. Please present only one passport."
-                    case NFCPassportReaderError.ConnectionError:
-                        return "Connection error. Please try again."
-                    case NFCPassportReaderError.InvalidMRZKey:
-                        return "MRZ Key not valid for this document."
-                    case NFCPassportReaderError.ResponseError:
-                        return "Sorry, there was a problem reading the passport. Please try again."
-                    default:
-                        return "Sorry, there was a problem reading the passport. Please try again."
+                if case NFCPassportReaderError.MoreThanOneTagFound = tagError {
+                    return "More than one NFC tag was found. Present only one passport."
                 }
+                let failure = tagError.privacySafeFailure
+                return "\(failure.userMessage) \(failure.recoverySuggestion)"
             case .activeAuthentication:
                 return "Authenticating..."
             case .successfulRead:
