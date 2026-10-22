@@ -20,16 +20,32 @@ class TagReader: @unchecked Sendable {
     private static let initialFileHeaderReadLength = 6
     private static let maxDataGroupFileBytes = 24 * 1024 * 1024
 
-    var tag : NFCISO7816Tag
+    private var transport: (any PassportTagTransport)?
+    private(set) var paceAuthenticationAttempted = false
     var secureMessaging : SecureMessaging?
     var maxDataLengthToRead : Int = 0xA0  // Should be able to use 256 to read arbitrary amounts of data at full speed BUT this isn't supported across all passports so for reliability just use the smaller amount.
 
     var progress : ((Int)->())?
 
     init( tag: NFCISO7816Tag ) {
-        self.tag = tag
+        self.transport = CoreNFCPassportTagTransport(tag: tag)
     }
     
+    init(transport: any PassportTagTransport) {
+        self.transport = transport
+    }
+
+    func clearAuthenticationState() {
+        secureMessaging?.removeSensitiveData()
+        secureMessaging = nil
+    }
+
+    /// Drop the obsolete CoreNFC tag before restarting polling. It must never be reused.
+    func disconnect() {
+        clearAuthenticationState()
+        transport = nil
+    }
+
     func overrideDataAmountToRead( newAmount : Int ) {
         maxDataLengthToRead = min(max(newAmount, 1), 65_535)
     }
@@ -125,6 +141,9 @@ class TagReader: @unchecked Sendable {
     }
     
     func sendMSESetATMutualAuth( oid: String, keyType: UInt8 ) async throws -> ResponseAPDU {
+        // Even an unsuccessful/ambiguous MSE or final GA response can leave the
+        // chip in authentication or secure-messaging state unknown to the reader.
+        paceAuthenticationAttempted = true
         
         let oidBytes = try Self.mseAlgorithmIdentifierData(oid: oid)
         let keyTypeBytes = wrapDO( b: 0x83, arr:[keyType])
@@ -349,12 +368,13 @@ class TagReader: @unchecked Sendable {
     }
 
     func send( cmd: NFCISO7816APDU, useExtendedMode : Bool = false ) async throws -> ResponseAPDU {
+        guard let transport else { throw NFCPassportReaderError.NoConnectedTag }
         var toSend = cmd
         if let sm = secureMessaging {
             toSend = try sm.protect(apdu:cmd, useExtendedMode: useExtendedMode)
         }
         
-        var (data, sw1, sw2) = try await tag.sendCommand(apdu: toSend)
+        var (data, sw1, sw2) = try await transport.sendCommand(apdu: toSend)
 
         // Some commands may have bigger response than expected. Read the whole response using INS 0xC0 (GET RESPONSE).
         var getResponseSegments = 0
@@ -362,7 +382,7 @@ class TagReader: @unchecked Sendable {
             let getResponseCmd = NFCISO7816APDU(instructionClass: 0x0, instructionCode: 0xC0, p1Parameter: 0x0, p2Parameter: 0x0, data: Data(), expectedResponseLength: Self.getResponseLength(sw2: sw2))
             let nextSegment: Data
             // Overwrite sw1 and sw2.
-            (nextSegment, sw1, sw2) = try await tag.sendCommand(apdu: getResponseCmd)
+            (nextSegment, sw1, sw2) = try await transport.sendCommand(apdu: getResponseCmd)
             getResponseSegments += 1
             try Self.validateChainedResponseBudget(
                 currentByteCount: data.count,

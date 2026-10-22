@@ -131,6 +131,8 @@ public enum PassportReaderFailureReason: Sendable, Equatable, CustomStringConver
     case unsupportedPassport
     case verificationFailed
     case unexpectedReadFailure
+    /// Restoring application/session state failed before BAC authentication began.
+    case bacFallbackPreparationFailed
 
     public var description: String {
         switch self {
@@ -142,6 +144,7 @@ public enum PassportReaderFailureReason: Sendable, Equatable, CustomStringConver
         case .unsupportedPassport: return "unsupported passport"
         case .verificationFailed: return "verification failed"
         case .unexpectedReadFailure: return "read failed"
+        case .bacFallbackPreparationFailed: return "BAC fallback preparation failed"
         }
     }
 }
@@ -207,6 +210,8 @@ extension NFCPassportReaderError {
             return .verificationFailed
         case .RawDataExportNotAllowed:
             return .unexpectedReadFailure
+        case .BACFallbackPreparationFailed:
+            return .bacFallbackPreparationFailed
         case .InvalidMRZKey:
             return .accessKeyRejected
         case .UnsupportedDataGroup, .UnknownImageFormat, .NotImplemented, .NotYetSupported,

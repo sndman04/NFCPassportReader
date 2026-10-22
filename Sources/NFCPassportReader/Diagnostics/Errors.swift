@@ -41,6 +41,9 @@ public enum NFCPassportReaderError: Error {
     case InvalidHashAlgorithmSpecified
     case UnsupportedCipherAlgorithm
     case UnsupportedMappingType
+    /// The reader could not restore the passport application before starting BAC.
+    /// Contains no underlying error, status word, or document data.
+    case BACFallbackPreparationFailed
     case PACEError(String,String)
     case ChipAuthenticationFailed
     case ActiveAuthenticationFailed
@@ -81,6 +84,7 @@ public enum NFCPassportReaderError: Error {
             case .InvalidHashAlgorithmSpecified: return "InvalidHashAlgorithmSpecified"
             case .UnsupportedCipherAlgorithm: return "UnsupportedCipherAlgorithm"
             case .UnsupportedMappingType: return "UnsupportedMappingType"
+            case .BACFallbackPreparationFailed: return "BAC fallback preparation failed"
             case .PACEError(let step, let reason): return "PACEError (\(step)) - \(reason)"
             case .ChipAuthenticationFailed: return "ChipAuthenticationFailed"
             case .ActiveAuthenticationFailed: return "ActiveAuthenticationFailed"
@@ -124,6 +128,7 @@ public enum NFCPassportReaderError: Error {
             case .InvalidHashAlgorithmSpecified: return "Unsupported verification hash algorithm"
             case .UnsupportedCipherAlgorithm: return "Unsupported cipher algorithm"
             case .UnsupportedMappingType: return "Unsupported PACE mapping type"
+            case .BACFallbackPreparationFailed: return "Unable to prepare the passport for BAC fallback"
             case .PACEError: return "PACE authentication failed"
             case .ChipAuthenticationFailed: return "Chip authentication failed"
             case .ActiveAuthenticationFailed: return "Active authentication failed"

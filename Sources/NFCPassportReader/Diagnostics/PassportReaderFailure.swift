@@ -59,6 +59,8 @@ public extension PassportReaderFailureReason {
         case .verificationFailed:
             return verificationReason?.userMessage
                 ?? "The passport chip was read, but its signed data could not be verified."
+        case .bacFallbackPreparationFailed:
+            return "The reader could not prepare the passport chip for BAC fallback. BAC authentication did not start."
         case .unexpectedReadFailure:
             return "The passport chip could not be read\(stage.userMessageSuffix)."
         }
@@ -77,7 +79,7 @@ public extension PassportReaderFailureReason {
             default:
                 return false
             }
-        case .timeout, .connectionLost, .unexpectedReadFailure:
+        case .timeout, .connectionLost, .unexpectedReadFailure, .bacFallbackPreparationFailed:
             return true
         case .userCanceled, .nfcNotSupported, .accessKeyRejected, .unsupportedPassport:
             return false
@@ -107,6 +109,8 @@ public extension PassportReaderFailureReason {
             return "This passport feature is not supported by the reader."
         case .verificationFailed:
             return "The passport chip data could not be verified."
+        case .bacFallbackPreparationFailed:
+            return "Remove the passport from the phone, then present it again for a new scan."
         case .unexpectedReadFailure:
             switch stage {
             case .pace:
@@ -133,6 +137,8 @@ private extension PassportReaderScanStage {
             return " while connecting"
         case .pace:
             return " during secure access setup"
+        case .bacFallbackPreparation:
+            return " while preparing BAC fallback"
         case .bac:
             return " while checking the passport access details"
         case .readingDataGroup(let dataGroup):
@@ -258,6 +264,8 @@ public extension NFCPassportReaderError {
             return "More than one NFC tag was detected. Move other NFC items away and present only one passport."
         case .InvalidHashAlgorithmSpecified:
             return "The passport uses a signature verification method this reader does not support."
+        case .BACFallbackPreparationFailed:
+            return PassportReaderFailureReason.bacFallbackPreparationFailed.userMessage(at: stage)
         case .PACEError:
             return "Secure access setup with the passport chip failed."
         case .ChipAuthenticationFailed:

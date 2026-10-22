@@ -19,6 +19,8 @@ public enum PassportReaderProgressEvent: Sendable, Equatable, CustomStringConver
     case authenticating(progress: Double?)
     case paceStarted
     case paceSucceeded
+    /// Fallback was chosen; application/session preparation is in progress.
+    /// BAC authentication starts only at `bacStarted`.
     case paceFailedFallbackToBAC
     case bacStarted
     case bacSucceeded
@@ -81,8 +83,10 @@ public enum PassportReaderProgressEvent: Sendable, Equatable, CustomStringConver
             return .waitingForPassport
         case .tagDetected, .authenticating:
             return .connecting
-        case .paceStarted, .paceSucceeded, .paceFailedFallbackToBAC:
+        case .paceStarted, .paceSucceeded:
             return .pace
+        case .paceFailedFallbackToBAC:
+            return .bacFallbackPreparation
         case .bacStarted, .bacSucceeded:
             return .bac
         case .chipAuthenticationStarted,

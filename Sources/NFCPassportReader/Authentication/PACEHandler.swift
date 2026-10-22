@@ -44,7 +44,6 @@ class PACEHandler {
     var paceInfo : PACEInfo
     
     var isPACESupported : Bool = false
-    var paceError : String = ""
     
     // Params used
     private var paceKey : [UInt8] = []
@@ -141,29 +140,11 @@ class PACEHandler {
         completed = true
     }
     
-    /// Handles an error during the PACE process
-    /// Logs and stoes the error and returns false to the caller
-    /// - Parameters:
-    ///   - stage: Where in the PACE process the error occurred
-    ///   - error: The error message
-    func handleError( _ stage: String, _ error: String, needToTerminateGA: Bool = false ) {
-        self.paceError = "\(stage) - \(error)"
-        //self.completedHandler?( false )
+    // Failure recovery belongs to PassportReader. Do not send a fabricated
+    // final GA (formerly suggested here as DO 83 containing 00): DO 83 is an
+    // ephemeral public key, not an abort primitive (ICAO 9303-11 §4.4.5).
+    // Failed PACE requires fresh tag activation before attempting BAC.
 
-/*
-        if needToTerminateGA {
-            // This is to fix some passports that don't automatically terminate command chaining!
-            // No idea if this is the correct way to do it but testing.....
-            let terminateGA = wrapDO(b:0x83, arr:[0x00])
-            tagReader.sendGeneralAuthenticate(data:terminateGA, isLast:true, completed: { [weak self] response, error in
-                self?.completedHandler?( false )
-            })
-        } else {
-            self.completedHandler?( false )
-        }
-*/
-    }
-    
     /// Performs PACE Step 1- receives an encrypted nonce from the passport and decrypts it with the PACE key.
     func doStep1() async throws -> [UInt8] {
         let response = try await tagReader.sendGeneralAuthenticate(data: [], isLast: false)

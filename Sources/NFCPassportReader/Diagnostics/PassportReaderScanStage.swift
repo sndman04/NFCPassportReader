@@ -13,6 +13,8 @@ public enum PassportReaderScanStage: Sendable, Equatable, CustomStringConvertibl
     case waitingForPassport
     case connecting
     case pace
+    /// Restoring the application after failed/unavailable PACE; BAC has not started.
+    case bacFallbackPreparation
     case bac
     case readingDataGroup(DataGroupId)
     case chipAuthentication
@@ -30,6 +32,8 @@ public enum PassportReaderScanStage: Sendable, Equatable, CustomStringConvertibl
             return "connecting"
         case .pace:
             return "PACE"
+        case .bacFallbackPreparation:
+            return "preparing BAC fallback"
         case .bac:
             return "BAC"
         case .readingDataGroup(let dataGroup):

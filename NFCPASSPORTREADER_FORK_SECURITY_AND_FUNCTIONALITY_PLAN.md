@@ -2,6 +2,46 @@
 
 This note captures the context needed to work on a dedicated fork of `NFCPassportReader` for the Notary Journal iOS app without needing prior chat history.
 
+## 2026-10-21 PACE-to-BAC fallback correction
+
+Status: implemented and verified; immutable candidate tag `notary-2.3.1-privacy.6-rc.1` identifies this change on the maintained main line. This section supersedes historical app-pin descriptions below: the user reports the consuming app pinned to `d31fefb50d158f69918fb8bb028d9ad46693e01b` (`notary-2.3.1-privacy.5`) and using `readPassportIdentity(skipPACE: false, pacePolicy: .allowBACFallback)`. No upstream baseline upgrade or consuming-app edit is part of this task.
+
+Root cause and decisions:
+
+- `startReading` caught PACE failure and emitted fallback, then selected the application outside the catch with the PACE connection unchanged. An incomplete GA chain or chip-side secure-messaging state could reject SELECT before BAC. The recorded stage remained PACE.
+- Added internal scripted transport and access-establishment seams, preserving real APDU construction/status handling and real PACE failure/BAC authentication code in regression tests. Successful PACE control-flow testing uses an explicit handler seam; existing cryptographic and secure-messaging tests remain in the full suite.
+- On permitted fallback, erase retained PACE credential/handler/CAM/CardSecurity/CardAccess state and unusable secure messaging. If MSE initialization was attempted, drop the old transport and unwind before restarting polling. A fresh detected/activated tag resumes preparation without retrying PACE. If EF.CardAccess or PACE was unsupported before MSE, select the application directly first. A rejected SELECT permits one additional fresh activation and SELECT; maximum two re-polls per transition, with the existing session/operation deadline and cancellation.
+- `connect(to:)` on an already connected CoreNFC tag is documented to have no effect, so it is not used as a reset. `restartPolling()` invalidates prior tags; the original task unwinds and releases them before the deferred restart. Duplicate tag detections are excluded while a connection/read task is active. No automatic new NFC session/sheet or unbounded retry is introduced.
+- `.paceFailedFallbackToBAC` marks decision/preparation; `.bacStarted` is emitted only by the actual BAC path after selection. Added `.BACFallbackPreparationFailed`, `.bacFallbackPreparationFailed`, and `.bacFallbackPreparation`. Underlying errors are discarded for exhausted preparation. Transport loss, timeout, cancellation, and actual BAC key rejection keep their categories and accurate stage. Generic authentication progress no longer erases a more specific stage.
+- Required PACE policies fail closed, including a related existing gap in later BAC reauthentication during data-group/CA/AA recovery. Successful startup PACE does not start BAC; explicit skipPACE remains direct BAC. Optional CardSecurity reads now preserve transport/session interruptions instead of swallowing them.
+- Removed the obsolete commented GA termination code and unused string error accumulator. The suggested final `83 01 00` object is an invalid/dummy ephemeral public key, not a standardized abort. The transport would wrap it in dynamic authentication data and parse a response, so merely enabling it is not valid portable cleanup.
+
+Standards/SDK review (primary documents downloaded and inspected):
+
+- [ICAO Doc 9303 Part 11](https://www.icao.int/sites/default/files/publications/DocSeries/9303_p11_cons_en.pdf), §4.4.4.2–4.4.5: GA command chaining, `7C` wrapper, and step-specific objects including the step-3 public key.
+- [BSI TR-03110 Part 3](https://www.bsi.bund.de/SharedDocs/Downloads/EN/BSI/Publications/TechGuidelines/TR03110/BSI_TR-03110_Part-3-V2_2.pdf?__blob=publicationFile&v=1), Appendix B.1, B.13, B.14: PACE exchange mapping and chain semantics. Neither defines the old dummy-public-key abort workaround.
+- [Apple restartPolling](https://developer.apple.com/documentation/corenfc/nfctagreadersession/restartpolling()) and installed CoreNFC `NFCTagReaderSession.h` connect/restart contracts: discard prior tags; connect to a freshly discovered tag. This is connection reactivation, not a claim of guaranteed physical RF power cycling on every chip.
+
+Verification and release record:
+
+- Initial full simulator suite: 323 tests passed, including 14 new access tests. Additional baseline regressions and interruption/stage tests are included in final verification below.
+- Two regression tests executed against archived `d31fefb…` with only transport/configuration injection backported: both failed as expected (seven assertions). No recovery/diagnostic changes were backported; failures prove dirty-chain application selection and retained secure messaging. Baseline failures are intentional evidence, not unresolved failures in the fixed tree.
+- Initial compiler warning about inconsistent weak/strong capture was fixed; an initial test override placed in an extension was moved into the class. Baseline command setup/path errors were corrected. The local `pdftotext` executable was unavailable, so standards text was read using bundled Python/pypdf instead. No package/toolchain configuration changes were needed.
+- Final verification: `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer scripts/release_check.sh` passed: generic iOS build, build-for-testing, full iOS Simulator package suite (330 tests, zero failures; 21 new tests), external API surface probes, privacy scan, NFC boundary check, and whitespace check. This is the iOS-focused full package suite; the manifest was not changed for macOS `swift test`.
+- Changed source emitted zero compiler warnings. Xcode's existing `IDERunDestination` package-scheme metadata diagnostic and XCTest AppIntents warning (no AppIntents framework dependency) remain external build-system messages; this NFC library/test bundle does not implement App Intents, and both requested builds and test execution succeeded. Expected inaccessible-symbol errors in the API negative probe are required test evidence.
+- Final targeted risky-diagnostics scan covered changed production/test files and logging-adjacent BAC/SecureMessaging files. Production hits are typed event logging, internal APDU/key identifiers, and the pre-existing unused internal legacy error-value formatter; public descriptions use safeDescription. Fallback preparation discards underlying errors. No raw logging, persistence, networking, or sensitive diagnostic sink was introduced.
+- Remaining physical-device matrix: successful PACE, BAC-only/unsupported CardAccess, interrupted GA, selection rejection across reactivation, connection loss, timeout, cancellation, and wrong access key. Record feature-class outcomes only. Re-polling cannot guarantee issuer-specific reset behavior; exhausted preparation safely returns a new-scan instruction. Swift cleanup remains best-effort lifetime reduction rather than guaranteed zeroization.
+- README, migration notes, and threat model document enum additions, stage behavior, policy tightening, bounds, privacy, and the unchanged readPassportIdentity call shape. Exhaustive app switches require new cases; default-value/call-signature compatibility is retained.
+- Release decision: use immutable annotated candidate tag `notary-2.3.1-privacy.6-rc.1` on maintained main for requested consumer pinning, with physical verification explicitly outstanding. This preserves the existing requirement for real-chip validation before a production release tag; candidate status must not be presented as production/hardware validation. Existing published tags and upstream reference branches remain unchanged.
+
+Changed files for this task:
+
+- Reader flow: `Sources/NFCPassportReader/Reader/PassportReader.swift`, new `Reader/PassportAccessRecovery.swift`.
+- Transport and PACE: `Sources/NFCPassportReader/NFC/TagReader.swift`, new `NFC/PassportTagTransport.swift`, `Authentication/PACEHandler.swift`.
+- Diagnostics: `Sources/NFCPassportReader/Diagnostics/Errors.swift`, `Logging.swift`, `PassportReaderFailure.swift`, `PassportReaderProgress.swift`, `PassportReaderScanStage.swift`.
+- Tests: new `Tests/NFCPassportReaderTests/Core/PACEFallbackTests.swift`, `PACEFallbackBaselineRegressionTests.swift`, `ScriptedPassportTransport.swift`.
+- Documentation: `readme.md`, `MIGRATION_NOTARY.md`, `THREAT_MODEL.md`, and this plan.
+
 ## App Context
 
 - App repo: `/Users/dougalvey/Documents/Codex/StripePaymentForm/Notary Journal`

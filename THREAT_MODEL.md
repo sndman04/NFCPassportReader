@@ -64,3 +64,11 @@ This fork reads identity-document NFC data. Privacy, security, correctness, and 
 - Run `git diff --check`.
 - Run targeted searches for raw diagnostics, risky sinks, runtime traps, and removed raw import/export APIs.
 - Manually scan real passports on device before tagging, without recording real passport values.
+
+## PACE fallback recovery boundary
+
+Failed PACE can leave a chip inside a GENERAL AUTHENTICATE chain or with secure messaging the terminal cannot use. The fallback path clears local PACE/CAM/CardSecurity and secure-messaging state, drops obsolete transport references, restarts polling when initialization reached the chip, and selects the passport application on a newly activated tag before BAC. A failed selection permits one additional reactivation; retry counts are scan-local. Session timeout/cancellation and scan IDs prevent stale recovery from continuing a canceled scan. Re-polling may detect another physical tag: cached security information is discarded and BAC authenticates it with the supplied MRZ credential; this flow makes no UID-based identity assertion.
+
+No fabricated final GA/public key is transmitted as an abort command. The transport's GENERAL AUTHENTICATE wrapper would encode the old commented `83 01 00` suggestion inside a `7C` dynamic authentication object with the final-chain class and unwrap the response as authentication data. ICAO 9303-11 §4.4.4–4.4.5 and BSI TR-03110-3 Appendix B.1 define that object as an ephemeral public key, not a portable abort operation. BSI Appendix B.13 defines chain handling, not that workaround. A protocol/transport restart is used instead; hardware interoperability remains a release validation requirement.
+
+Fallback errors contain only a fixed typed reason and stage. Raw chip errors, credential values, APDUs, and cryptographic material are not attached to preparation failures. Swift cleanup minimizes lifetime but does not guarantee zeroization of every copied/framework buffer. PACE-required policies prohibit BAC even in later reauthentication paths.

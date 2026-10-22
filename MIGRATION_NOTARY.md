@@ -4,6 +4,17 @@ This fork intentionally exposes the privacy-safe passport-chip API as the app in
 
 The fork now requires SwiftPM tools 6.3, Swift 6 language mode, Xcode 26.5 or newer, and iOS 26.0 or newer. This matches the app-only integration plan and intentionally drops older-package consumer compatibility.
 
+## PACE-to-BAC recovery (after privacy.5)
+
+Compatibility reference: `d31fefb50d158f69918fb8bb028d9ad46693e01b` (`notary-2.3.1-privacy.5`). The `readPassportIdentity` call using `skipPACE: false` and default `.allowBACFallback` needs no argument changes. Pin the new dependency commit/candidate tag; this change does not edit the consuming app.
+
+- Failed PACE now releases local authentication state and, after chip-side PACE initialization, obtains a fresh tag activation via polling restart. An unavailable EF.CardAccess/PACE implementation instead restores the passport application directly when possible.
+- A rejected application selection gets one fresh-connection retry. No PACE attempt is repeated. There are at most two polling restarts, within the original NFC session and scan deadline. No new NFC sheet is opened automatically.
+- `.paceFailedFallbackToBAC` means preparation has begun, and its stage is now `.bacFallbackPreparation`. Show access-key checking only after `.bacStarted`.
+- Handle the additive error `.BACFallbackPreparationFailed`, failure reason `.bacFallbackPreparationFailed`, and scan stage `.bacFallbackPreparation` in exhaustive switches. Use the supplied safe message/recovery suggestion; do not ask users to correct their MRZ for a preparation failure. Existing connection-loss, timeout, cancellation, and BAC access-key failures retain their meanings.
+- PACE-required policies also prohibit BAC reauthentication during later read/authentication recovery. Successful initial PACE and the explicit `skipPACE` BAC path retain their intended behavior.
+- This is a candidate for on-device verification. Before production rollout, test successful PACE, BAC-only documents, interrupted PACE chains, fallback selection recovery, wrong access details, cancellation, and timeout with non-identifying outcome records. Synthetic tests cannot prove issuer-specific RF reset behavior; if reactivation cannot restore the app, the bounded failure instructs a new scan after removing the passport.
+
 ## Recommended Reader Setup
 
 ```swift
