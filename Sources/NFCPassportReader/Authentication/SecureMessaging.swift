@@ -119,7 +119,7 @@ class SecureMessaging: @unchecked Sendable {
     }
 
     /// Unprotect the APDU following the iso7816 specification
-    func unprotect(rapdu : ResponseAPDU ) throws -> ResponseAPDU {
+    func unprotect(rapdu : ResponseAPDU, useDO85: Bool = false) throws -> ResponseAPDU {
         var needCC = false
         var do87 : [UInt8] = []
         var do87Data : [UInt8] = []
@@ -142,7 +142,7 @@ class SecureMessaging: @unchecked Sendable {
         
         // DO'87'
         // Mandatory if data is returned, otherwise absent
-        if rapduBin[0] == 0x87 {
+        if rapduBin[0] == (useDO85 ? 0x85 : 0x87) {
             let (encDataLength, o) = try asn1Length(rapduBin[1...])
             offset = 1 + o
 
@@ -151,16 +151,11 @@ class SecureMessaging: @unchecked Sendable {
                 throw NFCPassportReaderError.D087Malformed
             }
 
-            guard encDataLength >= 2 else {
-                throw NFCPassportReaderError.D087Malformed
-            }
-            
-            if rapduBin[offset] != 0x1 {
-                throw NFCPassportReaderError.D087Malformed
-            }
-            
-            do87 = [UInt8](rapduBin[0 ..< offset + Int(encDataLength)])
-            do87Data = [UInt8](rapduBin[offset+1 ..< offset + Int(encDataLength)])
+            let markerLength = useDO85 ? 0 : 1
+            guard encDataLength > markerLength else { throw NFCPassportReaderError.D087Malformed }
+            if !useDO85, rapduBin[offset] != 0x01 { throw NFCPassportReaderError.D087Malformed }
+            do87 = [UInt8](rapduBin[0 ..< offset + encDataLength])
+            do87Data = [UInt8](rapduBin[offset + markerLength ..< offset + encDataLength])
             guard !do87Data.isEmpty,
                   do87Data.count.isMultiple(of: padLength) else {
                 throw NFCPassportReaderError.D087Malformed
@@ -214,7 +209,11 @@ class SecureMessaging: @unchecked Sendable {
                 CCb = [UInt8](CCb[0..<8])
             }
             
-            let res = (CC == CCb)
+            guard CCb.count == CC.count else { throw NFCPassportReaderError.UnableToUnprotectAPDU }
+            // Fixed-size authentication tags must not use early-exit comparison.
+            var difference: UInt8 = 0
+            for index in CC.indices { difference |= CC[index] ^ CCb[index] }
+            let res = difference == 0
             
             if !res {
                 throw NFCPassportReaderError.InvalidResponseChecksum
@@ -259,14 +258,17 @@ class SecureMessaging: @unchecked Sendable {
     }
 
     func maskClassAndPad(apdu : NFCISO7816APDU ) -> [UInt8] {
-        let res = pad([0x0c, apdu.instructionCode, apdu.p1Parameter, apdu.p2Parameter], blockSize: padLength)
+        let res = pad([apdu.instructionClass | 0x0c, apdu.instructionCode, apdu.p1Parameter, apdu.p2Parameter], blockSize: padLength)
         return res
     }
     
     func buildD087(apdu : NFCISO7816APDU) throws -> [UInt8] {
         let encryptedData = try self.padAndEncryptData(apdu)
-        let cipher = [0x01] + encryptedData
-        let res = try [0x87] + toAsn1Length(cipher.count) + cipher
+        // ICAO 9303-11 §9.8: odd INS uses DO85 without a padding indicator;
+        // even INS uses DO87 with the indicator. Both encrypt padded data.
+        let isOdd = apdu.instructionCode & 1 == 1
+        let cipher = isOdd ? encryptedData : [0x01] + encryptedData
+        let res = try [UInt8(isOdd ? 0x85 : 0x87)] + toAsn1Length(cipher.count) + cipher
         return res
     }
     

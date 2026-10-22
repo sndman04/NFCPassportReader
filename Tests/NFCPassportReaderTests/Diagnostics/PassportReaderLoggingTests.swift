@@ -653,7 +653,7 @@ final class PassportReaderLoggingTests: XCTestCase {
     }
 
     func testChipAuthenticationRetryClassificationDoesNotRequirePublicErrorValue() {
-        XCTAssertTrue(NFCPassportReaderError.ConnectionError.shouldRetryDataGroupReadAfterChipAuthentication)
+        XCTAssertFalse(NFCPassportReaderError.ConnectionError.shouldRetryDataGroupReadAfterChipAuthentication)
         XCTAssertTrue(
             NFCPassportReaderError.ResponseError("Class not supported", 0x6E, 0x00)
                 .shouldRetryDataGroupReadAfterChipAuthentication

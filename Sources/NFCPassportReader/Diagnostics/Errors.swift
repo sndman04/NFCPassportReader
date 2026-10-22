@@ -51,48 +51,7 @@ public enum NFCPassportReaderError: Error {
     case NotYetSupported(String)
     case Unknown(Error)
 
-    var value: String {
-        switch self {
-            case .ResponseError(let errMsg, _, _): return errMsg
-            case .InvalidResponse(let dataGroupId, let expected, let actual):
-                return "InvalidResponse in \(dataGroupId.getName()). Expected: \(expected.hexString) Actual: \(actual.hexString)"
-            case .UnexpectedError: return "UnexpectedError"
-            case .NFCNotSupported: return "NFCNotSupported"
-            case .NoConnectedTag: return "NoConnectedTag"
-            case .D087Malformed: return "D087Malformed"
-            case .InvalidResponseChecksum: return "InvalidResponseChecksum"
-            case .MissingMandatoryFields: return "MissingMandatoryFields"
-            case .CannotDecodeASN1Length: return "CannotDecodeASN1Length"
-            case .InvalidASN1Value: return "InvalidASN1Value"
-            case .InvalidASN1Structure: return "InvalidASN1Structure"
-            case .UnableToProtectAPDU: return "UnableToProtectAPDU"
-            case .UnableToUnprotectAPDU: return "UnableToUnprotectAPDU"
-            case .UnsupportedDataGroup: return "UnsupportedDataGroup"
-            case .DataGroupNotRead: return "DataGroupNotRead"
-            case .UnknownTag: return "UnknownTag"
-            case .UnknownImageFormat: return "UnknownImageFormat"
-            case .NotImplemented: return "NotImplemented"
-            case .TagNotValid: return "TagNotValid"
-            case .ConnectionError: return "ConnectionError"
-            case .TimeOutError: return "TimeOutError"
-            case .UserCanceled: return "UserCanceled"
-            case .ScanAlreadyInProgress: return "ScanAlreadyInProgress"
-            case .SecurityPolicyViolation: return "SecurityPolicyViolation"
-            case .RawDataExportNotAllowed: return "RawDataExportNotAllowed"
-            case .InvalidMRZKey: return "InvalidMRZKey"
-            case .MoreThanOneTagFound: return "MoreThanOneTagFound"
-            case .InvalidHashAlgorithmSpecified: return "InvalidHashAlgorithmSpecified"
-            case .UnsupportedCipherAlgorithm: return "UnsupportedCipherAlgorithm"
-            case .UnsupportedMappingType: return "UnsupportedMappingType"
-            case .BACFallbackPreparationFailed: return "BAC fallback preparation failed"
-            case .PACEError(let step, let reason): return "PACEError (\(step)) - \(reason)"
-            case .ChipAuthenticationFailed: return "ChipAuthenticationFailed"
-            case .ActiveAuthenticationFailed: return "ActiveAuthenticationFailed"
-            case .InvalidDataPassed(let reason) : return "Invalid data passed - \(reason)"
-            case .NotYetSupported(let reason) : return "Not yet supported - \(reason)"
-            case .Unknown(let error): return "Unknown error: \(error.localizedDescription)"
-        }
-    }
+    var value: String { safeDescription }
 
     public var safeDescription: String {
         switch self {

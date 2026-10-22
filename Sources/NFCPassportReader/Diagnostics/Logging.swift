@@ -32,6 +32,10 @@ public enum PassportReaderLogEvent: Sendable, CustomStringConvertible {
     case paceStarted
     case paceSucceeded
     case paceFailedFallbackToBAC
+    /// The old tag has been discarded; waiting for a fresh activation.
+    case bacFallbackRestartingPolling
+    /// Selecting the passport application before BAC begins.
+    case bacFallbackSelectingApplication
     case bacStarted
     case bacSucceeded
     case bacFailed
@@ -47,6 +51,8 @@ public enum PassportReaderLogEvent: Sendable, CustomStringConvertible {
     case verificationStarted
     case readSucceeded
     case readFailed(PassportReaderFailureReason)
+    /// Terminal failure context. Contains typed categories only, never an underlying error.
+    case readFailedAtStage(PassportReaderFailureReason, PassportReaderScanStage)
 
     public var description: String {
         switch self {
@@ -68,6 +74,10 @@ public enum PassportReaderLogEvent: Sendable, CustomStringConvertible {
             return "PACE succeeded"
         case .paceFailedFallbackToBAC:
             return "PACE failed; falling back to BAC"
+        case .bacFallbackRestartingPolling:
+            return "BAC fallback: restarting NFC polling"
+        case .bacFallbackSelectingApplication:
+            return "BAC fallback: selecting passport application"
         case .bacStarted:
             return "BAC started"
         case .bacSucceeded:
@@ -98,6 +108,8 @@ public enum PassportReaderLogEvent: Sendable, CustomStringConvertible {
             return "Passport chip read succeeded"
         case .readFailed(let reason):
             return "Passport chip read failed: \(reason.description)"
+        case .readFailedAtStage(let reason, let stage):
+            return "Passport chip read failed during \(stage.description): \(reason.description)"
         }
     }
 }
@@ -150,6 +162,7 @@ public enum PassportReaderFailureReason: Sendable, Equatable, CustomStringConver
 }
 
 /// Sink for receiving privacy-safe passport reader events.
+/// The reader retains its sink. A sink that refers back to the reader must use a weak reference.
 public protocol PassportReaderLogging: AnyObject {
     func log(_ event: PassportReaderLogEvent)
 }
@@ -163,13 +176,18 @@ final class PassportReaderOSLogger: PassportReaderLogging {
     }
 
     func log(_ event: PassportReaderLogEvent) {
-        logger.info("\(event.description, privacy: .public)")
+        switch event {
+        case .readFailed, .readFailedAtStage, .sessionInvalidated:
+            logger.error("\(event.description, privacy: .public)")
+        default:
+            logger.info("\(event.description, privacy: .public)")
+        }
     }
 }
 
 final class PassportReaderEventLogger {
     private let level: PassportReaderLogLevel
-    private weak var sink: PassportReaderLogging?
+    private let sink: PassportReaderLogging?
     private let defaultSink: PassportReaderLogging?
 
     init(level: PassportReaderLogLevel, sink: PassportReaderLogging?) {
@@ -182,7 +200,7 @@ final class PassportReaderEventLogger {
         guard level != .off else { return }
 
         switch event {
-        case .readFailed, .sessionInvalidated:
+        case .readFailed, .readFailedAtStage, .sessionInvalidated:
             break
         default:
             guard level.rawValue >= PassportReaderLogLevel.info.rawValue else { return }
@@ -217,7 +235,7 @@ extension NFCPassportReaderError {
         case .UnsupportedDataGroup, .UnknownImageFormat, .NotImplemented, .NotYetSupported,
              .UnsupportedCipherAlgorithm, .UnsupportedMappingType:
             return .unsupportedPassport
-        case .InvalidResponseChecksum, .InvalidHashAlgorithmSpecified,
+        case .InvalidResponseChecksum, .UnableToProtectAPDU, .UnableToUnprotectAPDU, .D087Malformed, .InvalidHashAlgorithmSpecified,
              .ChipAuthenticationFailed, .ActiveAuthenticationFailed:
             return .verificationFailed
         default:
@@ -227,14 +245,8 @@ extension NFCPassportReaderError {
 
     var shouldRetryDataGroupReadAfterChipAuthentication: Bool {
         switch self {
-        case .ConnectionError:
+        case .ResponseError(_, 0x6E, 0x00):
             return true
-        case .ResponseError(let message, let sw1, let sw2):
-            return (sw1, sw2) == (0x6E, 0x00)
-                || message == "Session invalidated"
-                || message == "Class not supported"
-                || message == "Tag connection lost"
-                || message == "Tag response error / no response"
         default:
             return false
         }
@@ -279,6 +291,15 @@ extension NFCPassportReaderError {
     var isUnsupportedDataGroupRead: Bool {
         switch self {
         case .UnsupportedDataGroup:
+            return true
+        default:
+            return false
+        }
+    }
+
+    var isSecureMessagingFailure: Bool {
+        switch self {
+        case .D087Malformed, .InvalidResponseChecksum, .UnableToProtectAPDU, .UnableToUnprotectAPDU:
             return true
         default:
             return false

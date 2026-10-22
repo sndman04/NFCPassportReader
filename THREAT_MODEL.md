@@ -2,6 +2,16 @@
 
 This fork reads identity-document NFC data. Privacy, security, correctness, and maintainability are release-blocking concerns.
 
+## Lifecycle audit additions (privacy.6 candidate 2)
+
+Overlapping calls cannot alter an active scan's credential/policy. Main-actor transport state is revoked before terminal callbacks, preventing late NFC responses from continuing a canceled authentication or contaminating a subsequent scan. Native transport errors are mapped to fixed categories; the legacy internal formatter is redacted. Typed terminal diagnostics contain only reason and stage. No new network, persistence, raw-logging or export path is introduced.
+
+Optional authentication does not suppress connection loss, timeout, response-integrity failures or failed BAC recovery. Required PACE and verification policies fail closed. Missing required files and mismatched file types cannot produce a successful identity read. Reconnection is restricted to access establishment before document data is collected; a failed open CA chain requires a wholly new scan. Handler teardown cannot erase another owner's live secure messaging or DG14 metadata.
+
+Crypto hardening covers AES-CMAC native parameter lifetimes, complete PACE domain-parameter copying, public-key validation, reflected PACE key rejection and fixed-length MAC comparison. B1 addressing and DO85 protection prevent offset wraparound and incorrect protected reads of large data groups. CA v1 keys use a complete GA command, with extended length when necessary, and an authenticated response under the new session keys is required before reporting success. Existing version gates still reject unsupported CA protocol versions.
+
+An already-submitted radio command cannot be recalled, and synchronous native crypto cannot be preempted. Revoked responses are discarded; deadlines are checked at scan boundaries. Managed-memory cleanup is best effort. Synthetic tests, including complete DH/ECDH GM PACE exchanges, do not replace physical issuer/device testing or a complete independent protocol-conformance audit. Keep the release as a candidate until that matrix is recorded.
+
 ## Sensitive Assets
 
 - MRZ values and MRZ-derived access keys.
@@ -33,7 +43,7 @@ This fork reads identity-document NFC data. Privacy, security, correctness, and 
 - `PassportReaderFailure` carries stage-aware retry metadata without exposing low-level error payloads, and data-group read reports describe requested/advertised/read/skipped/blocked/unsupported/failed states without raw contents.
 - `PassportInteroperabilityRecord` is limited to non-identifying real-device compatibility notes and rejects MRZ-like strings or long hex samples.
 - Parser and crypto boundaries should reject malformed input without traps, out-of-bounds reads, or empty cryptographic outputs.
-- Secure Messaging protected responses must fail closed when DO'87, DO'99, or DO'8E are missing, truncated, malformed, or inconsistent.
+- Secure Messaging protected responses must fail closed when required DO'85/DO'87, DO'99, or DO'8E are missing, truncated, malformed, or inconsistent.
 - DG2, DG7, and DG12 image parsing applies explicit size, structure, and image-header bounds before retaining image bytes or allowing image decode.
 - DG11 and DG12 optional text parsing applies per-field size bounds before retaining decoded strings.
 

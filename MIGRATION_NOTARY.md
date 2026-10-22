@@ -15,6 +15,21 @@ Compatibility reference: `d31fefb50d158f69918fb8bb028d9ad46693e01b` (`notary-2.3
 - PACE-required policies also prohibit BAC reauthentication during later read/authentication recovery. Successful initial PACE and the explicit `skipPACE` BAC path retain their intended behavior.
 - This is a candidate for on-device verification. Before production rollout, test successful PACE, BAC-only documents, interrupted PACE chains, fallback selection recovery, wrong access details, cancellation, and timeout with non-identifying outcome records. Synthetic tests cannot prove issuer-specific RF reset behavior; if reactivation cannot restore the app, the bounded failure instructs a new scan after removing the passport.
 
+## Lifecycle hardening (privacy.6 candidate 2)
+
+The read call remains unchanged. Calls rejected before a scan starts can throw without progress events; always handle the thrown error. Update exhaustive switches for these additive events:
+
+- Progress: `.bacFallbackRestartingPolling`, `.bacFallbackSelectingApplication`, and `.failed(reason:stage:)`.
+- Logging: `.bacFallbackRestartingPolling`, `.bacFallbackSelectingApplication`, and `.readFailedAtStage(reason, stage)`.
+
+The fallback sequence is PACE failure → fallback decision → fresh activation when needed → application selection → BAC start/success → requested reads → verification → completion. Rejected selection permits one additional activation. Terminal failures carry the stage actually attempted. The existing `.readFailed` log remains alongside the new contextual event; do not count them as two failed scans. Use `.info` to see recovery steps, `.error` for failures, or `.off` to disable logging.
+
+Only explicit BAC credential rejection maps to `.InvalidMRZKey`. Malformed or unauthenticated BAC responses now report format/integrity errors. Missing mandatory requested files, transport loss, invalid secure messaging, expired deadlines and failed authentication recovery cannot be silently accepted by optional-verification paths. Large files now use the ICAO B1 offset format; CA v1 large keys use a single extended command, and success requires confirmation of the new secure-messaging keys. PACE-required scans never recover through BAC. Optional AA that cannot be retried under a required-PACE policy remains a recorded AA failure, and a policy requiring AA rejects it.
+
+Logger sinks are retained by the reader; use a weak back-reference if a sink refers to its reader. Terminal callbacks run after cleanup. New enums carry only fixed categories; avoid logging the underlying error with reflection, NSError userInfo, or passport results. Existing error case shapes remain available for source compatibility, but library-generated unknown transport errors discard arbitrary native payloads.
+
+Pin the immutable rc.2 candidate identified in the plan for integration testing. Physical-document verification is still required before production rollout; do not treat the synthetic test suite as an issuer compatibility guarantee.
+
 ## Recommended Reader Setup
 
 ```swift

@@ -57,8 +57,15 @@ public extension PassportReaderFailureReason {
         case .unsupportedPassport:
             return "The passport uses a chip feature this reader does not support\(stage.userMessageSuffix)."
         case .verificationFailed:
-            return verificationReason?.userMessage
-                ?? "The passport chip was read, but its signed data could not be verified."
+            if let verificationReason { return verificationReason.userMessage }
+            switch stage {
+            case .bac: return "The BAC authentication response could not be verified."
+            case .pace: return "The PACE authentication response could not be verified."
+            case .readingDataGroup: return "The passport chip response could not be verified\(stage.userMessageSuffix)."
+            case .chipAuthentication: return "Chip authentication could not be verified."
+            case .activeAuthentication: return "Anti-cloning authentication could not be verified."
+            default: return "The passport chip was read, but its signed data could not be verified."
+            }
         case .bacFallbackPreparationFailed:
             return "The reader could not prepare the passport chip for BAC fallback. BAC authentication did not start."
         case .unexpectedReadFailure:

@@ -44,8 +44,6 @@ class BACHandler {
         rnd_icc.removeAll(keepingCapacity: false)
         rnd_ifd.removeAll(keepingCapacity: false)
         kifd.removeAll(keepingCapacity: false)
-        tagReader?.secureMessaging?.removeSensitiveData()
-        tagReader?.secureMessaging = nil
         tagReader = nil
     }
 
@@ -53,19 +51,16 @@ class BACHandler {
         guard let tagReader = self.tagReader else {
             throw NFCPassportReaderError.NoConnectedTag
         }
+        defer { removeSensitiveData() }
         _ = try self.deriveDocumentBasicAccessKeys(mrz: mrzKey)
         
         // Make sure we clear secure messaging (could happen if we read an invalid DG or we hit a secure error
-        tagReader.secureMessaging = nil
+        tagReader.clearAuthenticationState()
         
         // get Challenge
         let response = try await tagReader.getChallenge()
         let cmd_data = try self.authentication(rnd_icc: [UInt8](response.data))
         let maResponse = try await tagReader.doMutualAuthentication(cmdData: Data(cmd_data))
-        guard maResponse.data.count > 0 else {
-            throw NFCPassportReaderError.InvalidMRZKey
-        }
-        
         let (KSenc, KSmac, ssc) = try self.sessionKeys(data: [UInt8](maResponse.data))
         tagReader.secureMessaging = SecureMessaging(ksenc: KSenc, ksmac: KSmac, ssc: ssc)
     }
@@ -126,12 +121,12 @@ class BACHandler {
         let iv : [UInt8] = [0, 0, 0, 0, 0, 0, 0, 0]
         let eifd = tripleDESEncrypt(key: ksenc,message: s, iv: iv)
         guard !eifd.isEmpty else {
-            throw NFCPassportReaderError.InvalidMRZKey
+            throw NFCPassportReaderError.UnableToProtectAPDU
         }
         
         let mifd = mac(algoName: .DES, key: ksmac, msg: pad(eifd, blockSize:8))
         guard !mifd.isEmpty else {
-            throw NFCPassportReaderError.InvalidMRZKey
+            throw NFCPassportReaderError.UnableToProtectAPDU
         }
         // Construct APDU
         
@@ -151,30 +146,30 @@ class BACHandler {
     /// @return: A set of secure messaging keys (KSenc, KSmac) and the SSC
     func sessionKeys(data : [UInt8] ) throws -> ([UInt8], [UInt8], [UInt8]) {
         guard data.count == 40 else {
-            throw NFCPassportReaderError.InvalidMRZKey
+            throw NFCPassportReaderError.MissingMandatoryFields
         }
 
         let encryptedResponse = [UInt8](data[0..<32])
         let responseMAC = [UInt8](data[32..<40])
         var expectedMAC = mac(algoName: .DES, key: ksmac, msg: pad(encryptedResponse, blockSize: 8))
         guard !expectedMAC.isEmpty else {
-            throw NFCPassportReaderError.InvalidMRZKey
+            throw NFCPassportReaderError.UnableToUnprotectAPDU
         }
         if expectedMAC.count > 8 {
             expectedMAC = [UInt8](expectedMAC[0..<8])
         }
         guard Self.constantTimeEqual(responseMAC, expectedMAC) else {
-            throw NFCPassportReaderError.InvalidMRZKey
+            throw NFCPassportReaderError.InvalidResponseChecksum
         }
 
         let response = tripleDESDecrypt(key: self.ksenc, message: encryptedResponse, iv: [0,0,0,0,0,0,0,0] )
         guard response.count == 32 else {
-            throw NFCPassportReaderError.InvalidMRZKey
+            throw NFCPassportReaderError.UnableToUnprotectAPDU
         }
 
         guard [UInt8](response[0..<8]) == rnd_icc,
               [UInt8](response[8..<16]) == rnd_ifd else {
-            throw NFCPassportReaderError.InvalidMRZKey
+            throw NFCPassportReaderError.InvalidResponseChecksum
         }
 
         let response_kicc = [UInt8](response[16..<32])

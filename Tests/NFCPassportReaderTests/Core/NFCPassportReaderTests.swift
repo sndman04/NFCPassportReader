@@ -485,6 +485,9 @@ final class NFCPassportReaderTests: XCTestCase {
         XCTAssertTrue(handler.gaSegments.isEmpty)
         XCTAssertTrue(handler.chipAuthInfos.isEmpty)
         XCTAssertTrue(handler.chipAuthPublicKeyInfos.isEmpty)
+        // DG14 owns this metadata; handler cleanup only releases its references.
+        XCTAssertNotNil(publicKeyInfo.pubKey)
+        publicKeyInfo.removeSensitiveDataForPrivacy()
         XCTAssertNil(publicKeyInfo.pubKey)
         XCTAssertFalse(handler.isChipAuthenticationSupported)
     }
@@ -1185,8 +1188,8 @@ final class NFCPassportReaderTests: XCTestCase {
         let bac = BACHandler()
 
         XCTAssertThrowsError(try bac.sessionKeys(data: [0x00, 0x01])) { error in
-            guard case NFCPassportReaderError.InvalidMRZKey = error else {
-                XCTFail("Expected InvalidMRZKey, got \(error)")
+            guard case NFCPassportReaderError.MissingMandatoryFields = error else {
+                XCTFail("Expected response integrity failure, got \(error)")
                 return
             }
         }
@@ -1210,8 +1213,8 @@ final class NFCPassportReaderTests: XCTestCase {
         var tamperedMAC = response
         tamperedMAC[39] ^= 0x01
         XCTAssertThrowsError(try bac.sessionKeys(data: tamperedMAC)) { error in
-            guard case NFCPassportReaderError.InvalidMRZKey = error else {
-                XCTFail("Expected InvalidMRZKey, got \(error)")
+            guard case NFCPassportReaderError.InvalidResponseChecksum = error else {
+                XCTFail("Expected response integrity failure, got \(error)")
                 return
             }
         }
@@ -1219,8 +1222,8 @@ final class NFCPassportReaderTests: XCTestCase {
         var trailingBytes = response
         trailingBytes.append(0x00)
         XCTAssertThrowsError(try bac.sessionKeys(data: trailingBytes)) { error in
-            guard case NFCPassportReaderError.InvalidMRZKey = error else {
-                XCTFail("Expected InvalidMRZKey, got \(error)")
+            guard case NFCPassportReaderError.MissingMandatoryFields = error else {
+                XCTFail("Expected response integrity failure, got \(error)")
                 return
             }
         }
@@ -1231,8 +1234,8 @@ final class NFCPassportReaderTests: XCTestCase {
             rndICCOverride: [UInt8](repeating: 0xA5, count: 8)
         )
         XCTAssertThrowsError(try bac.sessionKeys(data: mismatchedNonceResponse)) { error in
-            guard case NFCPassportReaderError.InvalidMRZKey = error else {
-                XCTFail("Expected InvalidMRZKey, got \(error)")
+            guard case NFCPassportReaderError.InvalidResponseChecksum = error else {
+                XCTFail("Expected response integrity failure, got \(error)")
                 return
             }
         }

@@ -14,7 +14,6 @@ class OpenSSLUtils {
     private static let maxBIOStringLength = 64 * 1024
     private static let maxNativeParserInputLength = 2 * 1024 * 1024
     private static let maxPublicKeyDERLength = 64 * 1024
-    private static let maxOpenSSLStringParameterLength = 4096
     private static let maxSignatureInputLength = 64 * 1024
     private static let maxSignatureOutputLength = 64 * 1024
     private static let maxSharedSecretLength = 8192
@@ -665,35 +664,38 @@ class OpenSSLUtils {
             free(cipherNamePointer)
         }
 
-        var params = [
-            OSSL_PARAM_construct_utf8_string(OSSL_MAC_PARAM_CIPHER, cipherNamePointer, 0),
-            OSSL_PARAM_construct_end()
-        ]
-
         var output = [UInt8](repeating: 0, count: 32)
         var outputLength = 0
         let outputCapacity = output.count
 
-        let success = key.withUnsafeBytes { keyPtr in
-            message.withUnsafeBytes { messagePtr in
-                output.withUnsafeMutableBytes { outputPtr in
-                    EVP_MAC_init(
-                        ctx,
-                        keyPtr.baseAddress?.assumingMemoryBound(to: UInt8.self),
-                        key.count,
-                        &params
-                    ) == 1
-                    && EVP_MAC_update(
-                        ctx,
-                        messagePtr.baseAddress?.assumingMemoryBound(to: UInt8.self),
-                        message.count
-                    ) == 1
-                    && EVP_MAC_final(
-                        ctx,
-                        outputPtr.baseAddress?.assumingMemoryBound(to: UInt8.self),
-                        &outputLength,
-                        outputCapacity
-                    ) == 1
+        // OSSL_PARAM retains pointers; a bridged Swift String is valid only
+        // inside withCString, including the eventual EVP_MAC_init call.
+        let success = OSSL_MAC_PARAM_CIPHER.withCString { parameterName in
+            var params = [
+                OSSL_PARAM_construct_utf8_string(parameterName, cipherNamePointer, 0),
+                OSSL_PARAM_construct_end()
+            ]
+            return key.withUnsafeBytes { keyPtr in
+                message.withUnsafeBytes { messagePtr in
+                    output.withUnsafeMutableBytes { outputPtr in
+                        EVP_MAC_init(
+                            ctx,
+                            keyPtr.baseAddress?.assumingMemoryBound(to: UInt8.self),
+                            key.count,
+                            &params
+                        ) == 1
+                        && EVP_MAC_update(
+                            ctx,
+                            messagePtr.baseAddress?.assumingMemoryBound(to: UInt8.self),
+                            message.count
+                        ) == 1
+                        && EVP_MAC_final(
+                            ctx,
+                            outputPtr.baseAddress?.assumingMemoryBound(to: UInt8.self),
+                            &outputLength,
+                            outputCapacity
+                        ) == 1
+                    }
                 }
             }
         }
@@ -838,66 +840,29 @@ class OpenSSLUtils {
             return nil
         }
 
-        let keyType = EVP_PKEY_get_base_id( params )
-        if keyType == EVP_PKEY_DH || keyType == EVP_PKEY_DHX {
-            var p: OpaquePointer?
-            var q: OpaquePointer?
-            var g: OpaquePointer?
-            guard EVP_PKEY_get_bn_param(params, OSSL_PKEY_PARAM_FFC_P, &p) == 1,
-                  EVP_PKEY_get_bn_param(params, OSSL_PKEY_PARAM_FFC_Q, &q) == 1,
-                  EVP_PKEY_get_bn_param(params, OSSL_PKEY_PARAM_FFC_G, &g) == 1,
-                  let p,
-                  let q,
-                  let g else {
-                return nil
+        let keyType = EVP_PKEY_get_base_id(params)
+        guard keyType == EVP_PKEY_DH || keyType == EVP_PKEY_DHX || keyType == EVP_PKEY_EC,
+              let publicKey = EVP_PKEY_new() else { return nil }
+        // Preserve all domain parameters, including PACE's mapped generator.
+        // OpenSSL consumes the wire encoding directly, avoiding native-endian
+        // OSSL_PARAM BNs and Swift temporary-buffer lifetime pitfalls.
+        let imported = EVP_PKEY_copy_parameters(publicKey, params) == 1
+            && pubKeyData.withUnsafeBufferPointer {
+                EVP_PKEY_set1_encoded_public_key(publicKey, $0.baseAddress, $0.count) == 1
             }
-            defer {
-                BN_free(p)
-                BN_free(q)
-                BN_free(g)
-            }
-
-            var pBytes = bnBytes(p)
-            var qBytes = bnBytes(q)
-            var gBytes = bnBytes(g)
-            var publicBytes = pubKeyData
-            var fromDataParams = [
-                OSSL_PARAM_construct_BN(OSSL_PKEY_PARAM_FFC_P, &pBytes, pBytes.count),
-                OSSL_PARAM_construct_BN(OSSL_PKEY_PARAM_FFC_Q, &qBytes, qBytes.count),
-                OSSL_PARAM_construct_BN(OSSL_PKEY_PARAM_FFC_G, &gBytes, gBytes.count),
-                OSSL_PARAM_construct_BN(OSSL_PKEY_PARAM_PUB_KEY, &publicBytes, publicBytes.count),
-                OSSL_PARAM_construct_end()
-            ]
-
-            return createPublicKey(algorithm: "DHX", params: &fromDataParams)
-        } else if keyType == EVP_PKEY_EC {
-            var groupNameLength = 0
-            guard EVP_PKEY_get_utf8_string_param(params, OSSL_PKEY_PARAM_GROUP_NAME, nil, 0, &groupNameLength) == 1,
-                  groupNameLength > 0,
-                  groupNameLength <= maxOpenSSLStringParameterLength else {
-                return nil
-            }
-
-            var groupName = [CChar](repeating: 0, count: groupNameLength + 1)
-            guard EVP_PKEY_get_utf8_string_param(params, OSSL_PKEY_PARAM_GROUP_NAME, &groupName, groupName.count, &groupNameLength) == 1,
-                  groupNameLength > 0,
-                  groupNameLength < groupName.count else {
-                return nil
-            }
-
-            var publicBytes = pubKeyData
-            var fromDataParams = [
-                OSSL_PARAM_construct_utf8_string(OSSL_PKEY_PARAM_GROUP_NAME, &groupName, groupName.count),
-                OSSL_PARAM_construct_octet_string(OSSL_PKEY_PARAM_PUB_KEY, &publicBytes, publicBytes.count),
-                OSSL_PARAM_construct_end()
-            ]
-
-            return createPublicKey(algorithm: "EC", params: &fromDataParams)
-        } else {
+        guard imported, let context = EVP_PKEY_CTX_new(publicKey, nil) else {
+            EVP_PKEY_free(publicKey)
             return nil
         }
+        defer { EVP_PKEY_CTX_free(context) }
+        guard EVP_PKEY_public_check(context) == 1 else {
+            EVP_PKEY_free(publicKey)
+            return nil
+        }
+        return publicKey
     }
     
+
     /// Computes a Diffie-Hellman/ECDH shared secret from an OpenSSL private key and peer public key.
     ///
     /// The returned bytes are sensitive session-key material. Never log, persist, or transmit the
@@ -939,28 +904,4 @@ class OpenSSLUtils {
         count > 0 && count <= maxPublicKeyDERLength
     }
 
-    private static func bnBytes(_ bn: OpaquePointer) -> [UInt8] {
-        let count = Int((BN_num_bits(bn) + 7) / 8)
-        var bytes = [UInt8](repeating: 0, count: count)
-        BN_bn2bin(bn, &bytes)
-        return bytes
-    }
-
-    private static func createPublicKey(algorithm: String, params: inout [OSSL_PARAM]) -> OpaquePointer? {
-        guard let context = EVP_PKEY_CTX_new_from_name(nil, algorithm, nil) else {
-            return nil
-        }
-        defer { EVP_PKEY_CTX_free(context) }
-
-        var publicKey: OpaquePointer?
-        // EVP_PKEY_PUBLIC_KEY is a compound C macro that Swift cannot import.
-        let publicKeySelection = 0x04 | 0x02
-        guard EVP_PKEY_fromdata_init(context) == 1,
-              EVP_PKEY_fromdata(context, &publicKey, Int32(publicKeySelection), &params) == 1 else {
-            return nil
-        }
-
-        return publicKey
-    }
-    
 }

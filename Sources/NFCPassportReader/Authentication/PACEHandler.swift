@@ -294,6 +294,12 @@ class PACEHandler {
               let passportPublicKey = OpenSSLUtils.decodePublicKeyFromBytes(pubKeyData: passportEncodedPublicKey, params: ephemeralKeyPair) else {
             throw NFCPassportReaderError.PACEError( "Step3 KeyEx", "Unable to decode passports ephemeral key" )
         }
+        // Reject reflected ephemeral public keys before exchanging tokens,
+        // including equivalent EC encodings.
+        guard EVP_PKEY_eq(ephemeralKeyPair, passportPublicKey) != 1 else {
+            EVP_PKEY_free(passportPublicKey)
+            throw NFCPassportReaderError.PACEError("Step3 KeyEx", "Reflected public key")
+        }
         defer { ephKeyPair = nil } // prevent free to return the value on success path
         return (ephemeralKeyPair, passportPublicKey)
     }

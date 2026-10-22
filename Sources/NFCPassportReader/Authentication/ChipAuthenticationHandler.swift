@@ -21,7 +21,6 @@ class ChipAuthenticationHandler {
     private static let MAC_MODE : UInt8 = 0x2
     private static let PACE_MODE : UInt8 = 0x3
 
-    private static let COMMAND_CHAINING_CHUNK_SIZE = 224
 
     struct ChipAuthenticationMetadata {
         let infosByKeyId: [Int: ChipAuthenticationInfo]
@@ -86,10 +85,9 @@ class ChipAuthenticationHandler {
     func removeSensitiveData() {
         gaSegments.removeAll(keepingCapacity: false)
         chipAuthInfos.removeAll(keepingCapacity: false)
-        chipAuthPublicKeyInfos.forEach { $0.removeSensitiveDataForPrivacy() }
         chipAuthPublicKeyInfos.removeAll(keepingCapacity: false)
-        tagReader?.secureMessaging?.removeSensitiveData()
-        tagReader?.secureMessaging = nil
+        // The reader owns the connection and DG14 owns its public-key metadata.
+        // Releasing an unused/completed handler must not destroy either owner's state.
         tagReader = nil
         isChipAuthenticationSupported = false
     }
@@ -190,7 +188,8 @@ class ChipAuthenticationHandler {
         try restartSecureMessaging( oid : oid, sharedSecret : sharedSecret, maxTranceiveLength : 1, shouldCheckMAC : true)
     }
     
-    private func sendPublicKey(oid : String, keyId : Int?, pcdPublicKey : OpaquePointer) async throws {
+    func sendPublicKey(oid : String, keyId : Int?, pcdPublicKey : OpaquePointer) async throws {
+        guard let tagReader else { throw NFCPassportReaderError.NoConnectedTag }
         let cipherAlg = try ChipAuthenticationInfo.toCipherAlgorithm(oid: oid)
         guard let keyData = OpenSSLUtils.getPublicKeyData(from: pcdPublicKey) else {
             throw NFCPassportReaderError.InvalidDataPassed("Unable to get public key data from public key" )
@@ -200,13 +199,13 @@ class ChipAuthenticationHandler {
         
             let idData = try TagReader.mseKeyIdentifierData(keyId: keyId)
             let wrappedKeyData = wrapDO( b:0x91, arr:keyData)
-            _ = try await self.tagReader?.sendMSEKAT(keyData: Data(wrappedKeyData), idData: idData.map { Data($0) })
+            _ = try await tagReader.sendMSEKAT(keyData: Data(wrappedKeyData), idData: idData.map { Data($0) })
         } else if cipherAlg.hasPrefix("AES") {
-            _ = try await self.tagReader?.sendMSESetATIntAuth(oid: oid, keyId: keyId)
+            _ = try await tagReader.sendMSESetATIntAuth(oid: oid, keyId: keyId)
             let data = wrapDO(b: 0x80, arr:keyData)
-            try await withPendingGeneralAuthenticationSegments(Self.chunk(data: data, segmentSize: ChipAuthenticationHandler.COMMAND_CHAINING_CHUNK_SIZE)) {
-                try await self.handleGeneralAuthentication()
-            }
+            // CA v1 is one protocol exchange. Use extended Lc for a large key;
+            // splitting its DO80 across multiple 7C envelopes is not GA chaining.
+            _ = try await tagReader.sendGeneralAuthenticate(data: data, isLast: true, responseMayBeEmpty: true)
         } else {
             throw NFCPassportReaderError.UnsupportedCipherAlgorithm
         }
@@ -223,22 +222,8 @@ class ChipAuthenticationHandler {
         return try await operation()
     }
     
-    private func handleGeneralAuthentication() async throws {
-        guard !gaSegments.isEmpty else {
-            throw NFCPassportReaderError.ChipAuthenticationFailed
-        }
-
-        repeat {
-            // Pull next segment from list
-            let segment = gaSegments.removeFirst()
-            let isLast = gaSegments.isEmpty
-        
-            // send it
-            _ = try await self.tagReader?.sendGeneralAuthenticate(data: segment, isLast: isLast)
-        } while ( !gaSegments.isEmpty )
-    }
-        
     private func restartSecureMessaging( oid : String, sharedSecret : [UInt8], maxTranceiveLength : Int, shouldCheckMAC : Bool) throws  {
+        guard let tagReader else { throw NFCPassportReaderError.NoConnectedTag }
         let cipherAlg = try ChipAuthenticationInfo.toCipherAlgorithm(oid: oid)
         let keyLength = try ChipAuthenticationInfo.toKeyLength(oid: oid)
         
@@ -250,10 +235,10 @@ class ChipAuthenticationHandler {
         let ssc = withUnsafeBytes(of: 0.bigEndian, Array.init)
         if (cipherAlg.hasPrefix("DESede")) {
             let sm = SecureMessaging(encryptionAlgorithm: .DES, ksenc: ksEnc, ksmac: ksMac, ssc: ssc)
-            tagReader?.secureMessaging = sm
+            tagReader.secureMessaging = sm
         } else if (cipherAlg.hasPrefix("AES")) {
             let sm = SecureMessaging(encryptionAlgorithm: .AES, ksenc: ksEnc, ksmac: ksMac, ssc: ssc)
-            tagReader?.secureMessaging = sm
+            tagReader.secureMessaging = sm
         } else {
             throw NFCPassportReaderError.UnsupportedCipherAlgorithm
         }

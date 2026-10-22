@@ -25,6 +25,16 @@ This is still very early days - the code is by no means perfect and there are st
 
 It reads and verifies my passport (and others I've been able to test) fine, however your mileage may vary.
 
+## Scan lifecycle diagnostics and recovery
+
+The privacy.6 candidates retain the `readPassportIdentity(...)` call shape. Failed PACE under `.allowBACFallback` prepares a clean application before starting BAC, with bounded polling/reselection recovery. `.paceFailedFallbackToBAC` is the decision; `.bacFallbackRestartingPolling` and `.bacFallbackSelectingApplication` explain preparation; `.bacStarted` marks authentication itself. Required PACE policies never downgrade.
+
+Preflight rejection can throw before progress begins; always handle the thrown error. The terminal progress event `.failed(reason:stage:)` and log event `.readFailedAtStage(reason, stage)` identify where a scan stopped without exposing NFC payloads. The original `.readFailed` log remains for compatibility. For user messaging, catch `NFCPassportReaderError` and use `reader.privacySafeFailure(for: error)` immediately after the scan. `.BACFallbackPreparationFailed` means BAC did not begin. Explicit wrong-key rejection remains `.InvalidMRZKey`; malformed or unauthenticated BAC responses report format/integrity failures instead.
+
+Logs are off by default. `.info` shows the typed operational sequence; `.error` includes terminal failures and session invalidation. The reader retains a supplied `PassportReaderLogging` sink, so use a weak reference back to the reader to avoid a retain cycle. Never attach passport results, native error metadata, APDU bytes or credentials to log events. Add the new cases to exhaustive switches; see [migration notes](MIGRATION_NOTARY.md).
+
+Cancellation and timeout revoke the active transport, and late responses cannot continue authentication. Required files cannot silently become skipped reads, retry limits are enforced, and integrity failures stop the scan. Files larger than 32 KiB use ICAO B1 addressing; DES/AES secure messaging supports its required odd-instruction data objects. The [fork plan](NFCPASSPORTREADER_FORK_SECURITY_AND_FUNCTIONALITY_PLAN.md) records the path audit, regression evidence and remaining physical-device matrix. Candidate tags require real-document validation before production use.
+
 ## Installation
 ### Swift Package Manager (recommended)
 

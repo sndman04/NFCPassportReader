@@ -22,6 +22,8 @@ public enum PassportReaderProgressEvent: Sendable, Equatable, CustomStringConver
     /// Fallback was chosen; application/session preparation is in progress.
     /// BAC authentication starts only at `bacStarted`.
     case paceFailedFallbackToBAC
+    case bacFallbackRestartingPolling
+    case bacFallbackSelectingApplication
     case bacStarted
     case bacSucceeded
     case chipAuthenticationStarted
@@ -34,6 +36,8 @@ public enum PassportReaderProgressEvent: Sendable, Equatable, CustomStringConver
     case verifyingSOD
     case verifyingDataGroups
     case complete
+    /// Terminal failure, delivered once after cleanup, with no underlying error payload.
+    case failed(reason: PassportReaderFailureReason, stage: PassportReaderScanStage)
 
     public var description: String {
         switch self {
@@ -49,6 +53,10 @@ public enum PassportReaderProgressEvent: Sendable, Equatable, CustomStringConver
             return "PACE succeeded"
         case .paceFailedFallbackToBAC:
             return "PACE failed; falling back to BAC"
+        case .bacFallbackRestartingPolling:
+            return "BAC fallback: waiting for a fresh NFC connection"
+        case .bacFallbackSelectingApplication:
+            return "BAC fallback: selecting passport application"
         case .bacStarted:
             return "BAC started"
         case .bacSucceeded:
@@ -73,6 +81,8 @@ public enum PassportReaderProgressEvent: Sendable, Equatable, CustomStringConver
             return "Verifying data groups"
         case .complete:
             return "Passport chip read complete"
+        case .failed(let reason, let stage):
+            return "Passport chip read failed during \(stage.description): \(reason.description)"
         }
     }
 
@@ -85,7 +95,7 @@ public enum PassportReaderProgressEvent: Sendable, Equatable, CustomStringConver
             return .connecting
         case .paceStarted, .paceSucceeded:
             return .pace
-        case .paceFailedFallbackToBAC:
+        case .paceFailedFallbackToBAC, .bacFallbackRestartingPolling, .bacFallbackSelectingApplication:
             return .bacFallbackPreparation
         case .bacStarted, .bacSucceeded:
             return .bac
@@ -101,6 +111,8 @@ public enum PassportReaderProgressEvent: Sendable, Equatable, CustomStringConver
             return .passiveAuthentication
         case .complete:
             return .unknown
+        case .failed(_, let stage):
+            return stage
         }
     }
 }
