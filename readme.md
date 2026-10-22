@@ -39,7 +39,7 @@ Cancellation and timeout revoke the active transport, and late responses cannot 
 
 The [test corpus](Tests/README.md) includes independent ICAO BAC/PACE/secure-messaging vectors, all 19 advertised PACE cipher/mapping combinations, GM across 14 standard domain parameter sets, and independently signed synthetic passports with trust/tampering cases. Run `scripts/release_check.sh` for the full iOS suite. Fixtures belong only to the test bundle and use no real passport scans.
 
-The privacy.6-rc.3 follow-up corrects CAN/PIN/PUK password encoding, selects explicitly among multiple advertised parameter sets, and accepts valid optional PACE authority references without exposing them. Public API signatures and policy defaults are unchanged; [migration notes](MIGRATION_NOTARY.md) describe the behavior corrections. This automated coverage supplements the required physical NFC test matrix.
+The privacy.6-rc.3 follow-up corrects CAN/PIN/PUK password encoding and accepts valid optional PACE authority references without exposing them. The privacy.6-rc.4 follow-up connects explicit selection among multiple advertised parameter sets to the production reader, with reader-level regressions. Public API signatures and policy defaults are unchanged; [migration notes](MIGRATION_NOTARY.md) describe the behavior corrections and distinguish ICAO access requirements from the CoreNFC fallback recovery strategy. This automated coverage supplements the required physical NFC test matrix.
 
 ## Installation
 ### Swift Package Manager (recommended)

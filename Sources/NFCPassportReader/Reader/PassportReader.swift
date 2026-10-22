@@ -1040,13 +1040,15 @@ extension PassportReader {
                     try storeCardSecurity(from: cardSecurityData)
                 }
                  
-                guard let paceInfo = cardAccess.preferredPACEInfo else {
+                guard cardAccess.preferredPACEInfo != nil else {
                     throw NFCPassportReaderError.NotYetSupported("PACE not supported")
                 }
 
                 try validatePACEPolicyBeforeAttempt()
 
-                let paceHandler = PACEHandler(paceInfo: paceInfo, tagReader: tagReader)
+                // Keep the full advertised parameter list so MSE can select
+                // the chosen set when the document supports more than one.
+                let paceHandler = try PACEHandler(cardAccess: cardAccess, tagReader: tagReader)
                 self.paceHandler = paceHandler
                 defer {
                     paceHandler.removeSensitiveData()

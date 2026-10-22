@@ -4,13 +4,19 @@ This fork intentionally exposes the privacy-safe passport-chip API as the app in
 
 The fork now requires SwiftPM tools 6.3, Swift 6 language mode, Xcode 26.5 or newer, and iOS 26.0 or newer. This matches the app-only integration plan and intentionally drops older-package consumer compatibility.
 
+## Reader parameter-selection integration (privacy.6-rc.4)
+
+The rc.3 multi-parameter correction was present in `PACEHandler(cardAccess:)`, but the production reader constructed the handler from only the preferred `PACEInfo`, losing the other advertised parameter sets. The reader now passes the complete parsed CardAccess. This avoids preventable PACE rejection on documents requiring an explicit parameter reference. Reader-level tests cover multiple DH/ECDH sets, parameter ID zero, and unchanged single/shared-set encoding. Public APIs, policy defaults, logging and error categories are unchanged; update the dependency pin without changing the read call.
+
+The fallback design follows [ICAO Doc 9303 Part 11](https://www.icao.int/sites/default/files/publications/DocSeries/9303_p11_cons_en.pdf) §§4.1–4.2: PACE is recommended when supported, BAC is the compatibility path when PACE information is unavailable, the eMRTD application must be selected before BAC, and successful initial PACE skips BAC. Falling back after a failed PACE exchange is an explicit compatibility policy, not a universal standards-mandated retry algorithm. The bounded polling/reselection sequence is this library's CoreNFC recovery strategy. [Apple's polling contract](https://developer.apple.com/documentation/corenfc/nfctagreadersession/restartpolling()) invalidates previous tag handles; it does not promise an RF power cycle or recovery of every chip. Keep PACE-required policies for workflows that prohibit downgrade, and complete physical testing before a production release.
+
 ## Standards-vector follow-up (privacy.6-rc.3)
 
 The public API, policy defaults and `readPassportIdentity(...)` call shape are unchanged. This candidate adds independent ICAO protocol vectors and signed synthetic document coverage; see [test corpus and limits](Tests/README.md).
 
 CAN/PIN/PUK now use the specified ISO-8859-1 character-string encoding before PACE key derivation, instead of the MRZ-specific SHA-1 preprocessing. Pass the original credential with its correct reference; do not pre-hash it. Unsupported characters and control codes fail with a fixed, redacted PACE error. MRZ derivation is unchanged.
 
-PACE accepts structurally valid optional authority-reference objects and discards them without exposing or retaining their values. Duplicate, malformed, oversized or unknown objects still fail; CAM data on a non-CAM exchange now fails as required by ICAO. When CardAccess advertises multiple domain-parameter sets, MSE now explicitly identifies the chosen set, including ID zero. Single-set command encoding is preserved. This does not implement Terminal Authentication or change BAC fallback policy. Existing stage/failure events remain the debugging interface; no raw diagnostics were added.
+PACE accepts structurally valid optional authority-reference objects and discards them without exposing or retaining their values. Duplicate, malformed, oversized or unknown objects still fail; CAM data on a non-CAM exchange now fails as required by ICAO. The CardAccess-based handler explicitly identifies the chosen parameter set when multiple sets are advertised, including ID zero; rc.4 connects this correction to the production reader. Single-set command encoding is preserved. This does not implement Terminal Authentication or change BAC fallback policy. Existing stage/failure events remain the debugging interface; no raw diagnostics were added.
 
 Production randomness remains unchanged. New resources, deterministic key import and fixture generators are test-only. The synthetic root certificates must never enter an application's production trust store. Physical NFC compatibility testing remains required before a production release tag.
 
@@ -38,7 +44,7 @@ Only explicit BAC credential rejection maps to `.InvalidMRZKey`. Malformed or un
 
 Logger sinks are retained by the reader; use a weak back-reference if a sink refers to its reader. Terminal callbacks run after cleanup. New enums carry only fixed categories; avoid logging the underlying error with reflection, NSError userInfo, or passport results. Existing error case shapes remain available for source compatibility, but library-generated unknown transport errors discard arbitrary native payloads.
 
-Pin the immutable rc.2 candidate identified in the plan for integration testing. Physical-document verification is still required before production rollout; do not treat the synthetic test suite as an issuer compatibility guarantee.
+Pin the latest immutable candidate identified in the plan for integration testing. Physical-document verification is still required before production rollout; do not treat the synthetic test suite as an issuer compatibility guarantee.
 
 ## Recommended Reader Setup
 
