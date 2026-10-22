@@ -42,6 +42,7 @@ class PACEHandler {
     
     var tagReader : TagReader
     var paceInfo : PACEInfo
+    private let parameterReference: Int?
     
     var isPACESupported : Bool = false
     
@@ -67,12 +68,16 @@ class PACEHandler {
         }
 
         self.paceInfo = pi
+        // BSI TR-03110-3 B.1: disambiguate multiple advertised parameter sets.
+        // Preserve the single-set command shape used by the ICAO examples.
+        parameterReference = Set(cardAccess.paceInfos.compactMap(\.parameterId)).count > 1 ? pi.parameterId : nil
         isPACESupported = true
     }
 
     init(paceInfo: PACEInfo, tagReader: TagReader) {
         self.tagReader = tagReader
         self.paceInfo = paceInfo
+        self.parameterReference = nil
         isPACESupported = true
     }
 
@@ -125,7 +130,7 @@ class PACEHandler {
         paceKey = try createPaceKey(from: accessKey, keyReference: keyReference)
 
         // First start the initial auth call
-        _ = try await tagReader.sendMSESetATMutualAuth(oid: paceOID, keyType: paceKeyType)
+        _ = try await tagReader.sendMSESetATMutualAuth(oid: paceOID, keyType: paceKeyType, parameterId: parameterReference)
             
         let decryptedNonce = try await self.doStep1()
 
@@ -277,7 +282,7 @@ class PACEHandler {
     /// - Returns:
 ///         - Tuple of Generated Ephemeral KeyPair and the Passport's public key
     func doStep3KeyExchange(ephemeralParams: OpaquePointer) async throws -> (OpaquePointer, OpaquePointer) {
-        var ephKeyPair: OpaquePointer? = try OpenSSLUtils.generateKeyPair(fromParameters: ephemeralParams)
+        var ephKeyPair: OpaquePointer? = try createEphemeralKey(from: ephemeralParams)
         guard let ephemeralKeyPair = ephKeyPair else {
             throw NFCPassportReaderError.PACEError( "Step3 KeyEx", "Unable to create ephemeral key pair" )
         }
@@ -302,6 +307,12 @@ class PACEHandler {
         }
         defer { ephKeyPair = nil } // prevent free to return the value on success path
         return (ephemeralKeyPair, passportPublicKey)
+    }
+
+    // Internal entropy boundary for deterministic standards-vector tests. The
+    // production path always generates a fresh key with OpenSSL's CSPRNG.
+    func createEphemeralKey(from parameters: OpaquePointer) throws -> OpaquePointer {
+        try OpenSSLUtils.generateKeyPair(fromParameters: parameters)
     }
     
     /// This performs PACE Step 4 - Key Agreement.
@@ -334,6 +345,9 @@ class PACEHandler {
         let response = try await tagReader.sendGeneralAuthenticate(data:step4Data, isLast:true)
             
         let (receivedAuthenticationToken, encryptedCAMData) = try Self.authenticationTokenAndCAMData(from: response.data)
+        guard mappingType == .CAM || encryptedCAMData == nil else {
+            throw NFCPassportReaderError.PACEError("Step4 Mutual Authentication", "Unexpected chip authentication data")
+        }
 
         // Calculate expected authentication token
         let expectedAuthenticationToken = try self.generateAuthenticationToken( publicKey: pcdKeyPair, macKey: macKey)
@@ -439,6 +453,8 @@ extension PACEHandler {
 
         let tokenRecords = tlvResponse.filter { $0.tag == 0x86 }
         let camRecords = tlvResponse.filter { $0.tag == 0x8A }
+        let currentReferences = tlvResponse.filter { $0.tag == 0x87 }
+        let previousReferences = tlvResponse.filter { $0.tag == 0x88 }
         guard !tokenRecords.isEmpty else {
             throw NFCPassportReaderError.PACEError("Step3 KeyAgreement", "Passport authentication token missing")
         }
@@ -446,9 +462,18 @@ extension PACEHandler {
             throw NFCPassportReaderError.PACEError("Step3 KeyAgreement", "Malformed passport authentication response")
         }
         guard camRecords.count <= 1,
-              tlvResponse.allSatisfy({ $0.tag == 0x86 || $0.tag == 0x8A }) else {
+              currentReferences.count <= 1, previousReferences.count <= 1,
+              previousReferences.isEmpty || !currentReferences.isEmpty,
+              (currentReferences + previousReferences).allSatisfy({
+                  (1...16).contains($0.value.count)
+                      && $0.value.allSatisfy { $0 >= 0x20 && !(0x7F...0x9F).contains($0) }
+              }),
+              tlvResponse.allSatisfy({ [0x86, 0x87, 0x88, 0x8A].contains($0.tag) }) else {
             throw NFCPassportReaderError.PACEError("Step3 KeyAgreement", "Malformed passport authentication response")
         }
+        // ICAO 9303-11 §4.4.4.2 / BSI TR-03110-3 B.1 permit authority
+        // references here. This reader does not perform Terminal Authentication:
+        // validate the structure, then discard references without exposing them.
 
         let tokenRecord = tokenRecords[0]
         guard tokenRecord.value.count == 8 else {
@@ -540,11 +565,21 @@ extension PACEHandler {
             throw NFCPassportReaderError.PACEError("Key derivation", "Missing PACE credential")
         }
 
-        let buf: [UInt8] = Array(accessKey.utf8)
-        let hash = calcSHA1Hash(buf)
+        let encodedPassword: [UInt8]
+        if keyReference == .mrz {
+            encodedPassword = calcSHA1Hash(Array(accessKey.utf8))
+        } else {
+            // ICAO 9303-11 §9.7.3 Table 14 / BSI TR-03110-3 A.2.3 Table 5:
+            // only MRZ uses SHA-1 preprocessing; CAN/PIN/PUK use the string.
+            guard let bytes = accessKey.data(using: .isoLatin1, allowLossyConversion: false),
+                  bytes.allSatisfy({ $0 >= 0x20 && !(0x7F...0x9F).contains($0) }) else {
+                throw NFCPassportReaderError.PACEError("Key derivation", "Invalid credential encoding")
+            }
+            encodedPassword = Array(bytes)
+        }
         
         let smskg = SecureMessagingSessionKeyGenerator()
-        let key = try smskg.deriveKey(keySeed: hash, cipherAlgName: cipherAlg, keyLength: keyLength, nonce: nil, mode: .PACE_MODE, paceKeyReference: keyReference.rawValue)
+        let key = try smskg.deriveKey(keySeed: encodedPassword, cipherAlgName: cipherAlg, keyLength: keyLength, nonce: nil, mode: .PACE_MODE, paceKeyReference: keyReference.rawValue)
         return key
     }
 

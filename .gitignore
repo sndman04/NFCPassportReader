@@ -73,6 +73,7 @@ scripts/*
 !scripts/README.md
 !scripts/api_surface_check.sh
 !scripts/extract.py
+!scripts/generate_synthetic_passport_fixtures.py
 !scripts/nfc_boundary_check.sh
 !scripts/privacy_scan.sh
 !scripts/release_check.sh
@@ -85,3 +86,7 @@ passport*.json
 *.pem_
 **masterlist.pem
 **/ICAO_ML_*.ml
+
+# Generated public test roots; never used as production trust anchors.
+!Tests/NFCPassportReaderTests/Fixtures/synthetic-csca.pem
+!Tests/NFCPassportReaderTests/Fixtures/unrelated-csca.pem

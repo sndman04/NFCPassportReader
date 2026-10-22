@@ -31,11 +31,17 @@ let package = Package(
             dependencies: [
               .product(name: "OpenSSL", package: "OpenSSL-Package")
             ]),
+        .target(
+            name: "PassportTestSupport",
+            dependencies: [.product(name: "OpenSSL", package: "OpenSSL-Package")],
+            path: "Tests/Support"),
         .testTarget(
             name: "NFCPassportReaderTests",
             dependencies: [
               "NFCPassportReader",
+              "PassportTestSupport",
               .product(name: "OpenSSL", package: "OpenSSL-Package")
-            ]),
+            ],
+            resources: [.copy("Fixtures")]),
     ]
 )

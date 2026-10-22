@@ -142,7 +142,7 @@ class TagReader {
         return try await send( cmd: cmd )
     }
     
-    func sendMSESetATMutualAuth( oid: String, keyType: UInt8 ) async throws -> ResponseAPDU {
+    func sendMSESetATMutualAuth( oid: String, keyType: UInt8, parameterId: Int? = nil ) async throws -> ResponseAPDU {
         // Even an unsuccessful/ambiguous MSE or final GA response can leave the
         // chip in authentication or secure-messaging state unknown to the reader.
         paceAuthenticationAttempted = true
@@ -150,7 +150,13 @@ class TagReader {
         let oidBytes = try Self.mseAlgorithmIdentifierData(oid: oid)
         let keyTypeBytes = wrapDO( b: 0x83, arr:[keyType])
         
-        let data = oidBytes + keyTypeBytes
+        var data = oidBytes + keyTypeBytes
+        if let parameterId {
+            guard parameterId >= 0 else { throw NFCPassportReaderError.InvalidASN1Value }
+            // Parameter ID zero is meaningful; unlike a default CA key ID it
+            // must not be omitted when selecting between PACE parameter sets.
+            data += wrapDO(b: 0x84, arr: intToBytes(val: parameterId, removePadding: true))
+        }
             
         let cmd = NFCISO7816APDU(instructionClass: 00, instructionCode: 0x22, p1Parameter: 0xC1, p2Parameter: 0xA4, data: Data(data), expectedResponseLength: -1)
         

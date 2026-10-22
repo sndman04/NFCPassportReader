@@ -35,6 +35,12 @@ Logs are off by default. `.info` shows the typed operational sequence; `.error` 
 
 Cancellation and timeout revoke the active transport, and late responses cannot continue authentication. Required files cannot silently become skipped reads, retry limits are enforced, and integrity failures stop the scan. Files larger than 32 KiB use ICAO B1 addressing; DES/AES secure messaging supports its required odd-instruction data objects. The [fork plan](NFCPASSPORTREADER_FORK_SECURITY_AND_FUNCTIONALITY_PLAN.md) records the path audit, regression evidence and remaining physical-device matrix. Candidate tags require real-document validation before production use.
 
+## Standards and synthetic-document tests
+
+The [test corpus](Tests/README.md) includes independent ICAO BAC/PACE/secure-messaging vectors, all 19 advertised PACE cipher/mapping combinations, GM across 14 standard domain parameter sets, and independently signed synthetic passports with trust/tampering cases. Run `scripts/release_check.sh` for the full iOS suite. Fixtures belong only to the test bundle and use no real passport scans.
+
+The privacy.6-rc.3 follow-up corrects CAN/PIN/PUK password encoding, selects explicitly among multiple advertised parameter sets, and accepts valid optional PACE authority references without exposing them. Public API signatures and policy defaults are unchanged; [migration notes](MIGRATION_NOTARY.md) describe the behavior corrections. This automated coverage supplements the required physical NFC test matrix.
+
 ## Installation
 ### Swift Package Manager (recommended)
 

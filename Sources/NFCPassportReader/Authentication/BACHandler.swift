@@ -113,8 +113,8 @@ class BACHandler {
 
         self.rnd_icc = rnd_icc
 
-        let rnd_ifd = generateRandomUInt8Array(8)
-        let kifd = generateRandomUInt8Array(16)
+        let rnd_ifd = randomBytes(count: 8)
+        let kifd = randomBytes(count: 16)
         
         let s = rnd_ifd + rnd_icc + kifd
         
@@ -136,6 +136,11 @@ class BACHandler {
         self.kifd = kifd
 
         return cmd_data
+    }
+
+    // Internal entropy boundary; only standards-vector tests override this.
+    func randomBytes(count: Int) -> [UInt8] {
+        generateRandomUInt8Array(count)
     }
     
     /// Calculate the session keys (KSenc, KSmac) and the SSC from the data

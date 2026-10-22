@@ -357,7 +357,7 @@ final class NFCPassportReaderTests: XCTestCase {
 
     func testPACEAuthenticationTokenParsingRejectsUnknownObjects() {
         let token = [UInt8](repeating: 0x01, count: 8)
-        let response = wrapDO(b: 0x86, arr: token) + wrapDO(b: 0x87, arr: [0xAA])
+        let response = wrapDO(b: 0x86, arr: token) + wrapDO(b: 0x8B, arr: [0xAA])
 
         XCTAssertThrowsError(try PACEHandler.authenticationTokenAndCAMData(from: response)) { error in
             guard case NFCPassportReaderError.PACEError(let step, let reason) = error else {

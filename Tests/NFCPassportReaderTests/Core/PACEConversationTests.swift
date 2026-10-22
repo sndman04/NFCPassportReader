@@ -18,18 +18,43 @@ final class PACEConversationTests: XCTestCase {
         try await runPACE(isDH: false, reflectKey: true)
     }
 
-    private func runPACE(isDH: Bool, reflectKey: Bool = false) async throws {
+    func testAllAdvertisedCipherAndMappingCombinations() async throws {
+        for oid in PACEInfo.allowedIdentifiers.sorted() {
+            let isDH = try PACEInfo.toKeyAgreementAlgorithm(oid: oid) == "DH"
+            try await runPACE(isDH: isDH, protocolOID: oid)
+        }
+    }
+
+    func testAllStandardDomainParametersWithGenericMapping() async throws {
+        for parameter in [0, 1, 2, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18] {
+            try await runPACE(isDH: parameter < 3, parameterID: parameter)
+        }
+    }
+
+    func testEveryGeneralAuthenticateBoundaryFailsWithoutInstallingMessaging() async throws {
+        for failedStep in 1...4 {
+            try await runPACE(isDH: false, failedStep: failedStep)
+        }
+    }
+
+    private func runPACE(isDH: Bool, reflectKey: Bool = false, protocolOID: String? = nil,
+                         parameterID: Int? = nil, failedStep: Int? = nil) async throws {
         let credential = "synthetic-access-credential"
-        let oid = isDH ? SecurityInfo.ID_PACE_DH_GM_AES_CBC_CMAC_128 : SecurityInfo.ID_PACE_ECDH_GM_AES_CBC_CMAC_128
-        let info = PACEInfo(oid: oid, version: 2, parameterId: isDH ? PACEInfo.PARAM_ID_GFP_1024_160 : PACEInfo.PARAM_ID_ECP_NIST_P256_R1)
-        let mappingKey = try isDH ? OpenSSLUtils.generateDHXKeyPair(rfc5114Group: 1) : OpenSSLUtils.generateECKeyPair(curveNID: NID_X9_62_prime256v1)
+        let oid = protocolOID ?? (isDH ? SecurityInfo.ID_PACE_DH_GM_AES_CBC_CMAC_128 : SecurityInfo.ID_PACE_ECDH_GM_AES_CBC_CMAC_128)
+        let info = PACEInfo(oid: oid, version: 2, parameterId: parameterID ?? (isDH ? 0 : 13))
+        let mapping = try info.getMappingType()
+        let cipher = try info.getCipherAlgorithm()
+        let bits = try info.getKeyLength()
+        let algorithm: SecureMessagingSupportedAlgorithms = cipher == "AES" ? .AES : .DES
+        let mappingKey = try info.createMappingKey()
         defer { EVP_PKEY_free(mappingKey) }
-        let nonce = Array(repeating: UInt8(3), count: 16)
-        let passwordKey = try PACEHandler.createPaceKey(from: credential, cipherAlg: "AES", keyLength: 128)
+        let nonce = Array(repeating: UInt8(3), count: try PACEHandler.expectedNonceLength(cipherAlg: cipher, keyLength: bits))
+        let passwordKey = try PACEHandler.createPaceKey(from: credential, cipherAlg: cipher, keyLength: bits)
         var ephemeral: OpaquePointer?
         var terminal: OpaquePointer?
         var macKey: [UInt8] = []
-        defer { EVP_PKEY_free(ephemeral); EVP_PKEY_free(terminal); macKey.removeAll() }
+        var encKey: [UInt8] = []
+        defer { EVP_PKEY_free(ephemeral); EVP_PKEY_free(terminal); macKey.removeAll(); encKey.removeAll() }
         weak var handler: PACEHandler?
         var step = 0
         let transport = LifecycleTransport { command, _ in
@@ -37,23 +62,37 @@ final class PACEConversationTests: XCTestCase {
             XCTAssertEqual(command.instructionCode, 0x86)
             step += 1
             XCTAssertEqual(command.instructionClass, step == 4 ? 0 : 0x10)
+            if failedStep == step { return (Data(), 0x69, 0x85) }
             let input = try unwrapDO(tag: 0x7C, wrappedData: Array(command.data ?? Data()))
             let response: [UInt8]
             switch step {
             case 1:
                 XCTAssertTrue(input.isEmpty)
-                response = wrapDO(b: 0x80, arr: AESEncrypt(key: passwordKey, message: nonce, iv: Array(repeating: 0, count: 16)))
+                let encrypted = cipher == "AES" ? AESEncrypt(key: passwordKey, message: nonce, iv: Array(repeating: 0, count: 16))
+                    : tripleDESEncrypt(key: passwordKey, message: nonce, iv: Array(repeating: 0, count: 8))
+                response = wrapDO(b: 0x80, arr: encrypted)
             case 2:
                 let terminalMapping = try unwrapDO(tag: 0x81, wrappedData: input)
-                let nonceBN = try XCTUnwrap(nonce.withUnsafeBufferPointer { BN_bin2bn($0.baseAddress, Int32($0.count), nil) })
-                defer { BN_clear_free(nonceBN) }
-                let parameters = try XCTUnwrap(terminalMapping.withUnsafeBufferPointer {
-                    isDH ? NFCPRCreateDHMappedParameters(mappingKey, $0.baseAddress, $0.count, nonceBN)
-                        : NFCPRCreateECDHMappedParameters(mappingKey, $0.baseAddress, $0.count, nonceBN)
-                })
+                let parameters: OpaquePointer
+                if mapping == .IM {
+                    let field = try PACEHandler.integratedMappingField(passportNonce: nonce, terminalNonce: terminalMapping,
+                        cipherAlg: cipher, keyLength: bits, primeBitLength: Int(EVP_PKEY_get_bits(mappingKey)))
+                    parameters = try XCTUnwrap(field.withUnsafeBufferPointer {
+                        isDH ? NFCPRCreateDHIntegratedMappedParameters(mappingKey, $0.baseAddress, $0.count)
+                            : NFCPRCreateECDHIntegratedMappedParameters(mappingKey, $0.baseAddress, $0.count)
+                    })
+                    response = wrapDO(b: 0x82, arr: [])
+                } else {
+                    let nonceBN = try XCTUnwrap(nonce.withUnsafeBufferPointer { BN_bin2bn($0.baseAddress, Int32($0.count), nil) })
+                    defer { BN_clear_free(nonceBN) }
+                    parameters = try XCTUnwrap(terminalMapping.withUnsafeBufferPointer {
+                        isDH ? NFCPRCreateDHMappedParameters(mappingKey, $0.baseAddress, $0.count, nonceBN)
+                            : NFCPRCreateECDHMappedParameters(mappingKey, $0.baseAddress, $0.count, nonceBN)
+                    })
+                    response = wrapDO(b: 0x82, arr: try XCTUnwrap(OpenSSLUtils.getPublicKeyData(from: mappingKey)))
+                }
                 defer { EVP_PKEY_free(parameters) }
                 ephemeral = try OpenSSLUtils.generateKeyPair(fromParameters: parameters)
-                response = wrapDO(b: 0x82, arr: try XCTUnwrap(OpenSSLUtils.getPublicKeyData(from: mappingKey)))
             case 3:
                 if reflectKey {
                     response = wrapDO(b: 0x84, arr: try unwrapDO(tag: 0x83, wrappedData: input))
@@ -62,14 +101,21 @@ final class PACEConversationTests: XCTestCase {
                 let chipKey = try XCTUnwrap(ephemeral)
                 terminal = OpenSSLUtils.decodePublicKeyFromBytes(pubKeyData: try unwrapDO(tag: 0x83, wrappedData: input), params: chipKey)
                 let secret = try OpenSSLUtils.computeSharedSecret(privateKeyPair: chipKey, publicKey: XCTUnwrap(terminal))
-                macKey = try SecureMessagingSessionKeyGenerator().deriveKey(keySeed: secret, cipherAlgName: "AES", keyLength: 128, mode: .MAC_MODE)
+                let generator = SecureMessagingSessionKeyGenerator()
+                macKey = try generator.deriveKey(keySeed: secret, cipherAlgName: cipher, keyLength: bits, mode: .MAC_MODE)
+                encKey = try generator.deriveKey(keySeed: secret, cipherAlgName: cipher, keyLength: bits, mode: .ENC_MODE)
                 response = wrapDO(b: 0x84, arr: try XCTUnwrap(OpenSSLUtils.getPublicKeyData(from: chipKey)))
             case 4:
                 let token = try unwrapDO(tag: 0x85, wrappedData: input)
                 let pace = try XCTUnwrap(handler)
                 let expected = try pace.generateAuthenticationToken(publicKey: XCTUnwrap(ephemeral), macKey: macKey)
                 XCTAssertTrue(token == expected, "Synthetic chip must verify the terminal token")
-                response = wrapDO(b: 0x86, arr: try pace.generateAuthenticationToken(publicKey: XCTUnwrap(terminal), macKey: macKey))
+                var data = wrapDO(b: 0x86, arr: try pace.generateAuthenticationToken(publicKey: XCTUnwrap(terminal), macKey: macKey))
+                if mapping == .CAM {
+                    let iv = AESECBEncrypt(key: encKey, message: Array(repeating: 0xFF, count: 16))
+                    data += wrapDO(b: 0x8A, arr: AESEncrypt(key: encKey, message: pad([1], blockSize: 16), iv: iv))
+                }
+                response = data
             default:
                 XCTFail("Unexpected authentication step")
                 throw NFCPassportReaderError.UnexpectedError
@@ -77,20 +123,25 @@ final class PACEConversationTests: XCTestCase {
             return (Data(wrapDO(b: 0x7C, arr: response)), 0x90, 0)
         }
         let tag = TagReader(transport: transport)
+        defer { tag.disconnect() }
         let pace = PACEHandler(paceInfo: info, tagReader: tag)
         handler = pace
-        if reflectKey {
-            do { try await pace.doPACE(mrzKey: credential); XCTFail("Expected reflected key rejection") }
-            catch NFCPassportReaderError.PACEError { } catch { XCTFail("Wrong reflected-key failure") }
-            XCTAssertEqual(step, 3)
+        if reflectKey || failedStep != nil {
+            do { try await pace.doPACE(mrzKey: credential); XCTFail("Expected PACE rejection") }
+            catch { XCTAssertTrue(error is NFCPassportReaderError) }
+            XCTAssertEqual(step, failedStep ?? 3)
             XCTAssertNil(tag.secureMessaging)
+            XCTAssertNil(pace.chipAuthenticationMappingResult)
         } else {
             try await pace.doPACE(mrzKey: credential)
             XCTAssertEqual(step, 4)
-            XCTAssertNotNil(tag.secureMessaging)
+            let sm = try XCTUnwrap(tag.secureMessaging)
             XCTAssertFalse(tag.generalAuthenticationChainOpen)
+            // Check the installed keys by authenticating a protected command.
+            let control = SecureMessaging(encryptionAlgorithm: algorithm, ksenc: encKey, ksmac: macKey, ssc: Array(repeating: 0, count: 8))
+            let command = NFCISO7816APDU(instructionClass: 0, instructionCode: 0xB0, p1Parameter: 0, p2Parameter: 0, data: Data(), expectedResponseLength: 4)
+            XCTAssertTrue(try sm.protect(apdu: command).data == control.protect(apdu: command).data)
         }
         XCTAssertFalse(transport.commands.contains(0x84))
-        tag.disconnect()
     }
 }

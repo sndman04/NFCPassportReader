@@ -4,6 +4,16 @@ This fork intentionally exposes the privacy-safe passport-chip API as the app in
 
 The fork now requires SwiftPM tools 6.3, Swift 6 language mode, Xcode 26.5 or newer, and iOS 26.0 or newer. This matches the app-only integration plan and intentionally drops older-package consumer compatibility.
 
+## Standards-vector follow-up (privacy.6-rc.3)
+
+The public API, policy defaults and `readPassportIdentity(...)` call shape are unchanged. This candidate adds independent ICAO protocol vectors and signed synthetic document coverage; see [test corpus and limits](Tests/README.md).
+
+CAN/PIN/PUK now use the specified ISO-8859-1 character-string encoding before PACE key derivation, instead of the MRZ-specific SHA-1 preprocessing. Pass the original credential with its correct reference; do not pre-hash it. Unsupported characters and control codes fail with a fixed, redacted PACE error. MRZ derivation is unchanged.
+
+PACE accepts structurally valid optional authority-reference objects and discards them without exposing or retaining their values. Duplicate, malformed, oversized or unknown objects still fail; CAM data on a non-CAM exchange now fails as required by ICAO. When CardAccess advertises multiple domain-parameter sets, MSE now explicitly identifies the chosen set, including ID zero. Single-set command encoding is preserved. This does not implement Terminal Authentication or change BAC fallback policy. Existing stage/failure events remain the debugging interface; no raw diagnostics were added.
+
+Production randomness remains unchanged. New resources, deterministic key import and fixture generators are test-only. The synthetic root certificates must never enter an application's production trust store. Physical NFC compatibility testing remains required before a production release tag.
+
 ## PACE-to-BAC recovery (after privacy.5)
 
 Compatibility reference: `d31fefb50d158f69918fb8bb028d9ad46693e01b` (`notary-2.3.1-privacy.5`). The `readPassportIdentity` call using `skipPACE: false` and default `.allowBACFallback` needs no argument changes. Pin the new dependency commit/candidate tag; this change does not edit the consuming app.
