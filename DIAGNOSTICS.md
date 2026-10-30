@@ -93,7 +93,7 @@ The older `verificationResult` remains unchanged for acceptance and compatibilit
 | `fallbackAttempted` | True only when the first selected verifier failed and the second was invoked. |
 | `successfulVerifier` | `manual` or `cms` only after it returns verified content; nil if neither succeeds. |
 
-For a scan ending after SOD was read but before verification, bounded structural metadata is extracted at snapshot capture. Envelope/SignedData/SignerInfo/encapsulated-content parsing can therefore be reported, while signature verifiers and LDS hash validation remain not attempted. No additional signature verifier is run to fill a diagnostic gap. A signed v1 SOD still fails the existing v0-only LDS parser: signature success and `ldsSecurityObject: unsupported/unsupportedVersion` coexist; the legacy reason remains `malformedSOD`.
+For a scan ending after SOD was read but before verification, bounded structural metadata is extracted at snapshot capture. Envelope/SignedData/SignerInfo/encapsulated-content parsing can therefore be reported, while signature verifiers and LDS hash validation remain not attempted. No additional signature verifier is run to fill a diagnostic gap. Since rc.6, valid signed v0 and v1 structures can report successful LDS parsing and hash comparison. Malformed version-dependent fields report `malformedStructure`; unknown versions report `unsupportedVersion`; validly encoded unsupported digests report `unsupportedAlgorithm`. All prevent hash comparison. Malformed DER/truncation projects to legacy `malformedSOD`. LDSVersionInfo presence is metadata, not proof that its contents passed validation; no version strings are exposed.
 
 ### Algorithm identifiers and parameters
 
@@ -138,7 +138,7 @@ Chain categories include trustStoreUnavailable, certificateUnavailable, issuerNo
 
 ## Limits and separately identified defects
 
-- The valid, independently signed v1 regression remains rejected by `parseSODSignatureContent`'s `version == 0` guard. Fix this in a separate reviewed change with v1 structural validation and acceptance tests.
+- The rc.5 v1 parser defect is fixed in rc.6 with complete version-dependent validation and independently signed acceptance/rejection tests. Physical-document validation remains outstanding.
 - The manual RSA-PSS implementation currently selects SHA-256 and automatic salt length rather than applying all declared PSS parameters. The snapshot deliberately labels its PSS metadata as declared. Full parameter enforcement is separate verification work; this task does not change it.
 - Existing manual/CMS implementations select/expose the first signer; diagnostics do not claim exhaustive multi-signer or digest-set analysis. No extra verification run is forced after success.
 - Some legacy crypto and authentication helpers expose only booleans or fixed errors, so detailed native causes remain unavailable. Numeric OpenSSL error queues are not collected. Parser offsets are supplied at SimpleASN1 boundaries and instrumented LDS failures; other legacy parser failures may have tags only or no offsets.
@@ -147,6 +147,6 @@ Chain categories include trustStoreUnavailable, certificateUnavailable, issuerNo
 
 ## Candidate pin and repinning
 
-The annotated candidate for this diagnostic API is `notary-2.3.1-privacy.6-rc.5`, on maintained `main`, published at the user's request. Its peeled commit is the exact revision to use if the app must pin by SHA. The app's previous `09eca86659f37b974705b0d05d6847f686cf8d32` / rc.4 reference and all upstream snapshots/tags are preserved. No published tag is moved.
+The diagnostic API was introduced in `notary-2.3.1-privacy.6-rc.5`. Use the new annotated `notary-2.3.1-privacy.6-rc.6` candidate for the SOD v1 correction, on maintained `main`; its peeled commit is the exact SHA pin. rc.5 and all earlier tags/upstream snapshots remain unchanged. Schema 1 and all public call signatures remain compatible.
 
-Repin the consuming app to this immutable annotated tag in a separate consuming-app task; this reader-only task does not edit the app or backend. Exercise real success, v1 rejection, RF loss, timeout/cancellation and back-to-back scans with its custom logger and encrypted history before promoting a production tag. Ship any v1/PSS verification corrections separately with their own acceptance review and new tag.
+Repin the consuming app in a separate task. Exercise real v0/v1 success, malformed/tampered rejection, RF loss, timeout/cancellation and back-to-back scans with its custom logger and encrypted history before promoting a production tag. Ship RSA-PSS parameter enforcement separately with its own review and new tag.

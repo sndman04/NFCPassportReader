@@ -1362,16 +1362,18 @@ final class DataGroupParsingTests: XCTestCase {
             asn1Integer([0x01]) +
             tlv(tag: [0x04], value: hash)
         )
+        let secondDataGroupHash = try sequence(asn1Integer([0x02]) + tlv(tag: [0x04], value: hash))
         let content = try sequence(
             asn1Integer([0x00]) +
             digestAlgorithm +
-            sequence(dataGroupHash)
+            sequence(dataGroupHash + secondDataGroupHash)
         )
 
         let (algorithm, hashes) = try NFCPassportModel().parseSODSignatureContent(data: Data(content))
 
         XCTAssertEqual(algorithm, "SHA256")
-        XCTAssertEqual(hashes[.DG1], binToHexRep(hash))
+        XCTAssertTrue(hashes[.DG1] == binToHexRep(hash))
+        XCTAssertTrue(hashes[.DG2] == binToHexRep(hash))
     }
 
     func testStructuredSODSignatureContentRejectsInvalidDataGroupNumber() throws {
@@ -1386,7 +1388,7 @@ final class DataGroupParsingTests: XCTestCase {
         let content = try sequence(
             asn1Integer([0x00]) +
             digestAlgorithm +
-            sequence(dataGroupHash)
+            sequence(dataGroupHash + syntheticSODUnreadDG2Hash())
         )
 
         XCTAssertThrowsError(try NFCPassportModel().parseSODSignatureContent(data: Data(content)))
@@ -1404,7 +1406,7 @@ final class DataGroupParsingTests: XCTestCase {
         let content = try sequence(
             asn1Null() +
             digestAlgorithm +
-            sequence(dataGroupHash)
+            sequence(dataGroupHash + syntheticSODUnreadDG2Hash())
         )
 
         XCTAssertThrowsError(try NFCPassportModel().parseSODSignatureContent(data: Data(content))) { error in
@@ -1425,9 +1427,9 @@ final class DataGroupParsingTests: XCTestCase {
             tlv(tag: [0x04], value: [UInt8](repeating: 0xA5, count: 32))
         )
         let content = try sequence(
-            asn1Integer([0x01]) +
+            asn1Integer([0x02]) +
             digestAlgorithm +
-            sequence(dataGroupHash)
+            sequence(dataGroupHash + syntheticSODUnreadDG2Hash())
         )
 
         XCTAssertThrowsError(try NFCPassportModel().parseSODSignatureContent(data: Data(content))) { error in
@@ -1450,7 +1452,7 @@ final class DataGroupParsingTests: XCTestCase {
         let content = try sequence(
             asn1Integer([0x00]) +
             digestAlgorithm +
-            sequence(dataGroupHash)
+            sequence(dataGroupHash + syntheticSODUnreadDG2Hash())
         )
 
         XCTAssertThrowsError(try NFCPassportModel().parseSODSignatureContent(data: Data(content)))
@@ -1496,7 +1498,7 @@ final class DataGroupParsingTests: XCTestCase {
         let content = try sequence(
             asn1Integer([0x00]) +
             digestAlgorithm +
-            sequence(dataGroupHash)
+            sequence(dataGroupHash + syntheticSODUnreadDG2Hash())
         )
 
         XCTAssertThrowsError(try NFCPassportModel().parseSODSignatureContent(data: Data(content))) { error in
@@ -1519,7 +1521,7 @@ final class DataGroupParsingTests: XCTestCase {
         let content = try sequence(
             asn1Integer([0x00]) +
             digestAlgorithm +
-            sequence(shortSHA256Hash)
+            sequence(shortSHA256Hash + syntheticSODUnreadDG2Hash())
         )
 
         XCTAssertThrowsError(try NFCPassportModel().parseSODSignatureContent(data: Data(content))) { error in
@@ -1637,7 +1639,7 @@ final class DataGroupParsingTests: XCTestCase {
         let ldsSecurityObject = try sequence(
             asn1Integer([0x00]) +
             algorithmIdentifier("2.16.840.1.101.3.4.2.1") +
-            sequence(dataGroupHash)
+            sequence(dataGroupHash + syntheticSODUnreadDG2Hash())
         )
         let sod = try SOD(syntheticSODData(
             encapsulatedContent: ldsSecurityObject,
@@ -1671,7 +1673,7 @@ final class DataGroupParsingTests: XCTestCase {
         let ldsSecurityObject = try sequence(
             asn1Integer([0x00]) +
             algorithmIdentifier("2.16.840.1.101.3.4.2.1") +
-            sequence(dataGroupHash)
+            sequence(dataGroupHash + syntheticSODUnreadDG2Hash())
         )
         let sod = try SOD(syntheticSODData(
             encapsulatedContent: ldsSecurityObject,
@@ -1758,7 +1760,7 @@ final class DataGroupParsingTests: XCTestCase {
         let ldsSecurityObject = try sequence(
             asn1Integer([0x00]) +
             algorithmIdentifier("2.16.840.1.101.3.4.2.1") +
-            sequence(unreadDG1Hash)
+            sequence(unreadDG1Hash + syntheticSODUnreadDG2Hash())
         )
         let sod = try SOD(syntheticSODData(
             encapsulatedContent: ldsSecurityObject,
@@ -1780,7 +1782,8 @@ final class DataGroupParsingTests: XCTestCase {
         XCTAssertEqual(model.verificationResult.dataGroupHashDetail.status, .failed)
         XCTAssertEqual(model.verificationResult.dataGroupHashDetail.reason, .attemptedFailed)
         XCTAssertEqual(model.verificationResult.dataGroupCoverage, [
-            PassportDataGroupVerificationCoverage(dataGroup: .DG1, status: .coveredButNotRead)
+            PassportDataGroupVerificationCoverage(dataGroup: .DG1, status: .coveredButNotRead),
+            PassportDataGroupVerificationCoverage(dataGroup: .DG2, status: .coveredButNotRead)
         ])
     }
 
@@ -2376,6 +2379,11 @@ private func asn1Null() -> [UInt8] {
 
 private func algorithmIdentifier(_ oid: String) throws -> [UInt8] {
     try sequence(asn1ObjectIdentifier(oid) + asn1Null())
+}
+
+// The LDS profile requires at least two entries even when the test reads only DG1.
+private func syntheticSODUnreadDG2Hash() throws -> [UInt8] {
+    try sequence(asn1Integer([0x02]) + tlv(tag: [0x04], value: [UInt8](repeating: 0xA5, count: 32)))
 }
 
 private func syntheticSODContentTypeAttribute() throws -> [UInt8] {

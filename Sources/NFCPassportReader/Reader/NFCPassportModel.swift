@@ -713,7 +713,9 @@ class NFCPassportModel: @unchecked Sendable {
         }
     }
 
-    /// Parses the structured LDS Security Object and extracts the digest algorithm and data-group hashes.
+    /// Parses LDS Security Object v0/v1 (not the outer CMS SignedData version).
+    /// ICAO Doc 9303 Part 10 §4.6.2.3 and Appendix D require exactly three fields for v0,
+    /// or four for v1 including LDSVersionInfo. Version strings are validated, then discarded.
     /// - Parameter data: DER-encoded LDS Security Object content.
     /// - Returns: The digest algorithm and a dictionary of hashes for SOD-listed data groups.
     func parseSODSignatureContent(data: Data) throws -> (String, [DataGroupId : String]) {
@@ -726,31 +728,65 @@ class NFCPassportModel: @unchecked Sendable {
                     subsystem: .parser, operation: .parseSOD, stage: .passiveAuthentication, reason: .malformedStructure))
             }
         }
-        let root = try SimpleASN1Node.parse([UInt8](data)) { metadata in
-            parseFailure = .init(subsystem: .parser, operation: .parseSOD, stage: .passiveAuthentication,
-                                 reason: .malformedStructure, parser: metadata)
+        let root: SimpleASN1Node
+        do {
+            root = try SimpleASN1Node.parse([UInt8](data)) { metadata in
+                parseFailure = .init(subsystem: .parser, operation: .parseSOD, stage: .passiveAuthentication,
+                                     reason: .malformedStructure, parser: metadata)
+            }
+        } catch {
+            // Preserve parser metadata while keeping the legacy projection a malformed SOD,
+            // rather than misclassifying ASN.1 truncation as an unsupported digest.
+            throw PassiveAuthenticationError.UnableToParseSODHashes("Invalid LDS Security Object encoding")
         }
         diagnosticEvidence.captureLDSMetadata(root)
-        guard root.tag == 0x30,
-              let version = root.children.first,
-              version.tag == 0x02,
-              version.integerValue == 0,
-              let digestAlgorithmInfo = root.children.dropFirst().first,
-              digestAlgorithmInfo.tag == 0x30,
-              let digestAlgorithmOID = digestAlgorithmInfo.children.first?.objectIdentifier,
-              let digestAlgorithm = hashAlgorithmName(for: digestAlgorithmOID) else {
-            let reason: PassportDiagnosticReason = diagnosticEvidence.version == .v1 || diagnosticEvidence.version == .other
-                ? .unsupportedVersion : diagnosticEvidence.groupDigest?.identifier == .unrecognized
-                    && diagnosticEvidence.groupDigest?.parameterForm != .malformed ? .unsupportedAlgorithm : .malformedStructure
-            parseFailure = .init(subsystem: .parser, operation: .parseSOD, stage: .passiveAuthentication, reason: reason,
+        guard root.tag == 0x30, hasCanonicalSODEncoding(root),
+              let versionNode = root.children.first, versionNode.tag == 0x02 else {
+            parseFailure = .init(subsystem: .parser, operation: .parseSOD, stage: .passiveAuthentication, reason: .malformedStructure,
                                  parser: .init(expectedTag: 0x30, actualTag: root.tag, actualLength: root.value.count, offset: root.offset))
             throw PassiveAuthenticationError.UnableToParseSODHashes("Unable to parse structured SOD hashes")
+        }
+        guard versionNode.value == [0] || versionNode.value == [1] else {
+            diagnosticEvidence.version = .other
+            parseFailure = .init(subsystem: .parser, operation: .parseSOD, stage: .passiveAuthentication, reason: .unsupportedVersion)
+            throw PassiveAuthenticationError.UnableToParseSODHashes("Unsupported LDS Security Object version")
+        }
+        let version = versionNode.value[0]
+        guard root.children.count == (version == 0 ? 3 : 4) else {
+            throw PassiveAuthenticationError.UnableToParseSODHashes("Invalid LDS Security Object fields")
+        }
+        if version == 1 {
+            let info = root.children[3]
+            // §§4.6.1.1–4.6.1.2: numeric aabb / aabbcc; LDS components are 01–99.
+            // Do not pin particular LDS/Unicode releases or retain their values in diagnostics.
+            guard info.tag == 0x30, info.children.count == 2,
+                  isSODVersionString(info.children[0], length: 4),
+                  isSODVersionString(info.children[1], length: 6),
+                  info.children[0].value.prefix(2).contains(where: { $0 != 0x30 }),
+                  info.children[0].value.suffix(2).contains(where: { $0 != 0x30 }) else {
+                throw PassiveAuthenticationError.UnableToParseSODHashes("Invalid LDS version information")
+            }
+        }
+
+        let digestAlgorithmInfo = root.children[1]
+        // §4.6.2.3 Note 2: inspection systems accept absent parameters or an empty NULL.
+        guard digestAlgorithmInfo.tag == 0x30,
+              (1...2).contains(digestAlgorithmInfo.children.count),
+              let digestAlgorithmOID = digestAlgorithmInfo.children.first?.objectIdentifier,
+              digestAlgorithmInfo.children.count == 1
+                || (digestAlgorithmInfo.children[1].tag == 0x05 && digestAlgorithmInfo.children[1].value.isEmpty) else {
+            throw PassiveAuthenticationError.UnableToParseSODHashes("Invalid SOD digest algorithm structure")
+        }
+        guard let digestAlgorithm = hashAlgorithmName(for: digestAlgorithmOID) else {
+            parseFailure = .init(subsystem: .parser, operation: .parseSOD, stage: .passiveAuthentication, reason: .unsupportedAlgorithm)
+            throw PassiveAuthenticationError.UnableToParseSODHashes("Unsupported hash algorithm")
         }
         diagnosticEvidence.stages[.ldsSecurityObject] = .passed
         parsingStage = .dataGroupHashes
 
-        guard let dataGroupHashValues = root.children.dropFirst(2).first,
-              dataGroupHashValues.tag == 0x30 else {
+        let dataGroupHashValues = root.children[2]
+        guard dataGroupHashValues.tag == 0x30,
+              (2...16).contains(dataGroupHashValues.children.count) else {
             throw PassiveAuthenticationError.UnableToParseSODHashes("Unable to parse structured SOD hashes")
         }
 
@@ -783,13 +819,34 @@ class NFCPassportModel: @unchecked Sendable {
             sodHashes[dataGroupId] = binToHexRep(hashNode.value)
         }
 
-        guard !sodHashes.isEmpty else {
-            throw PassiveAuthenticationError.UnableToParseSODHashes("Unable to extract hashes")
-        }
-
         succeeded = true
         diagnosticEvidence.stages[.dataGroupHashes] = .passed
         return (digestAlgorithm, sodHashes)
+    }
+
+    private func isSODVersionString(_ node: SimpleASN1Node, length: Int) -> Bool {
+        node.tag == 0x13 && node.value.count == length && node.value.allSatisfy { (0x30...0x39).contains($0) }
+    }
+
+    /// Enforce DER locally for this signed structure; other chip TLV/BER parsers are unchanged.
+    private func hasCanonicalSODEncoding(_ node: SimpleASN1Node) -> Bool {
+        var length = node.value.count
+        var lengthOctets = 1
+        if length >= 128 {
+            while length > 0 { lengthOctets += 1; length >>= 8 }
+        }
+        guard node.tag <= 0xFF, node.headerLength == 1 + lengthOctets else { return false }
+        if node.tag == 0x02 {
+            guard let first = node.value.first, first & 0x80 == 0,
+                  node.value.count == 1 || first != 0 || node.value[1] & 0x80 != 0 else { return false }
+        }
+        if node.tag == 0x06 {
+            guard let last = node.value.last, last & 0x80 == 0 else { return false }
+            for index in node.value.indices where index == 0 || node.value[index - 1] & 0x80 == 0 {
+                if node.value[index] == 0x80 { return false }
+            }
+        }
+        return node.children.allSatisfy(hasCanonicalSODEncoding)
     }
 
     func makeDiagnosticSnapshot(attemptID: UInt64, outcome: PassportDiagnosticOutcome,

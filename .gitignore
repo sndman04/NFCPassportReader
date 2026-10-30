@@ -75,6 +75,7 @@ scripts/*
 !scripts/extract.py
 !scripts/generate_synthetic_passport_fixtures.py
 !scripts/generate_diagnostic_fixtures.py
+!scripts/generate_sod_version_fixtures.py
 !scripts/nfc_boundary_check.sh
 !scripts/privacy_scan.sh
 !scripts/release_check.sh
@@ -92,3 +93,4 @@ passport*.json
 !Tests/NFCPassportReaderTests/Fixtures/synthetic-csca.pem
 !Tests/NFCPassportReaderTests/Fixtures/unrelated-csca.pem
 !Tests/NFCPassportReaderTests/Fixtures/diagnostic-csca.pem
+!Tests/NFCPassportReaderTests/Fixtures/sod-version-csca.pem

@@ -14,7 +14,7 @@ Supported features:
 * Basic Access Control (BAC)
 * Secure Messaging
 * Reads and verifies LDS data groups without exposing raw chip data through public app APIs. COM, DG1, DG2, DG7, DG11, DG12, DG14, DG15, and SOD have typed parsers; DG3, DG4, DG5, DG6, DG8, DG9, DG10, DG13, and DG16 are retained internally as opaque typed data groups for hashing.
-* Passive Authentication with structured LDS Security Object hash parsing and CMS verification fallback.
+* Passive Authentication with validated LDS Security Object v0/v1 hash parsing and CMS verification fallback.
 * Active Authentication with RSA and ECDSA DG15 public-key detection.
 * Chip Authentication (ECDH DES/AES paths have focused coverage; DH DES/AES metadata and implementation paths are present, with real-chip validation still required)
 * PACE with MRZ, CAN, PIN, or PUK password references. When a chip advertises multiple PACE options, implemented Generic Mapping (GM), Integrated Mapping (IM), and ECDH Chip Authentication Mapping (CAM) options are eligible. CAM can establish PACE secure messaging and validates the CAM proof against trusted EF.CardSecurity chip-authentication keys or DG14 chip-authentication public keys when available.
@@ -36,6 +36,8 @@ Logs are off by default. `.info` shows the typed operational sequence; `.error` 
 Cancellation and timeout revoke the active transport, and late responses cannot continue authentication. Required files cannot silently become skipped reads, retry limits are enforced, and integrity failures stop the scan. Files larger than 32 KiB use ICAO B1 addressing; DES/AES secure messaging supports its required odd-instruction data objects. The [fork plan](NFCPASSPORTREADER_FORK_SECURITY_AND_FUNCTIONALITY_PLAN.md) records the path audit, regression evidence and remaining physical-device matrix. Candidate tags require real-document validation before production use.
 
 ## Standards and synthetic-document tests
+
+The privacy.6-rc.6 candidate fixes valid signed SOD v1 rejection in rc.5. The parser validates the complete version-dependent structure, including required v1 LDSVersionInfo, and rejects malformed or extra fields. Signature checks, supported digests, hash comparison, trust requirements and policy defaults are unchanged. Update the dependency pin without changing app calls; see [migration details](MIGRATION_NOTARY.md#sod-version-1-compatibility-privacy6-rc6).
 
 The [test corpus](Tests/README.md) includes independent ICAO BAC/PACE/secure-messaging vectors, all 19 advertised PACE cipher/mapping combinations, GM across 14 standard domain parameter sets, and independently signed synthetic passports with trust/tampering cases. Run `scripts/release_check.sh` for the full iOS suite. Fixtures belong only to the test bundle and use no real passport scans.
 

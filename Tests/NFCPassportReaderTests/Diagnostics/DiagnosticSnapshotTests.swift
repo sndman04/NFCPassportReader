@@ -4,34 +4,166 @@ import XCTest
 
 @MainActor
 final class DiagnosticSnapshotTests: XCTestCase {
-    func testIndependentV0AndV1SignaturesPassBothVerifiersButOnlyV0Parses() throws {
+    func testIndependentV0AndV1SignaturesPassBothVerifiersAndBothParse() throws {
         for profile in ["v0", "v1"] {
             let fixture = try load(profile)
             let sod = try SOD(bytes(fixture, "sod"))
+            let cms = try SimpleASN1Node.parse(sod.body)
+            XCTAssertEqual(cms.children[1].children[0].children[0].integerValue, 3)
             let expected = Data(try bytes(fixture, "content"))
             XCTAssertTrue(try OpenSSLUtils.verifyAndReturnSODEncapsulatedData(sod: sod) == expected)
             XCTAssertTrue(try OpenSSLUtils.verifyAndReturnSODEncapsulatedDataUsingCMS(sod: sod) == expected)
             for preferCMS in [false, true] {
                 let model = try makeModel(fixture)
                 model.verifyPassport(masterListURL: try root(), useCMSVerification: preferCMS)
-                let value = model.makeDiagnosticSnapshot(attemptID: 1, outcome: .failed)
+                let value = model.makeDiagnosticSnapshot(attemptID: 1, outcome: .succeeded)
                 XCTAssertEqual(value.verification.sodSignature.status, .succeeded)
                 XCTAssertEqual(value.sod.successfulVerifier, preferCMS ? .cms : .manual)
                 XCTAssertFalse(value.sod.fallbackAttempted)
                 XCTAssertEqual(preferCMS ? value.sod.manualVerifier.status : value.sod.cmsVerifier.status, .notAttempted)
                 XCTAssertEqual(value.sod.version, profile == "v0" ? .v0 : .v1)
                 XCTAssertEqual(value.sod.ldsVersionInfo, profile == "v0" ? .absent : .present)
-                if profile == "v1" {
-                    XCTAssertEqual(stage(.ldsSecurityObject, value).reason, .unsupportedVersion)
-                    XCTAssertEqual(value.verification.dataGroupHashes.status, .unavailable)
-                    XCTAssertFalse(value.verification.dataGroupHashes.attempted)
-                    XCTAssertEqual(model.verificationResult.dataGroupHashDetail.reason, .malformedSOD)
-                    XCTAssertThrowsError(try PassportScanOptions.notaryStrict.securityPolicy.validate(model))
-                } else {
-                    XCTAssertEqual(value.verification.dataGroupHashes.status, .succeeded)
-                    XCTAssertNoThrow(try PassportScanOptions.notaryStrict.securityPolicy.validate(model))
+                XCTAssertEqual(stage(.ldsSecurityObject, value).status, .succeeded)
+                XCTAssertEqual(stage(.dataGroupHashes, value).status, .succeeded)
+                XCTAssertEqual(value.verification.dataGroupHashes.status, .succeeded)
+                XCTAssertTrue(value.verification.dataGroupHashes.attempted)
+                XCTAssertEqual(value.verification.countrySignerTrust.status, .succeeded)
+                for group in [DataGroupId.DG1, .DG11] {
+                    XCTAssertEqual(value.dataGroups.first { $0.dataGroup == group }?.comparison.status, .succeeded)
                 }
+                XCTAssertNoThrow(try PassportScanOptions.notaryStrict.securityPolicy.validate(model))
+                XCTAssertNoThrow(try PassportReaderSecurityPolicy(verificationRequirement: .trustedPassiveAuthentication).validate(model))
                 model.removeSensitiveDataForPrivacy()
+            }
+        }
+    }
+
+    func testSignedVersionCorpusAcceptsAllSupportedDigestsAndParameterForms() throws {
+        for (name, fixture) in try versionCorpus().sorted(by: { $0.key < $1.key }) where validVersionProfiles.contains(name) {
+            for preferCMS in [false, true] {
+                let model = try makeModel(fixture)
+                model.verifyPassport(masterListURL: try root("sod-version-csca"), useCMSVerification: preferCMS)
+                let value = model.makeDiagnosticSnapshot(attemptID: 1, outcome: .succeeded)
+                XCTAssertEqual(value.verification.sodSignature.status, .succeeded, name)
+                XCTAssertEqual(value.sod.successfulVerifier, preferCMS ? .cms : .manual, name)
+                XCTAssertFalse(value.sod.fallbackAttempted, name)
+                XCTAssertEqual(stage(.ldsSecurityObject, value).status, .succeeded, name)
+                XCTAssertEqual(stage(.dataGroupHashes, value).status, .succeeded, name)
+                XCTAssertEqual(value.verification.dataGroupHashes.status, .succeeded, name)
+                XCTAssertNoThrow(try PassportScanOptions.notaryStrict.securityPolicy.validate(model), name)
+                XCTAssertNoThrow(try PassportReaderSecurityPolicy(verificationRequirement: .trustedPassiveAuthentication).validate(model), name)
+                try assertRedacted(value, fixture: fixture, model: model)
+                model.removeSensitiveDataForPrivacy()
+            }
+        }
+    }
+
+    func testIndependentlySignedMalformedVersionStructuresRejectAndSurviveScrubbing() throws {
+        let hashFailures: Set<String> = ["v1_empty_hashes", "v1_one_hash", "v1_seventeen_hashes",
+            "v1_duplicate_hash", "v1_zero_group", "v1_unknown_group", "v1_bad_hash_length", "v1_extra_hash_field"]
+        for (name, fixture) in try versionCorpus().sorted(by: { $0.key < $1.key }) where !validVersionProfiles.contains(name) {
+            // Malformed inner content is independently signed, so rejection cannot be attributed to a bad signature.
+            let sod = try SOD(bytes(fixture, "sod"))
+            let expected = Data(try bytes(fixture, "content"))
+            XCTAssertTrue(try OpenSSLUtils.verifyAndReturnSODEncapsulatedData(sod: sod) == expected, name)
+            XCTAssertTrue(try OpenSSLUtils.verifyAndReturnSODEncapsulatedDataUsingCMS(sod: sod) == expected, name)
+            for preferCMS in [false, true] {
+                let model = try makeModel(fixture)
+                model.verifyPassport(masterListURL: try root("sod-version-csca"), useCMSVerification: preferCMS)
+                XCTAssertEqual(model.verificationResult.dataGroupHashDetail.reason, .malformedSOD, name)
+                let value = try rejectedSnapshot(model)
+                let failingStage: PassportSODParsingStage = hashFailures.contains(name) ? .dataGroupHashes : .ldsSecurityObject
+                let reason: PassportDiagnosticReason = name.hasPrefix("unsupported_") ? .unsupportedVersion
+                    : name == "v1_unknown_digest" ? .unsupportedAlgorithm : .malformedStructure
+                XCTAssertEqual(stage(failingStage, value).reason, reason, name)
+                if reason == .unsupportedVersion { XCTAssertEqual(value.sod.version, .other, name) }
+                XCTAssertEqual(stage(failingStage, value).status, reason == .malformedStructure ? .failed : .unsupported, name)
+                XCTAssertEqual(value.verification.sodSignature.status, .succeeded, name)
+                XCTAssertEqual(value.sod.successfulVerifier, preferCMS ? .cms : .manual, name)
+                XCTAssertFalse(value.sod.fallbackAttempted, name)
+                XCTAssertEqual(value.verification.dataGroupHashes.status, .unavailable, name)
+                XCTAssertFalse(value.verification.dataGroupHashes.attempted, name)
+                XCTAssertTrue(value.dataGroups.allSatisfy { !$0.comparison.attempted }, name)
+                try assertRedacted(value, fixture: fixture)
+            }
+        }
+    }
+
+    func testEveryTruncatedV0AndV1ContentPrefixIsMalformed() throws {
+        for profile in ["v0", "v1"] {
+            let content = try bytes(load(profile), "content")
+            for length in 0..<content.count {
+                let model = NFCPassportModel()
+                XCTAssertThrowsError(try model.parseSODSignatureContent(data: Data(content.prefix(length)))) { error in
+                    guard case PassiveAuthenticationError.UnableToParseSODHashes = error else {
+                        return XCTFail("Expected fixed malformed SOD error")
+                    }
+                }
+                let value = model.makeDiagnosticSnapshot(attemptID: 1, outcome: .failed)
+                XCTAssertEqual(stage(.ldsSecurityObject, value).reason, .malformedStructure)
+                XCTAssertEqual(stage(.dataGroupHashes, value).status, .notAttempted)
+                XCTAssertTrue(model.dataGroupHashes.isEmpty)
+            }
+        }
+    }
+
+    func testV1SignatureContentAndGroupTamperingRemainRejectedWithBothVerifierOrders() throws {
+        for mutation in ["signature", "content", "group"] {
+            var fixture = try load("v1")
+            if mutation == "group" {
+                var group = try bytes(fixture, "dg11")
+                group[group.count - 1] ^= 1
+                fixture["dg11"] = binToHexRep(group)
+            } else {
+                var wire = try bytes(fixture, "sod")
+                if mutation == "signature" {
+                    wire[wire.count - 1] ^= 1
+                } else {
+                    let content = try bytes(fixture, "content")
+                    let index = try XCTUnwrap(wire.indices.first { i in
+                        i + content.count <= wire.count && Array(wire[i..<i + content.count]) == content
+                    })
+                    // Change a Unicode digit while keeping v1 structurally valid: signed-content integrity must reject it.
+                    wire[index + content.count - 1] ^= 1
+                }
+                fixture["sod"] = binToHexRep(wire)
+                let sod = try SOD(wire)
+                XCTAssertThrowsError(try OpenSSLUtils.verifyAndReturnSODEncapsulatedData(sod: sod))
+                XCTAssertThrowsError(try OpenSSLUtils.verifyAndReturnSODEncapsulatedDataUsingCMS(sod: sod))
+            }
+            for preferCMS in [false, true] {
+                let model = try makeModel(fixture)
+                model.verifyPassport(masterListURL: try root(), useCMSVerification: preferCMS)
+                let value = try rejectedSnapshot(model)
+                XCTAssertEqual(stage(.ldsSecurityObject, value).status, .succeeded)
+                XCTAssertEqual(stage(.dataGroupHashes, value).status, .succeeded)
+                XCTAssertEqual(value.verification.sodSignature.status, mutation == "group" ? .succeeded : .failed)
+                XCTAssertEqual(value.verification.dataGroupHashes.status, mutation == "group" ? .failed : .succeeded)
+                if mutation == "group" {
+                    XCTAssertEqual(value.verification.dataGroupHashes.reason, .hashMismatch)
+                } else {
+                    XCTAssertEqual(value.sod.manualVerifier.status, .failed)
+                    XCTAssertEqual(value.sod.cmsVerifier.status, .failed)
+                    XCTAssertTrue(value.sod.fallbackAttempted)
+                    XCTAssertNil(value.sod.successfulVerifier)
+                }
+                try assertRedacted(value, fixture: fixture)
+            }
+        }
+    }
+
+    func testV1TrustRequirementsRemainIndependentOfIntegrity() throws {
+        for preferCMS in [false, true] {
+            for store in [nil, try root("unrelated-csca")] {
+                let fixture = try load("v1")
+                let model = try makeModel(fixture)
+                model.verifyPassport(masterListURL: store, useCMSVerification: preferCMS)
+                XCTAssertNoThrow(try PassportScanOptions.notaryStrict.securityPolicy.validate(model))
+                let value = try rejectedSnapshot(model, policy: .init(verificationRequirement: .trustedPassiveAuthentication))
+                XCTAssertEqual(value.verification.sodSignature.status, .succeeded)
+                XCTAssertEqual(value.verification.dataGroupHashes.status, .succeeded)
+                XCTAssertEqual(value.verification.countrySignerTrust.reason, store == nil ? .missingMasterList : .issuerNotFound)
+                try assertRedacted(value, fixture: fixture)
             }
         }
     }
@@ -147,7 +279,7 @@ final class DiagnosticSnapshotTests: XCTestCase {
     func testSuccessSnapshotIsCopiedIntoResultAndSurvivesScrubbing() throws {
         let box = DiagnosticBox()
         let reader = PassportReader(diagnosticHandler: { box.snapshots.append($0) })
-        let model = try makeModel(load("v0"))
+        let model = try makeModel(load("v1"))
         model.verifyPassport(masterListURL: try root())
         reader.configureLifecycleForTesting(passport: model)
         let id = try XCTUnwrap(reader.beginScanIfPossible())
@@ -159,6 +291,8 @@ final class DiagnosticSnapshotTests: XCTestCase {
         XCTAssertEqual(result.diagnosticSnapshot?.outcome, .succeeded)
         XCTAssertTrue(model.dataGroupsRead.isEmpty)
         XCTAssertEqual(result.diagnosticSnapshot?.verification.sodSignature.status, .succeeded)
+        XCTAssertEqual(result.diagnosticSnapshot?.sod.version, .v1)
+        XCTAssertEqual(result.diagnosticSnapshot?.verification.dataGroupHashes.status, .succeeded)
     }
 
     func testEarlyPublicAPIFailureAlwaysPublishesFreshSnapshot() async throws {
@@ -189,7 +323,8 @@ final class DiagnosticSnapshotTests: XCTestCase {
             let value = try XCTUnwrap(reader.lastDiagnosticSnapshot)
             XCTAssertEqual(value.outcome, error.safeDescription == NFCPassportReaderError.TimeOutError.safeDescription ? .timedOut : .canceled)
             XCTAssertEqual(value.verification.sodSignature.status, .succeeded)
-            XCTAssertEqual(stage(.ldsSecurityObject, value).reason, .unsupportedVersion)
+            XCTAssertEqual(stage(.ldsSecurityObject, value).status, .succeeded)
+            XCTAssertEqual(value.verification.dataGroupHashes.status, .succeeded)
             XCTAssertTrue(model.dataGroupsRead.isEmpty)
             let next = try XCTUnwrap(reader.beginScanIfPossible())
             XCTAssertNil(reader.lastDiagnosticSnapshot)
@@ -408,22 +543,34 @@ final class DiagnosticSnapshotTests: XCTestCase {
     }
 
     func testSnapshotExcludesSyntheticContentCertificatesAndHashes() throws {
-        let fixture = try load("v0")
-        let model = try makeModel(fixture)
-        model.verifyPassport(masterListURL: try root())
-        let encoded = String(decoding: try JSONEncoder().encode(model.makeDiagnosticSnapshot(attemptID: 1, outcome: .succeeded)), as: UTF8.self)
-        for name in ["sod", "content", "dg1", "dg11"] {
+        for profile in ["v0", "v1"] {
+            let fixture = try load(profile)
+            let model = try makeModel(fixture)
+            model.verifyPassport(masterListURL: try root())
+            try assertRedacted(model.makeDiagnosticSnapshot(attemptID: 1, outcome: .succeeded), fixture: fixture, model: model)
+            model.removeSensitiveDataForPrivacy()
+        }
+    }
+
+    private func assertRedacted(_ snapshot: PassportDiagnosticSnapshot, fixture: [String: String], model: NFCPassportModel? = nil) throws {
+        let encoded = String(decoding: try JSONEncoder().encode(snapshot), as: UTF8.self)
+        for name in ["sod", "content", "dg1", "dg11", "com"] {
             let raw = try bytes(fixture, name)
             XCTAssertFalse(encoded.contains(binToHexRep(raw)))
             XCTAssertFalse(encoded.contains(Data(raw).base64EncodedString()))
+            for algorithm in ["SHA1", "SHA224", "SHA256", "SHA384", "SHA512"] where name == "dg1" || name == "dg11" {
+                XCTAssertFalse(encoded.contains(binToHexRep(try calcHash(data: raw, hashAlgorithm: algorithm))))
+            }
         }
-        for hash in model.dataGroupHashes.values {
+        for hash in model?.dataGroupHashes.values ?? [:].values {
             XCTAssertFalse(encoded.contains(hash.sodHash))
             XCTAssertFalse(encoded.contains(hash.computedHash))
         }
-        for forbidden in ["SYNTHETIC", "TEST00001", "700101", "300101", "PRIVATE KEY", "CERTIFICATE"] {
+        for forbidden in ["SYNTHETIC", "TEST00001", "700101", "300101", "PRIVATE KEY", "CERTIFICATE",
+                          "Kseed", "KSenc", "KSmac", "RND.IFD", "RND.ICC", "FFD8FFE0", "00A40400", "P<UTO"] {
             XCTAssertFalse(encoded.contains(forbidden))
         }
+        XCTAssertNil(encoded.range(of: #"[0-9A-Fa-f]{32,}"#, options: .regularExpression))
         XCTAssertLessThan(encoded.utf8.count, 32_768)
     }
 
@@ -443,6 +590,57 @@ final class DiagnosticSnapshotTests: XCTestCase {
             XCTAssertTrue(model.activeAuthenticationSignature.isEmpty)
             XCTAssertTrue(model.dataGroupsRead.isEmpty)
         }
+    }
+
+    private var validVersionProfiles: Set<String> {
+        var profiles: Set<String> = ["v1_other_version_strings", "v1_sixteen_hashes"]
+        for version in [0, 1] {
+            for digest in ["sha1", "sha224", "sha256", "sha384", "sha512"] {
+                for parameters in ["absent", "null"] { profiles.insert("v\(version)_\(digest)_\(parameters)") }
+            }
+        }
+        return profiles
+    }
+
+    private func versionCorpus() throws -> [String: [String: String]] {
+        let url = try XCTUnwrap(Bundle.module.url(forResource: "sod-version-passports", withExtension: "json", subdirectory: "Fixtures"))
+        let corpus = try JSONDecoder().decode([String: [String: String]].self, from: Data(contentsOf: url))
+        XCTAssertTrue(validVersionProfiles.isSubset(of: Set(corpus.keys)))
+        XCTAssertEqual(corpus.count, 78)
+        return corpus
+    }
+
+    private func rejectedSnapshot(_ model: NFCPassportModel,
+                                  policy: PassportReaderSecurityPolicy = PassportScanOptions.notaryStrict.securityPolicy) throws -> PassportDiagnosticSnapshot {
+        XCTAssertThrowsError(try policy.validate(model)) { error in
+            guard case NFCPassportReaderError.SecurityPolicyViolation = error else {
+                return XCTFail("Expected security policy violation")
+            }
+        }
+        let sink = DiagnosticLog()
+        let reader = PassportReader(logLevel: .info, logger: sink)
+        reader.configureLifecycleForTesting(passport: model, securityPolicy: policy)
+        let id = try XCTUnwrap(reader.beginScanIfPossible())
+        let before = model.makeDiagnosticSnapshot(attemptID: id, outcome: .failed)
+        let retainedHashes = model.dataGroupHashes.values.flatMap { [$0.sodHash, $0.computedHash] }
+        reader.failActiveScan(error: .SecurityPolicyViolation, scanID: id)
+        let value = try XCTUnwrap(reader.lastDiagnosticSnapshot)
+        XCTAssertEqual(value.sod, before.sod)
+        XCTAssertEqual(value.verification, before.verification)
+        XCTAssertEqual(value.dataGroups, before.dataGroups)
+        XCTAssertEqual(value.terminalFailure?.reason, .policyRejected)
+        XCTAssertTrue(model.dataGroupsRead.isEmpty)
+        XCTAssertTrue(model.dataGroupHashes.isEmpty)
+        XCTAssertTrue(model.verificationErrors.isEmpty)
+        let output = String(decoding: try JSONEncoder().encode(value), as: UTF8.self) + sink.events.map(\.description).joined()
+        for hash in retainedHashes { XCTAssertFalse(output.contains(hash)) }
+        for forbidden in ["SYNTHETIC", "TEST00001", "700101", "300101", "Kseed", "KSenc", "KSmac", "RND.IFD", "RND.ICC", "FFD8FFE0", "00A40400", "P<UTO"] {
+            XCTAssertFalse(output.contains(forbidden))
+        }
+        reader.cancelRead()
+        reader.failActiveScan(error: .UserCanceled, scanID: id)
+        XCTAssertEqual(reader.lastDiagnosticSnapshot, value)
+        return value
     }
 
     private func stage(_ stage: PassportSODParsingStage, _ value: PassportDiagnosticSnapshot) -> PassportDiagnosticCheck {
