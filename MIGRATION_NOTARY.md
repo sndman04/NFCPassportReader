@@ -6,7 +6,7 @@ The fork now requires SwiftPM tools 6.3, Swift 6 language mode, Xcode 26.5 or ne
 
 ## SOD version 1 compatibility (privacy.6-rc.6)
 
-Baseline: `notary-2.3.1-privacy.6-rc.5` / `6bd05b8b9ab5207f361c879044e8527a6d332cfe`. Consume the new immutable annotated `notary-2.3.1-privacy.6-rc.6` candidate; no app call-site, diagnostic schema or policy changes are needed. This task changes only the fork, not the app pin.
+Baseline: `notary-2.3.1-privacy.6-rc.5` / `6bd05b8b9ab5207f361c879044e8527a6d332cfe`. The new immutable annotated `notary-2.3.1-privacy.6-rc.6` candidate is prepared locally at `e0fad5d`, but publication returned GitHub HTTP 403. Publish it with repository write access before changing the app pin; remote main remains rc.5. No app call-site, diagnostic schema or policy changes are needed. This task changes only the fork, not the app pin.
 
 Valid signed LDS Security Object v1 now passes parsing and can pass `options: .notaryStrict` when its signature and read-group hashes pass. This inner version is independent of the outer CMS SignedData version (v3). The parser requires v0's three fields or v1's four, with two correctly encoded version strings in LDSVersionInfo. It also checks canonical DER, digest parameters and the 2–16 hash-entry bound. Previously tolerated malformed/trailing structures are rejected. ASN.1 truncation now projects to legacy `malformedSOD`, correcting its former `unsupportedAlgorithm` misclassification; snapshots retain `malformedStructure` and safe parser metadata. Unsupported versions/digests retain distinct snapshot reasons.
 

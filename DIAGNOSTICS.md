@@ -147,6 +147,6 @@ Chain categories include trustStoreUnavailable, certificateUnavailable, issuerNo
 
 ## Candidate pin and repinning
 
-The diagnostic API was introduced in `notary-2.3.1-privacy.6-rc.5`. Use the new annotated `notary-2.3.1-privacy.6-rc.6` candidate for the SOD v1 correction, on maintained `main`; its peeled commit is the exact SHA pin. rc.5 and all earlier tags/upstream snapshots remain unchanged. Schema 1 and all public call signatures remain compatible.
+The diagnostic API was introduced in `notary-2.3.1-privacy.6-rc.5`. The new annotated `notary-2.3.1-privacy.6-rc.6` candidate for the SOD v1 correction is prepared locally at `e0fad5d`, on maintained local `main`; publication is blocked by GitHub HTTP 403. Its peeled commit is the exact SHA pin after an authorized writer publishes it. Remote main remains rc.5; all earlier tags/upstream snapshots remain unchanged. Schema 1 and all public call signatures remain compatible.
 
 Repin the consuming app in a separate task. Exercise real v0/v1 success, malformed/tampered rejection, RF loss, timeout/cancellation and back-to-back scans with its custom logger and encrypted history before promoting a production tag. Ship RSA-PSS parameter enforcement separately with its own review and new tag.
