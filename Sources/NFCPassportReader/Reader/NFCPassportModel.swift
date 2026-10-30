@@ -7,6 +7,7 @@
 
 
 import Foundation
+import OpenSSL
 
 #if os(iOS)
 import UIKit
@@ -411,7 +412,7 @@ class NFCPassportModel: @unchecked Sendable {
     ///         CMS fails under certain circumstances (e.g. hashes are SHA512 whereas content is signed with SHA256RSA).
     ///         Currently defaulting to manual verification - hoping this will replace the CMS verification totally
     ///         CMS Verification currently there just in case
-    func verifyPassport( masterListURL: URL?, useCMSVerification : Bool = false ) {
+    func verifyPassport( masterListURL: URL?, useCMSVerification : Bool = false, revocationListURL: URL? = nil ) {
         diagnosticEvidence = PassportDiagnosticEvidence()
         diagnosticEvidence.preferred = useCMSVerification ? .cms : .manual
         if let sod = getDataGroup(.SOD) as? SOD {
@@ -421,6 +422,9 @@ class NFCPassportModel: @unchecked Sendable {
             diagnosticEvidence.hashes = .init(.unavailable, .missingSOD)
         }
         diagnosticEvidence.trust = .init(.unavailable, masterListURL == nil ? .missingMasterList : .missingSOD)
+        if revocationListURL != nil {
+            diagnosticEvidence.revocation = .init(.unavailable, masterListURL == nil ? .missingMasterList : .prerequisiteFailed)
+        }
         passportVerificationAttempted = true
         masterListWasProvided = masterListURL != nil
         masterListModifiedDate = masterListURL?.privacySafeFileModificationDate
@@ -435,7 +439,7 @@ class NFCPassportModel: @unchecked Sendable {
 
         if let masterListURL = masterListURL {
             do {
-                try validateAndExtractSigningCertificates( masterListURL: masterListURL )
+                try validateAndExtractSigningCertificates(masterListURL: masterListURL, revocationListURL: revocationListURL)
                 diagnosticEvidence.trust = .passed
             } catch let error {
                 if getDataGroup(.SOD) != nil, diagnosticEvidence.trust.failure == nil {
@@ -480,7 +484,13 @@ class NFCPassportModel: @unchecked Sendable {
         }
         if let rsaKey = dg15.rsaPublicKey {
             do {
-                var decryptedSig = try OpenSSLUtils.decryptRSASignature(signature: Data(signature), pubKey: rsaKey)
+                let recovered = try OpenSSLUtils.decryptRSASignature(signature: Data(signature), pubKey: rsaKey)
+                guard signature.count == Int(EVP_PKEY_get_size(rsaKey)),
+                      var decryptedSig = OpenSSLUtils.normalizedActiveAuthenticationBlock(recovered, key: rsaKey),
+                      decryptedSig.first == 0x6A else {
+                    activeAuthenticationDiagnostic = .init(.failed, .malformedStructure, attempted: true)
+                    return
+                }
                 
                 // Decrypted signature compromises of header (6A), Message, Digest hash, Trailer
                 // Trailer can be 1 byte (BC - SHA-1 hash) or 2 bytes (xxCC) - where xx identifies the hash algorithm used
@@ -491,6 +501,9 @@ class NFCPassportModel: @unchecked Sendable {
                 var hashTypeByte = decryptedSig.popLast() ?? 0x00
                 if hashTypeByte == 0xCC {
                     hashTypeByte = decryptedSig.popLast() ?? 0x00
+                } else if hashTypeByte != 0xBC {
+                    activeAuthenticationDiagnostic = .init(.failed, .malformedStructure, attempted: true)
+                    return
                 }
                 var hashType : String = ""
                 var hashLength = 0
@@ -539,16 +552,22 @@ class NFCPassportModel: @unchecked Sendable {
                 activeAuthenticationDiagnostic = .failed(.capture(error, stage: .activeAuthentication, operation: .activeAuthentication))
             }
         } else if let ecdsaPublicKey = dg15.ecdsaPublicKey {
-            var digestType = ""
-            if let dg14 = dataGroupsRead[.DG14] as? DataGroup14,
-               let aa = dg14.securityInfos.compactMap({ $0 as? ActiveAuthenticationInfo }).first {
-                digestType = aa.getSignatureAlgorithmOIDString() ?? ""
+            guard let dg14 = dataGroupsRead[.DG14] as? DataGroup14 else {
+                activeAuthenticationDiagnostic = .init(.unavailable, .missingDataGroup, attempted: true)
+                return
             }
-            
-            if OpenSSLUtils.verifyECDSASignature( publicKey:ecdsaPublicKey, signature: signature, data: challenge, digestType: digestType ) {
-                self.activeAuthenticationPassed = true
-            } else {
+            let algorithms = dg14.securityInfos.compactMap { $0 as? ActiveAuthenticationInfo }
+            guard let aa = algorithms.first, algorithms.allSatisfy({ $0.signatureAlgorithmOID == aa.signatureAlgorithmOID }),
+                  let digestType = aa.getSignatureAlgorithmOIDString(),
+                  let digest = OpenSSLUtils.digestName(forSignatureType: digestType),
+                  let digestLength = ["sha224": 28, "sha256": 32, "sha384": 48, "sha512": 64][digest],
+                  digestLength * 8 <= EVP_PKEY_get_bits(ecdsaPublicKey),
+                  signature.count == 2 * ((Int(EVP_PKEY_get_bits(ecdsaPublicKey)) + 7) / 8) else {
+                activeAuthenticationDiagnostic = .init(.unsupported, .unsupportedAlgorithm, attempted: true)
+                return
             }
+            activeAuthenticationPassed = OpenSSLUtils.verifyECDSASignature(publicKey: ecdsaPublicKey,
+                signature: signature, data: challenge, digestType: digestType)
         }
     }
 
@@ -572,29 +591,57 @@ class NFCPassportModel: @unchecked Sendable {
         challenge.count == activeAuthenticationChallengeLength
     }
     
-    private func validateAndExtractSigningCertificates( masterListURL: URL ) throws {
+    private func validateAndExtractSigningCertificates(masterListURL: URL, revocationListURL: URL?) throws {
         self.passportCorrectlySigned = false
         
-        guard let sod = getDataGroup(.SOD) else {
-            throw PassiveAuthenticationError.SODMissing("No SOD found" )
+        guard let sod = getDataGroup(.SOD) as? SOD else {
+            throw PassiveAuthenticationError.SODMissing("No SOD found")
         }
-
-        let data = Data(sod.body)
-        guard let cert = try OpenSSLUtils.getX509CertificatesFromPKCS7( pkcs7Der: data ).first else {
-            throw OpenSSLError.UnableToGetX509CertificateFromPKCS7("No signing certificate found")
+        // The same SID-bound certificate set is used by both signature verifiers.
+        // Multi-signer SODs require every signature and every corresponding chain to pass.
+        let certificates = try sod.signingCertificates()
+        let revocationData: Data?
+        if let revocationListURL {
+            do { revocationData = try CertificateRevocation.load(revocationListURL) }
+            catch {
+                diagnosticEvidence.revocation = .failed(.init(subsystem: .trust, operation: .checkRevocation,
+                    stage: .passiveAuthentication, reason: .revocationListUnavailable))
+                throw OpenSSLError.UnableToVerifyX509CertificateForSOD("Unable to load local revocation data")
+            }
+        } else { revocationData = nil }
+        var revocationAttempted = false
+        if revocationData != nil { diagnosticEvidence.revocation = .init(.inProgress, .none) }
+        defer {
+            if diagnosticEvidence.revocation.status == .inProgress {
+                diagnosticEvidence.revocation = .init(.unavailable, .prerequisiteFailed, attempted: revocationAttempted)
+            }
         }
-        self.certificateSigningGroups[.documentSigningCertificate] = cert
-
-        let rc = OpenSSLUtils.verifyTrustAndGetIssuerCertificate(x509: cert, CAFile: masterListURL) {
-            self.diagnosticEvidence.trust = .failed($0)
-        }
-        switch rc {
-        case .success(let csca):
-            self.certificateSigningGroups[.issuerSigningCertificate] = csca
-        case .failure(let error):
-            throw error
+        for cert in certificates {
+            let result = OpenSSLUtils.verifyTrustAndGetIssuerCertificate(x509: cert, CAFile: masterListURL) {
+                self.diagnosticEvidence.trust = .failed($0)
+            }
+            switch result {
+            case .success(let csca):
+                if let revocationData {
+                    let check = CertificateRevocation.check(revocationData, signer: cert, issuer: csca)
+                    revocationAttempted = true
+                    if check.status != .succeeded {
+                        diagnosticEvidence.revocation = check
+                        revocationCheckPerformed = check.reason == .certificateRevoked
+                        diagnosticEvidence.trust = check
+                        throw OpenSSLError.UnableToVerifyX509CertificateForSOD("Certificate revocation validation failed")
+                    }
+                }
+                if certificateSigningGroups[.documentSigningCertificate] == nil {
+                    certificateSigningGroups[.documentSigningCertificate] = cert
+                    certificateSigningGroups[.issuerSigningCertificate] = csca
+                }
+            case .failure(let error): throw error
+            }
         }
         self.passportCorrectlySigned = true
+        revocationCheckPerformed = revocationData != nil
+        if revocationData != nil { diagnosticEvidence.revocation = .passed }
 
     }
 
@@ -881,7 +928,7 @@ class NFCPassportModel: @unchecked Sendable {
         let checks = PassportVerificationDiagnostics(sodSignature: evidence.signatureCheck,
             dataGroupHashes: evidence.hashes, documentSignerTrust: evidence.trust,
             countrySignerTrust: evidence.trust, activeAuthentication: active, chipAuthentication: chip,
-            revocation: .init())
+            revocation: evidence.revocation)
         let groups = DataGroupId.allCases.filter { $0 != .COM && $0 != .SOD && $0 != .Unknown }.map { id in
             let read = dataGroupsRead[id] != nil
             let coverage: PassportHashCoverage = evidence.observedHashGroups.contains(id) ? .covered

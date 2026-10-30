@@ -4,6 +4,18 @@ This fork intentionally exposes the privacy-safe passport-chip API as the app in
 
 The fork now requires SwiftPM tools 6.3, Swift 6 language mode, Xcode 26.5 or newer, and iOS 26.0 or newer. This matches the app-only integration plan and intentionally drops older-package consumer compatibility.
 
+## Standards compatibility (privacy.6-rc.7)
+
+Use the new annotated `notary-2.3.1-privacy.6-rc.7` candidate after publication; never move rc.5/rc.6 tags. The candidate is local and publication remains blocked by repository write permissions. The app pin is unchanged. This release includes rc.6's SOD v1 fix, with unchanged original signed fixtures, plus the [standards coverage changes](STANDARDS_COVERAGE.md).
+
+Existing reader calls remain compatible, including a trailing diagnostic closure. Exhaustive switches over public enums may need the new cases or default handling. Policy defaults and logging defaults are unchanged. New optional APIs are `PassportReader(... certificateRevocationListURL: URL? = nil)`, `setCertificateRevocationListURL(_:)` (call between scans), and `PassportReaderSecurityPolicy(... requiresRevocationCheck: Bool = false)`. Supply a local PEM CRL bundle or one DER CRL and an authenticated master-list trust store. A configured stale, invalid, unavailable or revoking CRL prevents trusted verification; `requiresRevocationCheck: true` requires trusted passive authentication and successful revocation checking even if the other verification requirement is permissive. No URL fetching is performed. Revocation checks document signers; trust-anchor/CSCA revocation and bundle refresh/rollback protection remain host responsibilities.
+
+`PassportCertificateRevocationStatus` adds `.failed`; reasons add `.notConfigured`, `.unavailable`, `.invalidList`, `.expiredList`, `.futureList`. Existing `.notImplemented` remains source-compatible but is no longer the unconfigured runtime result. Diagnostic schema 1 keeps its shape and gains DSA algorithm and fixed revocation reason/operation values; consumers must tolerate added enum values. `verification.revocation` now reports actual configured checks. The metadata displayed for a multi-signer SOD represents the first signer, while verifier/trust results aggregate every signer. CSCA link chains now expose the direct issuer certificate as issuer metadata instead of the final trust anchor.
+
+Stricter validation intentionally rejects malformed PSS declarations/key restrictions, ambiguous signer certificates, incomplete/contradictory structures, AA weak/undeclared ECDSA hashes, compressed/binary EC AA keys and invalid RSA recovery trailers. Generic `rsaEncryption` can now pass manual verification directly, so fallback diagnostics may change. Validly declared PSS content/signature hash differences retain a real CMS-to-manual fallback. No security requirement is relaxed. `.notaryStrict` remains passive integrity, with separate trust/revocation requirements and explicit photo availability checks.
+
+All validation is synthetic/offline and iOS Simulator/generic iOS compilation. Physical NFC and app integration remain release-candidate gates. Terminal Authentication and LDS2 were explicitly deferred to a separate project by the user.
+
 ## SOD version 1 compatibility (privacy.6-rc.6)
 
 Baseline: `notary-2.3.1-privacy.6-rc.5` / `6bd05b8b9ab5207f361c879044e8527a6d332cfe`. The new immutable annotated `notary-2.3.1-privacy.6-rc.6` candidate is prepared locally at `e0fad5d`, but publication returned GitHub HTTP 403. Publish it with repository write access before changing the app pin; remote main remains rc.5. No app call-site, diagnostic schema or policy changes are needed. This task changes only the fork, not the app pin.
@@ -12,7 +24,7 @@ Valid signed LDS Security Object v1 now passes parsing and can pass `options: .n
 
 The rules come from [ICAO Doc 9303 Part 10, eighth edition, consolidated with Amendment 1 (14 June 2024)](https://www.icao.int/sites/default/files/publications/DocSeries/9303_p10_cons_en.pdf): §§4.6.1.1–4.6.1.2 define the LDS/Unicode number formats; §4.6.2.1 introduces the signed version information; §4.6.2.2 Table 37 defines CMS v3 and DER; §4.6.2.3 requires LDSVersionInfo for v1 and excludes it for v0, defines two PrintableStrings, the hash-entry bound, and absent/NULL digest parameters (Note 2). Appendix D, especially D.1 Table D-1 and D.2, supplies the legacy v0 structure and separate CMS v3.
 
-No signature-verifier, trust-store or policy requirement is relaxed. `.notaryStrict` still requires passive integrity; trusted-chain requirements remain separate and reject missing/unrelated roots. Diagnostics publish version/presence and fixed results, never version-string contents, hashes or signed bytes. RSA-PSS declared-parameter enforcement remains a separate tracked gap. Validation is synthetic and on iOS Simulator; physical v0/v1 passport and NFC/RF validation remains required before production promotion.
+No signature-verifier, trust-store or policy requirement is relaxed. `.notaryStrict` still requires passive integrity; trusted-chain requirements remain separate and reject missing/unrelated roots. Diagnostics publish version/presence and fixed results, never version-string contents, hashes or signed bytes. RSA-PSS declared-parameter enforcement was tracked separately and is implemented in rc.7. Validation is synthetic and on iOS Simulator; physical v0/v1 passport and NFC/RF validation remains required before production promotion.
 
 ## Reader parameter-selection integration (privacy.6-rc.4)
 

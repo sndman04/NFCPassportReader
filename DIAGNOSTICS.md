@@ -72,7 +72,7 @@ Enum values encode as their declared raw strings, except `DataGroupId`, which en
 | `countrySignerTrust` | Same chain operation as `documentSignerTrust`; these are aliases of the same evidence, not two independent validations. |
 | `activeAuthentication` | AA result, including unavailable DG15, configuration skip, unsupported mechanism/algorithm, begun-but-interrupted, or completed pass/failure. |
 | `chipAuthentication` | CA / existing PACE-CAM verification result, including unavailable DG14, skip, begun-but-interrupted, or pass/failure. A later BAC recovery cannot turn a CA failure into a pass. |
-| `revocation` | Always not attempted in this implementation. No network or revocation verification was added. A chain error may report a revoked category without claiming a separate revocation check ran. |
+| `revocation` | Not attempted when unconfigured; reports actual offline document-signer CRL results when configured. Missing trust prerequisites, unavailable/invalid/expired/future lists and revoked signers remain distinct. No network retrieval occurs. |
 
 The older `verificationResult` remains unchanged for acceptance and compatibility. In particular its document-signer field historically represents signature verification. The new explicit trust fields refer to chain verification. Missing or unread authentication material is unavailable in the new snapshot even where the older projection conflates it with unsupported.
 
@@ -108,7 +108,7 @@ For a scan ending after SOD was read but before verification, bounded structural
 | `rsaPSS.saltLength` | Declared integer in 0…512; default 20 when omitted; nil if outside the bound. |
 | `rsaPSS.trailerField` | `1` only; default 1 when omitted; nil for another declared value. |
 
-Digest allowlist: SHA-1/224/256/384/512. Signature allowlist: RSA encryption, RSA with SHA-1/224/256/384/512, RSA-PSS, ECDSA with SHA-1/224/256/384/512. Mask allowlist: MGF1. Exact OIDs are defined by `PassportDiagnosticAlgorithm`. A known identifier does not imply verifier support (e.g. manual verification currently rejects generic `rsaEncryption`, while CMS can accept it). Malformed/duplicate PSS parameter structure yields `malformed`, without raw parameters.
+Digest allowlist: SHA-1/224/256/384/512. Signature allowlist: RSA encryption, RSA with SHA-1/224/256/384/512, RSA-PSS, DSA and ECDSA with SHA-1/224/256/384/512. Mask allowlist: MGF1. Exact OIDs are defined by `PassportDiagnosticAlgorithm`. Metadata describes declarations; acceptance depends on full structure and cryptographic validation. Since rc.7, manual verification supports generic `rsaEncryption` and enforces PSS hash/MGF/salt/trailer plus public-key restrictions. Malformed/duplicate PSS parameter structure yields `malformed`, without raw parameters.
 
 ### Data-group entries
 
@@ -139,14 +139,14 @@ Chain categories include trustStoreUnavailable, certificateUnavailable, issuerNo
 ## Limits and separately identified defects
 
 - The rc.5 v1 parser defect is fixed in rc.6 with complete version-dependent validation and independently signed acceptance/rejection tests. Physical-document validation remains outstanding.
-- The manual RSA-PSS implementation currently selects SHA-256 and automatic salt length rather than applying all declared PSS parameters. The snapshot deliberately labels its PSS metadata as declared. Full parameter enforcement is separate verification work; this task does not change it.
-- Existing manual/CMS implementations select/expose the first signer; diagnostics do not claim exhaustive multi-signer or digest-set analysis. No extra verification run is forced after success.
+- rc.7 implements PSS parameter enforcement. Metadata remains labelled declared because a snapshot can be captured before verification or after failure; metadata alone never proves enforcement succeeded.
+- Algorithm/certificate display metadata describes the first signer. Since rc.7 both verifiers check every signer and trust uses the same SID-matched certificates. Aggregate success requires all signers; no raw per-signer certificate metadata is exposed. No extra verifier run is forced after success.
 - Some legacy crypto and authentication helpers expose only booleans or fixed errors, so detailed native causes remain unavailable. Numeric OpenSSL error queues are not collected. Parser offsets are supplied at SimpleASN1 boundaries and instrumented LDS failures; other legacy parser failures may have tags only or no offsets.
 - Legacy `PassportReaderFailure.verificationReason` remains the first policy-relevant reason. Use the snapshot to preserve all results. Do not use a successful parse stage or scan outcome as a trust decision.
 - Snapshot generation retains no raw data. Swift/framework memory scrubbing remains best-effort data minimization, not guaranteed zeroization. No physical-device NFC callback/RF behavior is established by simulator tests.
 
 ## Candidate pin and repinning
 
-The diagnostic API was introduced in `notary-2.3.1-privacy.6-rc.5`. The new annotated `notary-2.3.1-privacy.6-rc.6` candidate for the SOD v1 correction is prepared locally at `e0fad5d`, on maintained local `main`; publication is blocked by GitHub HTTP 403. Its peeled commit is the exact SHA pin after an authorized writer publishes it. Remote main remains rc.5; all earlier tags/upstream snapshots remain unchanged. Schema 1 and all public call signatures remain compatible.
+The diagnostic API was introduced in `notary-2.3.1-privacy.6-rc.5`; rc.6 corrects SOD v1 and rc.7 adds the [standards compatibility changes](STANDARDS_COVERAGE.md). The annotated rc.7 candidate is local; publication is blocked by GitHub write permissions. Remote main remains rc.5. Publish and verify the candidate's peeled SHA before repinning the app. All earlier tags/upstream snapshots remain unchanged. Schema 1 keeps its structure; new fixed revocation reason/operation values are additive.
 
-Repin the consuming app in a separate task. Exercise real v0/v1 success, malformed/tampered rejection, RF loss, timeout/cancellation and back-to-back scans with its custom logger and encrypted history before promoting a production tag. Ship RSA-PSS parameter enforcement separately with its own review and new tag.
+Repin the consuming app in a separate task. Exercise real v0/v1, new and legacy face formats, authentication, tampered rejection, RF loss, timeout/cancellation and back-to-back scans with its custom logger and encrypted history before promoting a production tag.

@@ -29,13 +29,18 @@ public struct PassportReaderSecurityPolicy: Sendable, Equatable {
 
     public let allowsPassportPhoto: Bool
     public let verificationRequirement: PassportVerificationRequirement
+    /// Require trusted passive authentication and a successful current offline CRL check.
+    /// Defaults to false for compatibility; configure the reader with a local CRL bundle.
+    public let requiresRevocationCheck: Bool
 
     public init(
         allowsPassportPhoto: Bool = true,
-        verificationRequirement: PassportVerificationRequirement = .none
+        verificationRequirement: PassportVerificationRequirement = .none,
+        requiresRevocationCheck: Bool = false
     ) {
         self.allowsPassportPhoto = allowsPassportPhoto
         self.verificationRequirement = verificationRequirement
+        self.requiresRevocationCheck = requiresRevocationCheck
     }
 
     func apply(to photoPolicy: PassportPhotoPolicy) -> PassportPhotoPolicy {
@@ -43,7 +48,9 @@ public struct PassportReaderSecurityPolicy: Sendable, Equatable {
     }
 
     func validate(_ passport: NFCPassportModel) throws {
-        guard verificationRequirement.isSatisfied(by: passport) else {
+        guard verificationRequirement.isSatisfied(by: passport),
+              !requiresRevocationCheck || (PassportVerificationRequirement.trustedPassiveAuthentication.isSatisfied(by: passport)
+                && passport.diagnosticEvidence.revocation.status == .succeeded) else {
             throw NFCPassportReaderError.SecurityPolicyViolation
         }
     }

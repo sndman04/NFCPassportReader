@@ -94,6 +94,7 @@ public class PassportReader : NSObject {
     
     private var nfcViewDisplayMessageHandler: PassportReaderDisplayMessageHandler?
     private var masterListURL : URL?
+    private var certificateRevocationListURL: URL?
     private var shouldNotReportNextReaderSessionInvalidationErrorUserCanceled : Bool = false
 
     // By default, Passive Authentication uses the new RFS5652 method to verify the SOD, but can be switched to use
@@ -104,6 +105,7 @@ public class PassportReader : NSObject {
         masterListURL: URL? = nil,
         logLevel: PassportReaderLogLevel = .off,
         logger: PassportReaderLogging? = nil,
+        certificateRevocationListURL: URL? = nil,
         diagnosticHandler: PassportDiagnosticHandler? = nil
     ) {
         self.diagnosticHandler = diagnosticHandler
@@ -111,6 +113,14 @@ public class PassportReader : NSObject {
         super.init()
         
         self.masterListURL = masterListURL
+        self.certificateRevocationListURL = certificateRevocationListURL
+    }
+
+    /// Configure a local PEM bundle (or one DER CRL) maintained by the app. No network
+    /// retrieval occurs. Invalid, stale, unavailable or revoking CRLs fail trusted verification.
+    /// Pass nil to disable checking. Call between scans.
+    public func setCertificateRevocationListURL(_ url: URL?) {
+        self.certificateRevocationListURL = url
     }
     
     public func setMasterListURL( _ masterListURL : URL ) {
@@ -1042,7 +1052,8 @@ extension PassportReader {
         eventLogger.log(.verificationStarted)
         emitProgress(.verifyingSOD)
         emitProgress(.verifyingDataGroups)
-        self.passport.verifyPassport(masterListURL: self.masterListURL, useCMSVerification: self.passiveAuthenticationUsesOpenSSL)
+        self.passport.verifyPassport(masterListURL: self.masterListURL, useCMSVerification: self.passiveAuthenticationUsesOpenSSL,
+            revocationListURL: self.certificateRevocationListURL)
         try ensureActiveScan(scanID)
         self.currentScanStage = .securityPolicyValidation
         try self.securityPolicy.validate(self.passport)

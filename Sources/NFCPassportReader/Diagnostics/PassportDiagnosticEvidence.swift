@@ -20,6 +20,7 @@ struct PassportDiagnosticEvidence {
     var signatureCheck = PassportDiagnosticCheck()
     var hashes = PassportDiagnosticCheck()
     var trust = PassportDiagnosticCheck()
+    var revocation = PassportDiagnosticCheck()
     var hashCoverageAvailable = false
     var observedHashGroups = Set<DataGroupId>()
 

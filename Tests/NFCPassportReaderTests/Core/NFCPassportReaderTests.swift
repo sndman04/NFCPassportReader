@@ -294,9 +294,9 @@ final class NFCPassportReaderTests: XCTestCase {
         }
     }
 
-    func testMSEKeyIdentifierOmitsAbsentAndZeroValues() throws {
+    func testMSEKeyIdentifierOmitsAbsentButPreservesExplicitZero() throws {
         XCTAssertNil(try TagReader.mseKeyIdentifierData(keyId: nil))
-        XCTAssertNil(try TagReader.mseKeyIdentifierData(keyId: 0))
+        XCTAssertEqual(try TagReader.mseKeyIdentifierData(keyId: 0), [0x84, 0x01, 0x00])
     }
 
     func testMSEKeyIdentifierWrapsPositiveValues() throws {
@@ -495,12 +495,12 @@ final class NFCPassportReaderTests: XCTestCase {
     func testChipAuthenticationMetadataAllowsExactDuplicateInfoForSameKeyId() throws {
         let first = ChipAuthenticationInfo(
             oid: SecurityInfo.ID_CA_ECDH_AES_CBC_CMAC_128_OID,
-            version: 2,
+            version: 1,
             keyId: 7
         )
         let duplicate = ChipAuthenticationInfo(
             oid: SecurityInfo.ID_CA_ECDH_AES_CBC_CMAC_128_OID,
-            version: 2,
+            version: 1,
             keyId: 7
         )
 
@@ -510,34 +510,27 @@ final class NFCPassportReaderTests: XCTestCase {
         XCTAssertTrue(metadata.infosByKeyId[7] === first)
     }
 
-    func testChipAuthenticationMetadataRejectsConflictingDuplicateInfoForSameKeyId() {
-        let first = ChipAuthenticationInfo(
-            oid: SecurityInfo.ID_CA_ECDH_AES_CBC_CMAC_128_OID,
-            version: 2,
-            keyId: 7
-        )
-        let conflicting = ChipAuthenticationInfo(
-            oid: SecurityInfo.ID_CA_ECDH_AES_CBC_CMAC_256_OID,
-            version: 2,
-            keyId: 7
-        )
-
-        XCTAssertThrowsError(try ChipAuthenticationHandler.metadata(from: [first, conflicting])) { error in
-            guard case NFCPassportReaderError.InvalidASN1Structure = error else {
-                XCTFail("Expected InvalidASN1Structure, got \(error)")
-                return
-            }
+    func testChipAuthenticationMetadataAllowsCipherAlternativesForOneKey() throws {
+        let first = ChipAuthenticationInfo(oid: SecurityInfo.ID_CA_ECDH_AES_CBC_CMAC_128_OID, version: 1, keyId: 7)
+        let stronger = ChipAuthenticationInfo(oid: SecurityInfo.ID_CA_ECDH_AES_CBC_CMAC_256_OID, version: 1, keyId: 7)
+        for infos in [[first, stronger], [stronger, first]] {
+            let metadata = try ChipAuthenticationHandler.metadata(from: infos)
+            XCTAssertTrue(metadata.infosByKeyId[7] === stronger)
         }
+        let wrongFamily = ChipAuthenticationInfo(oid: SecurityInfo.ID_CA_DH_AES_CBC_CMAC_256_OID, version: 1, keyId: 7)
+        let wrongVersion = ChipAuthenticationInfo(oid: first.oid, version: 2, keyId: 7)
+        XCTAssertThrowsError(try ChipAuthenticationHandler.metadata(from: [first, wrongFamily]))
+        XCTAssertThrowsError(try ChipAuthenticationHandler.metadata(from: [wrongVersion]))
     }
 
     func testChipAuthenticationMetadataTreatsMissingAndZeroKeyIdsAsSameSlot() {
         let defaultKeyInfo = ChipAuthenticationInfo(
             oid: SecurityInfo.ID_CA_ECDH_AES_CBC_CMAC_128_OID,
-            version: 2
+            version: 1
         )
         let zeroKeyInfo = ChipAuthenticationInfo(
             oid: SecurityInfo.ID_CA_ECDH_AES_CBC_CMAC_256_OID,
-            version: 2,
+            version: 1,
             keyId: 0
         )
 
@@ -1402,8 +1395,8 @@ final class NFCPassportReaderTests: XCTestCase {
         XCTAssertEqual(OpenSSLUtils.digestName(forSignatureType: "ecdsa-plain-SHA384"), "sha384")
         XCTAssertEqual(OpenSSLUtils.digestName(forSignatureType: "ecdsa-plain-SHA512"), "sha512")
         XCTAssertEqual(OpenSSLUtils.digestName(forSignatureType: "ecdsa-plain-RIPEMD160"), "ripemd160")
-        XCTAssertEqual(OpenSSLUtils.digestName(forSignatureType: "RSASSA-PSS"), "sha256")
-        XCTAssertEqual(OpenSSLUtils.digestName(forSignatureType: ""), "sha256")
+        XCTAssertNil(OpenSSLUtils.digestName(forSignatureType: "RSASSA-PSS"))
+        XCTAssertNil(OpenSSLUtils.digestName(forSignatureType: ""))
     }
 
 }

@@ -6,6 +6,7 @@
 
 import Foundation
 import OpenSSL
+import OpenSSLCompat
 
 @available(iOS 13, macOS 10.15, *)
 class DataGroup15 : DataGroup {
@@ -32,6 +33,13 @@ class DataGroup15 : DataGroup {
 
         switch OpenSSLUtils.publicKeyType(key) {
         case EVP_PKEY_EC:
+            // ICAO Part 11 §6.1.2.3: prime curves and uncompressed points only.
+            guard let spki = try? SimpleASN1Node.parse(body), spki.children.count == 2,
+                  spki.children[1].tag == 0x03, spki.children[1].value.starts(with: [0, 4]),
+                  NFCPRIsPrimeCurveKey(key) == 1 else {
+                EVP_PKEY_free(key)
+                throw NFCPassportReaderError.InvalidASN1Structure
+            }
             ecdsaPublicKey = key
         case EVP_PKEY_RSA:
             rsaPublicKey = key

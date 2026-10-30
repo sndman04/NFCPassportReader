@@ -13,7 +13,7 @@ extension PassportAlgorithmDiagnostic {
         }
         let digestIDs: Set<PassportDiagnosticAlgorithm> = [.sha1, .sha224, .sha256, .sha384, .sha512]
         let signatureIDs: Set<PassportDiagnosticAlgorithm> = [.rsaEncryption, .rsaSHA1, .rsaSHA224, .rsaSHA256,
-            .rsaSHA384, .rsaSHA512, .rsaPSS, .ecdsaSHA1, .ecdsaSHA224, .ecdsaSHA256, .ecdsaSHA384, .ecdsaSHA512]
+            .rsaSHA384, .rsaSHA512, .rsaPSS, .dsaSHA1, .dsaSHA224, .dsaSHA256, .dsaSHA384, .dsaSHA512, .ecdsaSHA1, .ecdsaSHA224, .ecdsaSHA256, .ecdsaSHA384, .ecdsaSHA512]
         let allowed = role == .digest ? digestIDs : role == .signature ? signatureIDs : [.mgf1]
         let decoded = PassportDiagnosticAlgorithm(rawValue: text) ?? .unrecognized
         let identifier: PassportDiagnosticAlgorithm = allowed.contains(decoded) ? decoded : .unrecognized

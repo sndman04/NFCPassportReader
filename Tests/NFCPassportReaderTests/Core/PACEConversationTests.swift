@@ -25,6 +25,44 @@ final class PACEConversationTests: XCTestCase {
         }
     }
 
+    func testICAOAlgorithmInventoryAndAllPermittedParameterCombinations() async throws {
+        // Independently enumerated from ICAO Part 11 §9.2.3 and Table 12, not the implementation allowlist.
+        var expected = Set<String>()
+        for family in [1, 2, 3, 4, 6] {
+            for cipher in (family == 6 ? [2, 3, 4] : [1, 2, 3, 4]) {
+                let oid = "0.4.0.127.0.7.2.2.4.\(family).\(cipher)"
+                expected.insert(oid)
+                let dh = family == 1 || family == 3
+                for parameter in (dh ? [0, 1, 2] : Array(8...18)) {
+                    if family == 4 && parameter == 10 { continue } // Table 12 excludes P-224 with IM.
+                    try await runPACE(isDH: dh, protocolOID: oid, parameterID: parameter)
+                }
+            }
+        }
+        XCTAssertEqual(PACEInfo.allowedIdentifiers, expected)
+    }
+
+    func testExplicitKnownParametersCompleteConversationsWithLocalIdentifiers() async throws {
+        let url = try XCTUnwrap(Bundle.module.url(forResource: "pace-explicit-parameters", withExtension: "json", subdirectory: "Fixtures"))
+        let parameters = try JSONDecoder().decode([String: String].self, from: Data(contentsOf: url))
+        for parameter in [0, 1, 2, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18] {
+            let dh = parameter < 3
+            for family in (dh ? [1, 3] : [2, 4, 6]) {
+                if family == 4 && parameter == 10 { continue }
+                let protocolOID = "0.4.0.127.0.7.2.2.4.\(family)"
+                let oid = protocolOID + ".2"
+                let domainAlgorithm = dh ? "1.2.840.10046.2.1" : "1.2.840.10045.2.1"
+                let domain = wrapDO(b: 0x30, arr: oidToBytes(oid: domainAlgorithm, replaceTag: false)
+                    + hexRepToBin(try XCTUnwrap(parameters[String(parameter)])))
+                let domainInfo = wrapDO(b: 0x30, arr: oidToBytes(oid: protocolOID, replaceTag: false) + domain + [2, 1, 32])
+                let info = wrapDO(b: 0x30, arr: oidToBytes(oid: oid, replaceTag: false) + [2, 1, 2, 2, 1, 32])
+                let access = try CardAccess(wrapDO(b: 0x31, arr: info + domainInfo))
+                XCTAssertEqual(access.preferredPACEInfo?.effectiveStandardParameterId, parameter)
+                try await runPACE(isDH: dh, protocolOID: oid, parameterID: parameter, cardAccess: access)
+            }
+        }
+    }
+
     func testAllStandardDomainParametersWithGenericMapping() async throws {
         for parameter in [0, 1, 2, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18] {
             try await runPACE(isDH: parameter < 3, parameterID: parameter)
@@ -38,7 +76,7 @@ final class PACEConversationTests: XCTestCase {
     }
 
     private func runPACE(isDH: Bool, reflectKey: Bool = false, protocolOID: String? = nil,
-                         parameterID: Int? = nil, failedStep: Int? = nil) async throws {
+                         parameterID: Int? = nil, failedStep: Int? = nil, cardAccess: CardAccess? = nil) async throws {
         let credential = "synthetic-access-credential"
         let oid = protocolOID ?? (isDH ? SecurityInfo.ID_PACE_DH_GM_AES_CBC_CMAC_128 : SecurityInfo.ID_PACE_ECDH_GM_AES_CBC_CMAC_128)
         let info = PACEInfo(oid: oid, version: 2, parameterId: parameterID ?? (isDH ? 0 : 13))
@@ -124,7 +162,7 @@ final class PACEConversationTests: XCTestCase {
         }
         let tag = TagReader(transport: transport)
         defer { tag.disconnect() }
-        let pace = PACEHandler(paceInfo: info, tagReader: tag)
+        let pace = try cardAccess.map { try PACEHandler(cardAccess: $0, tagReader: tag) } ?? PACEHandler(paceInfo: info, tagReader: tag)
         handler = pace
         if reflectKey || failedStep != nil {
             do { try await pace.doPACE(mrzKey: credential); XCTFail("Expected PACE rejection") }

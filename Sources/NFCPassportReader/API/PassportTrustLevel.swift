@@ -97,6 +97,7 @@ public struct PassportCertificateTrustMetadata: Sendable, Equatable {
 
 @available(iOS 13, macOS 10.15, *)
 public enum PassportCertificateRevocationStatus: Sendable, Equatable {
+    case failed
     case notChecked
     case notRevoked
     case revoked
@@ -104,6 +105,7 @@ public enum PassportCertificateRevocationStatus: Sendable, Equatable {
 
 @available(iOS 13, macOS 10.15, *)
 public enum PassportCertificateRevocationReason: Sendable, Equatable {
+    case notConfigured, unavailable, invalidList, expiredList, futureList
     case notImplemented
     case notRequested
     case passed
@@ -116,15 +118,22 @@ public struct PassportCertificateRevocationCheck: Sendable, Equatable {
     public let reason: PassportCertificateRevocationReason
 
     init(passport: NFCPassportModel) {
-        if passport.revocationCheckPerformed {
-            self.status = .notRevoked
-            self.reason = .passed
-        } else if passport.passportVerificationAttempted {
-            self.status = .notChecked
-            self.reason = .notImplemented
+        let check = passport.diagnosticEvidence.revocation
+        if check.status == .succeeded {
+            status = .notRevoked; reason = .passed
+        } else if check.reason == .certificateRevoked {
+            status = .revoked; reason = .revoked
+        } else if check.status == .failed || check.status == .unavailable {
+            status = .failed
+            switch check.reason {
+            case .revocationListExpired: reason = .expiredList
+            case .revocationListNotYetValid: reason = .futureList
+            case .revocationListInvalid: reason = .invalidList
+            default: reason = .unavailable
+            }
         } else {
-            self.status = .notChecked
-            self.reason = .notRequested
+            status = .notChecked
+            reason = passport.passportVerificationAttempted ? .notConfigured : .notRequested
         }
     }
 
@@ -135,6 +144,11 @@ public struct PassportCertificateRevocationCheck: Sendable, Equatable {
 
     public var privacySafeExplanation: String {
         switch reason {
+        case .notConfigured: return "Certificate revocation was not checked because no local CRL bundle was configured."
+        case .unavailable: return "Certificate revocation could not be checked with the supplied trust and revocation data."
+        case .invalidList: return "The supplied certificate revocation data is invalid."
+        case .expiredList: return "The supplied certificate revocation data has expired."
+        case .futureList: return "The supplied certificate revocation data is not yet valid."
         case .notImplemented:
             return "Certificate revocation was not checked because this package has no configured revocation workflow."
         case .notRequested:

@@ -57,18 +57,43 @@ class ChipAuthenticationHandler {
 
         for secInfo in securityInfos {
             if let chipAuthInfo = secInfo as? ChipAuthenticationInfo {
+                guard chipAuthInfo.version == 1 else { throw NFCPassportReaderError.InvalidASN1Structure }
                 let keyId = chipAuthInfo.getKeyId()
                 if let existing = infosByKeyId[keyId] {
-                    guard existing.oid == chipAuthInfo.oid,
-                          existing.version == chipAuthInfo.version,
-                          existing.keyId == chipAuthInfo.keyId else {
+                    guard existing.keyId == chipAuthInfo.keyId,
+                          try ChipAuthenticationInfo.toKeyAgreementAlgorithm(oid: existing.oid)
+                            == ChipAuthenticationInfo.toKeyAgreementAlgorithm(oid: chipAuthInfo.oid) else {
                         throw NFCPassportReaderError.InvalidASN1Structure
+                    }
+                    // One key may advertise several cipher suites (§6.2.3). Prefer
+                    // AES, then the larger symmetric key; do not confuse this with
+                    // contradictory versions or key families.
+                    let oldAES = try ChipAuthenticationInfo.toCipherAlgorithm(oid: existing.oid) == "AES"
+                    let newAES = try ChipAuthenticationInfo.toCipherAlgorithm(oid: chipAuthInfo.oid) == "AES"
+                    let oldLength = try ChipAuthenticationInfo.toKeyLength(oid: existing.oid)
+                    let newLength = try ChipAuthenticationInfo.toKeyLength(oid: chipAuthInfo.oid)
+                    if (newAES && !oldAES) || (newAES == oldAES && newLength > oldLength) {
+                        infosByKeyId[keyId] = chipAuthInfo
                     }
                     continue
                 }
                 infosByKeyId[keyId] = chipAuthInfo
             } else if let publicKeyInfo = secInfo as? ChipAuthenticationPublicKeyInfo {
+                if let existing = publicKeyInfos.first(where: { $0.getKeyId() == publicKeyInfo.getKeyId() }) {
+                    guard existing.keyId == publicKeyInfo.keyId, existing.oid == publicKeyInfo.oid,
+                          let first = existing.pubKey, let second = publicKeyInfo.pubKey,
+                          EVP_PKEY_eq(first, second) == 1 else { throw NFCPassportReaderError.InvalidASN1Structure }
+                    continue
+                }
                 publicKeyInfos.append(publicKeyInfo)
+            }
+        }
+
+        if publicKeyInfos.count > 1 {
+            guard publicKeyInfos.allSatisfy({ $0.keyId != nil }),
+                  Set(publicKeyInfos.compactMap(\.keyId)).count == publicKeyInfos.count,
+                  infosByKeyId.values.allSatisfy({ $0.keyId != nil }) else {
+                throw NFCPassportReaderError.InvalidASN1Structure
             }
         }
 
@@ -137,6 +162,14 @@ class ChipAuthenticationHandler {
         
         guard let publicKey = chipAuthPublicKeyInfo.pubKey else {
             return false
+        }
+
+        let expectsDH = try ChipAuthenticationInfo.toKeyAgreementAlgorithm(oid: chipAuthInfoOID) == "DH"
+        let keyType = OpenSSLUtils.publicKeyType(publicKey)
+        guard expectsDH
+            ? (chipAuthPublicKeyInfo.oid == SecurityInfo.ID_PK_DH_OID && (keyType == EVP_PKEY_DH || keyType == EVP_PKEY_DHX))
+            : (chipAuthPublicKeyInfo.oid == SecurityInfo.ID_PK_ECDH_OID && keyType == EVP_PKEY_EC) else {
+            throw NFCPassportReaderError.InvalidASN1Structure
         }
 
         try await self.doCA( keyId: keyId, encryptionDetailsOID: chipAuthInfoOID, publicKey: publicKey )

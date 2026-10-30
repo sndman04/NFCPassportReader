@@ -1002,7 +1002,7 @@ final class PassportReaderLoggingTests: XCTestCase {
         let metadata = PassportCertificateTrustMetadata(passport: model)
         XCTAssertFalse(metadata.revocationCheckPerformed)
         XCTAssertEqual(metadata.revocationCheck.status, .notChecked)
-        XCTAssertEqual(metadata.revocationCheck.reason, .notImplemented)
+        XCTAssertEqual(metadata.revocationCheck.reason, .notConfigured)
         XCTAssertFalse(metadata.revocationCheck.privacySafeExplanation.localizedCaseInsensitiveContains("certificate dump"))
         XCTAssertFalse(metadata.revocationCheck.privacySafeExplanation.localizedCaseInsensitiveContains("APDU"))
     }

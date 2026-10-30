@@ -200,6 +200,8 @@ class PACEInfo : SecurityInfo {
     var oid : String
     var version : Int
     var parameterId : Int?
+    var resolvedStandardParameterId: Int?
+    var effectiveStandardParameterId: Int? { resolvedStandardParameterId ?? parameterId }
     
     static func checkRequiredIdentifier(_ oid : String) -> Bool {
         return allowedIdentifiers.contains( oid )
@@ -228,7 +230,7 @@ class PACEInfo : SecurityInfo {
     }
     
     func getParameterSpec() throws -> Int32 {
-        return try PACEInfo.getParameterSpec(stdDomainParam: self.parameterId ?? -1 )
+        return try PACEInfo.getParameterSpec(stdDomainParam: effectiveStandardParameterId ?? -1 )
     }
     
     func getMappingType() throws -> PACEMappingType {
@@ -260,6 +262,10 @@ class PACEInfo : SecurityInfo {
             return false
         }
 
+        guard let parameter = effectiveStandardParameterId,
+              let agreement = try? getKeyAgreementAlgorithm(),
+              agreement == "DH" ? (0...2).contains(parameter) : (8...18).contains(parameter),
+              mappingType != .IM || parameter != 10 else { return false }
         return (try? getParameterSpec()) != nil
     }
 

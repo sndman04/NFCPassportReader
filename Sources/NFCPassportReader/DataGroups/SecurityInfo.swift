@@ -129,6 +129,8 @@ class SecurityInfo {
                 version: version,
                 parameterId: optionalData?.integerValue
             )
+        } else if PACEDomainParameterInfo.identifiers.contains(oid) {
+            return try PACEDomainParameterInfo(oid: oid, algorithm: requiredData, identifier: optionalData)
         } else if ActiveAuthenticationInfo.checkRequiredIdentifier(oid) {
             guard let version = requiredData.integerValue,
                   version == 1,

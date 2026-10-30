@@ -61,31 +61,34 @@ class DataGroup2 : DataGroup {
     }
 
     override func parse(_ data: [UInt8]) throws {
-        var tag = try getNextTag()
-        try verifyTag(tag, equals: 0x7F61)
-        _ = try getNextLength()
-        
-        // Tag should be 0x02
-        tag = try getNextTag()
-        try verifyTag(tag, equals: 0x02)
-        let imageCount = try getNextValue()
-        guard let firstImageCountByte = imageCount.first else {
+        let group = try SimpleASN1Node.parse(body)
+        guard group.tag == 0x7F61, let count = group.children.first?.integerValue,
+              (1...32).contains(count), group.children.count == count + 1 else {
             throw NFCPassportReaderError.InvalidASN1Structure
         }
-        nrImages = Int(firstImageCountByte)
-        
-        guard nrImages > 0 else {
-            throw NFCPassportReaderError.InvalidASN1Structure
-        }
-
-        var parsedTemplateCount = 0
-        while hasUnreadBody {
-            try parseBiometricInformationTemplate()
-            parsedTemplateCount += 1
-        }
-
-        guard parsedTemplateCount == nrImages else {
-            throw NFCPassportReaderError.InvalidASN1Structure
+        nrImages = count
+        for template in group.children.dropFirst() {
+            guard template.tag == 0x7F60, template.children.count == 2,
+                  template.children[0].tag == 0xA1 else { throw NFCPassportReaderError.InvalidASN1Structure }
+            let block = template.children[1]
+            switch block.tag {
+            case 0x5F2E: try parseISO19794_5(data: block.value)
+            case 0x7F2E:
+                let face = try ISO39794Face(block.value)
+                if imageDataItems.isEmpty {
+                    versionNumber = face.generation
+                    lengthOfRecord = block.value.count
+                    numberOfFacialImages = 1
+                    facialRecordDataLength = block.value.count
+                    faceImageType = 2
+                    imageDataType = face.format == 2 ? 0 : 1
+                    imageWidth = face.width
+                    imageHeight = face.height
+                    imageData = face.image
+                }
+                imageDataItems.append(face.image)
+            default: throw NFCPassportReaderError.InvalidASN1Structure
+            }
         }
     }
 
@@ -116,24 +119,6 @@ class DataGroup2 : DataGroup {
         super.removeSensitiveDataForPrivacy()
     }
 
-    private func parseBiometricInformationTemplate() throws {
-        var tag = try getNextTag()
-        try verifyTag(tag, equals: 0x7F60)
-        _ = try getNextLength()
-
-        // Next tag is 0xA1 (Biometric Header Template) - don't care about this
-        tag = try getNextTag()
-        try verifyTag(tag, equals: 0xA1)
-        _ = try getNextValue()
-
-        // Now we get to the good stuff - next tag is either 5F2E or 7F2E
-        tag = try getNextTag()
-        try verifyTag(tag, oneOf: [0x5F2E, 0x7F2E])
-        let value = try getNextValue()
-
-        try parseISO19794_5(data: value)
-    }
-    
     func parseISO19794_5( data : [UInt8] ) throws {
         // Validate header - 'F', 'A' 'C' 0x00 - 0x46414300
         guard data.count >= 46 else {

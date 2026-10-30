@@ -7,6 +7,7 @@
 
 import Foundation
 import OpenSSL
+import OpenSSLCompat
 import CryptoTokenKit
 
 @available(iOS 13, macOS 10.15, *)
@@ -138,6 +139,34 @@ class OpenSSLUtils {
         return ret
     }
     
+    /// Resolve each RFC 5652 SignerIdentifier; certificate-set position has no meaning.
+    static func getCMSSignerCertificates(_ data: Data) throws -> [X509Wrapper] {
+        let stack = data.withUnsafeBytes { bytes in
+            NFCPRCopyCMSSignerCertificates(bytes.baseAddress?.assumingMemoryBound(to: UInt8.self), data.count)
+        }
+        guard let stack else {
+            throw OpenSSLError.UnableToGetX509CertificateFromPKCS7("Missing or ambiguous signing certificate")
+        }
+        defer { OSSL_STACK_OF_X509_free(stack) }
+        return try (0..<sk_X509_num(stack)).map { index in
+            guard let cert = X509Wrapper(with: sk_X509_value(stack, index)) else {
+                throw OpenSSLError.UnableToGetX509CertificateFromPKCS7("Unable to copy signing certificate")
+            }
+            return cert
+        }
+    }
+
+    private static func validatedSODAlgorithms(_ sod: SOD, operation: PassportDiagnosticOperation,
+                                              diagnostic: ((PassportDiagnosticFailure) -> Void)?) throws -> [SODSignatureAlgorithm] {
+        do { return try sod.validatedSignatureAlgorithms() }
+        catch {
+            let reason: PassportDiagnosticReason = (error as? SODSignatureAlgorithm.Failure) == .unsupported
+                ? .unsupportedAlgorithm : .malformedStructure
+            diagnostic?(.init(subsystem: .parser, operation: operation, stage: .passiveAuthentication, reason: reason))
+            throw OpenSSLError.UnableToExtractSignedDataFromPKCS7("Invalid SOD signer structure or algorithm")
+        }
+    }
+
     /// Checks whether a trust chain can be built up to verify a X509 certificate. A CAFile containing a list of trusted certificates (each in PEM format)
     /// is used to build the trust chain.
     /// The trusted certificates in this use case are typically from a Countries master list (see the scripts for  more informaton on how to prepare this)
@@ -196,7 +225,8 @@ class OpenSSLUtils {
             return .failure(OpenSSLError.UnableToVerifyX509CertificateForSOD("Verification of certificate failed - errorCode \(err)"))
         }
         
-        // Get chain and issue certificate is the last cert in the chain
+        // The direct issuer is chain[1]. A CSCA link chain may have a different
+        // trust anchor at its end; that key cannot authenticate the signer's CRL.
         failureReason = .issuerNotFound
         let chain = X509_STORE_CTX_get1_chain(store);
         defer {
@@ -206,7 +236,7 @@ class OpenSSLUtils {
         }
         let nrCertsInChain = sk_X509_num(chain)
         if nrCertsInChain > 1 {
-            let cert = sk_X509_value(chain, nrCertsInChain-1)
+            let cert = sk_X509_value(chain, 1)
             if let certWrapper = X509Wrapper(with: cert) {
                 succeeded = true
                 return .success( certWrapper )
@@ -231,6 +261,9 @@ class OpenSSLUtils {
     ///
     ///      This should return Verification Successful and the signed data
     static func verifyAndReturnSODEncapsulatedDataUsingCMS( sod : SOD, diagnostic: ((PassportDiagnosticFailure) -> Void)? = nil ) throws -> Data {
+        _ = try validatedSODAlgorithms(sod, operation: .cmsVerification, diagnostic: diagnostic)
+        _ = try sod.signingCertificates()
+        _ = try sod.getEncapsulatedContent()
         return try verifyAndReturnCMSEncapsulatedData(Data(sod.body), trustedCertificatesURL: nil, diagnostic: diagnostic)
     }
 
@@ -337,32 +370,30 @@ class OpenSSLUtils {
             }
         }
         
+        let algorithms: [SODSignatureAlgorithm]
+        do { algorithms = try sod.validatedSignatureAlgorithms() }
+        catch {
+            reason = (error as? SODSignatureAlgorithm.Failure) == .unsupported ? .unsupportedAlgorithm : .malformedStructure
+            throw OpenSSLError.UnableToExtractSignedDataFromPKCS7("Invalid SOD signer structure or algorithm")
+        }
         let encapsulatedContent = try sod.getEncapsulatedContent()
-        let signedAttribsHashAlgo = try sod.getEncapsulatedContentDigestAlgorithm { reason = $0 }
-        let signedAttributes = try sod.getSignedAttributes()
-        let messageDigest = try sod.getMessageDigestFromSignedAttributes()
-        let signature = try sod.getSignature()
-        let sigType = try sod.getSignatureAlgorithm { reason = $0 }
-        
-        reason = .certificateUnavailable
-        let pubKey = try sod.getPublicKey()
-        
-        let mdHash : Data = try Data(calcHash(data: [UInt8](encapsulatedContent), hashAlgorithm: signedAttribsHashAlgo))
-        
-        // Make sure that hash equals the messageDigest
-        reason = .signedContentDigestMismatch
-        if messageDigest != mdHash {
-            // Invalid - signed data hash doesn't match message digest hash
-            throw OpenSSLError.VerifyAndReturnSODEncapsulatedData("messageDigest Hash doesn't hatch that of the signed attributes")
+        for (index, algorithm) in algorithms.enumerated() {
+            let contentDigest = try sod.getEncapsulatedContentDigestAlgorithm(signerIndex: index) { reason = $0 }
+            let signedAttributes = try sod.getSignedAttributes(signerIndex: index)
+            let messageDigest = try sod.getMessageDigestFromSignedAttributes(signerIndex: index)
+            let signature = try sod.getSignature(signerIndex: index)
+            reason = .certificateUnavailable
+            let pubKey = try sod.getPublicKey(signerIndex: index)
+            let mdHash = try Data(calcHash(data: [UInt8](encapsulatedContent), hashAlgorithm: contentDigest))
+            reason = .signedContentDigestMismatch
+            guard messageDigest == mdHash else {
+                throw OpenSSLError.VerifyAndReturnSODEncapsulatedData("Signed content digest does not match")
+            }
+            reason = .signatureInvalid
+            guard verifySODSignature(data: signedAttributes, signature: signature, publicKey: pubKey, algorithm: algorithm) else {
+                throw OpenSSLError.VerifyAndReturnSODEncapsulatedData("Unable to verify signed attributes")
+            }
         }
-        
-        // Verify signed attributes
-        reason = .signatureInvalid
-        if  !verifySignature( data : [UInt8](signedAttributes), signature : [UInt8](signature), pubKey : pubKey, digestType: sigType ) {
-            
-            throw OpenSSLError.VerifyAndReturnSODEncapsulatedData("Unable to verify signature for signed attributes")
-        }
-        
         succeeded = true
         return encapsulatedContent
     }
@@ -398,6 +429,10 @@ class OpenSSLUtils {
         }
         
         guard let key = d2i_PUBKEY_bio(inf, nil) else { throw OpenSSLError.UnableToReadECPublicKey("Failed to load") }
+        guard BIO_ctrl_pending(inf) == 0 else {
+            EVP_PKEY_free(key)
+            throw OpenSSLError.UnableToReadECPublicKey("Unexpected trailing public key data")
+        }
         return key
     }
     
@@ -464,6 +499,14 @@ class OpenSSLUtils {
         return [UInt8](outputBuf.prefix(outputLength))
     }
     
+    static func normalizedActiveAuthenticationBlock(_ block: [UInt8], key: OpaquePointer) -> [UInt8]? {
+        var normalized = block
+        let valid = normalized.withUnsafeMutableBufferPointer {
+            NFCPRNormalizeAARecovery(key, $0.baseAddress, $0.count)
+        }
+        return valid == 1 ? normalized : nil
+    }
+
     /// Reads an ECDSA Public Key  in DER  format and converts it to an OpenSSL EVP_PKEY value for use whilst verifying a ECDSA signature
     /// - Parameter data: The ECDSA key in DER forma
     /// - Returns: The EVP_PKEY value
@@ -551,7 +594,7 @@ class OpenSSLUtils {
         }
         
         let digestType = digestType.lowercased()
-        let digest = digestName(forSignatureType: digestType)
+        guard !digestType.contains("rsassapss"), let digest = digestName(forSignatureType: digestType) else { return false }
         
         // Fix for some invalid ECDSA based signatures
         // An ECDSA signature comprises of a Sequence of 2 big integers (R & S) and the verification
@@ -636,11 +679,6 @@ class OpenSSLUtils {
             return false;
         }
         
-        if digestType.contains( "rsassapss" ) {
-            EVP_PKEY_CTX_ctrl_str(pkey_ctx, "rsa_padding_mode", "pss" )
-            EVP_PKEY_CTX_ctrl_str(pkey_ctx, "rsa_pss_saltlen", "auto" )
-        }
-        
         nRes = data.withUnsafeBytes { dataPtr in
             EVP_DigestUpdate(ctx, dataPtr.baseAddress, data.count)
         }
@@ -662,23 +700,48 @@ class OpenSSLUtils {
         return true
     }
 
-    static func digestName(forSignatureType digestType: String) -> String {
-        let digestType = digestType.lowercased()
-        if digestType.contains("sha1") {
-            return "sha1"
-        } else if digestType.contains("sha224") {
-            return "sha224"
-        } else if digestType.contains("sha256") || digestType.contains("rsassapss") {
-            return "sha256"
-        } else if digestType.contains("sha384") {
-            return "sha384"
-        } else if digestType.contains("sha512") {
-            return "sha512"
-        } else if digestType.contains("ripemd160") {
-            return "ripemd160"
+    /// Apply every declared PSS parameter, including exact salt length. EVP also enforces
+    /// restrictions carried by an RSA-PSS SubjectPublicKeyInfo (RFC 4056 §3).
+    private static func verifySODSignature(data: Data, signature: Data, publicKey: OpaquePointer,
+                                           algorithm: SODSignatureAlgorithm) -> Bool {
+        guard !signature.isEmpty, signature.count <= maxSignatureInputLength,
+              let md = EVP_get_digestbyname(algorithm.digest), let ctx = EVP_MD_CTX_new() else { return false }
+        defer { EVP_MD_CTX_free(ctx) }
+        let keyType = EVP_PKEY_get_base_id(publicKey)
+        switch algorithm.padding {
+        case .rsaPKCS1: guard keyType == EVP_PKEY_RSA else { return false }
+        case .rsaPSS: guard keyType == EVP_PKEY_RSA || keyType == EVP_PKEY_RSA_PSS else { return false }
+        case .ecdsa: guard keyType == EVP_PKEY_EC else { return false }
+        case .dsa: guard keyType == EVP_PKEY_DSA else { return false }
         }
+        var keyContext: OpaquePointer?
+        guard EVP_DigestVerifyInit(ctx, &keyContext, md, nil, publicKey) == 1, let keyContext else { return false }
+        switch algorithm.padding {
+        case .rsaPSS:
+            guard let mgf = algorithm.maskDigest, let salt = algorithm.saltLength,
+                  EVP_PKEY_CTX_ctrl_str(keyContext, "rsa_padding_mode", "pss") == 1,
+                  EVP_PKEY_CTX_ctrl_str(keyContext, "rsa_mgf1_md", mgf) == 1,
+                  EVP_PKEY_CTX_ctrl_str(keyContext, "rsa_pss_saltlen", String(salt)) == 1 else { return false }
+        case .rsaPKCS1:
+            guard EVP_PKEY_CTX_ctrl_str(keyContext, "rsa_padding_mode", "pkcs1") == 1 else { return false }
+        case .ecdsa, .dsa: break
+        }
+        return data.withUnsafeBytes { bytes in
+            EVP_DigestVerifyUpdate(ctx, bytes.baseAddress, data.count)
+        } == 1 && signature.withUnsafeBytes { bytes in
+            EVP_DigestVerifyFinal(ctx, bytes.baseAddress?.assumingMemoryBound(to: UInt8.self), signature.count)
+        } == 1
+    }
 
-        return "sha256"
+    static func digestName(forSignatureType digestType: String) -> String? {
+        let normalized = digestType.lowercased()
+        for digest in ["sha1", "sha224", "sha256", "sha384", "sha512", "ripemd160"] {
+            if normalized == digest || normalized == "ecdsa-plain-" + digest
+                || normalized == "ecdsa-with-" + digest || normalized == digest + "withrsaencryption" {
+                return digest
+            }
+        }
+        return nil
     }
 
     @available(iOS 13, macOS 10.15, *)

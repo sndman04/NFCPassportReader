@@ -5,6 +5,206 @@
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
 #endif
 
+STACK_OF(X509) *NFCPRCopyCMSSignerCertificates(const unsigned char *der, size_t length) {
+    if (der == NULL || length == 0 || length > 2 * 1024 * 1024) return NULL;
+    const unsigned char *cursor = der;
+    CMS_ContentInfo *cms = d2i_CMS_ContentInfo(NULL, &cursor, (long)length);
+    if (cms == NULL || cursor != der + length) { CMS_ContentInfo_free(cms); return NULL; }
+    STACK_OF(CMS_SignerInfo) *signers = CMS_get0_SignerInfos(cms);
+    STACK_OF(X509) *certificates = CMS_get1_certs(cms);
+    STACK_OF(X509) *result = sk_X509_new_null();
+    int count = signers != NULL ? sk_CMS_SignerInfo_num(signers) : 0;
+    int ok = result != NULL && certificates != NULL && count > 0 && count <= 16;
+    for (int i = 0; ok && i < count; ++i) {
+        CMS_SignerInfo *signer = sk_CMS_SignerInfo_value(signers, i);
+        X509 *match = NULL;
+        for (int j = 0; j < sk_X509_num(certificates); ++j) {
+            X509 *candidate = sk_X509_value(certificates, j);
+            if (CMS_SignerInfo_cert_cmp(signer, candidate) != 0) continue;
+            if (match != NULL && X509_cmp(match, candidate) != 0) { ok = 0; break; }
+            match = candidate;
+        }
+        if (!ok || match == NULL || X509_up_ref(match) != 1) { ok = 0; break; }
+        if (sk_X509_push(result, match) == 0) { X509_free(match); ok = 0; }
+    }
+    sk_X509_pop_free(certificates, X509_free);
+    CMS_ContentInfo_free(cms);
+    if (!ok) { sk_X509_pop_free(result, X509_free); return NULL; }
+    return result;
+}
+
+int NFCPRMatchKnownPACEParameters(const unsigned char *der, size_t length, int ellipticCurve) {
+    if (der == NULL || length == 0 || length > 4096) return -1;
+    const unsigned char *cursor = der;
+    int result = -1;
+    if (ellipticCurve) {
+        EC_GROUP *group = d2i_ECPKParameters(NULL, &cursor, (long)length);
+        if (group == NULL || cursor != der + length) { EC_GROUP_free(group); return -1; }
+        const int curves[] = {NID_X9_62_prime192v1, NID_brainpoolP192r1, NID_secp224r1,
+            NID_brainpoolP224r1, NID_X9_62_prime256v1, NID_brainpoolP256r1,
+            NID_brainpoolP320r1, NID_secp384r1, NID_brainpoolP384r1,
+            NID_brainpoolP512r1, NID_secp521r1};
+        for (int i = 0; i < 11; ++i) {
+            EC_GROUP *known = EC_GROUP_new_by_curve_name(curves[i]);
+            if (known != NULL && EC_GROUP_cmp(group, known, NULL) == 0) result = i + 8;
+            EC_GROUP_free(known);
+            if (result >= 0) break;
+        }
+        EC_GROUP_free(group);
+    } else {
+        DH *group = d2i_DHxparams(NULL, &cursor, (long)length);
+        if (group == NULL || cursor != der + length) { DH_free(group); return -1; }
+        const BIGNUM *p = NULL, *q = NULL, *g = NULL;
+        DH_get0_pqg(group, &p, &q, &g);
+        for (int i = 0; i < 3 && p != NULL && q != NULL && g != NULL; ++i) {
+            DH *known = i == 0 ? DH_get_1024_160() : (i == 1 ? DH_get_2048_224() : DH_get_2048_256());
+            const BIGNUM *kp = NULL, *kq = NULL, *kg = NULL;
+            if (known != NULL) {
+                DH_get0_pqg(known, &kp, &kq, &kg);
+                if (BN_cmp(p, kp) == 0 && BN_cmp(q, kq) == 0 && BN_cmp(g, kg) == 0) result = i;
+            }
+            DH_free(known);
+            if (result >= 0) break;
+        }
+        DH_free(group);
+    }
+    return result;
+}
+
+int NFCPRIsPrimeCurveKey(EVP_PKEY *key) {
+    EC_KEY *ec = key != NULL ? EVP_PKEY_get1_EC_KEY(key) : NULL;
+    const EC_GROUP *group = ec != NULL ? EC_KEY_get0_group(ec) : NULL;
+    int prime = group != NULL && EC_GROUP_get_field_type(group) == NID_X9_62_prime_field;
+    EC_KEY_free(ec);
+    return prime;
+}
+
+int NFCPRNormalizeAARecovery(EVP_PKEY *key, unsigned char *block, size_t length) {
+    if (key == NULL || block == NULL || length == 0 || length > 8192
+        || length != (size_t)EVP_PKEY_get_size(key)) return 0;
+    if ((block[length - 1] & 15) == 12) return 1;
+    BIGNUM *modulus = NULL;
+    BIGNUM *value = BN_bin2bn(block, (int)length, NULL);
+    int ok = value != NULL && EVP_PKEY_get_bn_param(key, "n", &modulus) == 1
+        && BN_cmp(modulus, value) > 0 && BN_sub(value, modulus, value) == 1
+        && BN_bn2binpad(value, block, (int)length) == (int)length
+        && (block[length - 1] & 15) == 12;
+    BN_free(modulus);
+    BN_clear_free(value);
+    return ok;
+}
+
+static int NFCPRCRLMatchesIssuer(X509_CRL *crl, X509 *issuer) {
+    AUTHORITY_KEYID *authority = X509_CRL_get_ext_d2i(crl, NID_authority_key_identifier, NULL, NULL);
+    const ASN1_OCTET_STRING *subject = X509_get0_subject_key_id(issuer);
+    int matches = authority != NULL && authority->keyid != NULL && subject != NULL
+        && ASN1_OCTET_STRING_cmp(authority->keyid, subject) == 0;
+    AUTHORITY_KEYID_free(authority);
+    if (!matches) return 0;
+    ASN1_BIT_STRING *usage = X509_get_ext_d2i(issuer, NID_key_usage, NULL, NULL);
+    int authorized = usage != NULL && ASN1_BIT_STRING_get_bit(usage, 6) == 1;
+    ASN1_BIT_STRING_free(usage);
+    if (!authorized) return -1;
+    EVP_PKEY *key = X509_get_pubkey(issuer);
+    int verified = key != NULL && X509_CRL_verify(crl, key) == 1;
+    EVP_PKEY_free(key);
+    return verified ? 1 : -1;
+}
+
+static int NFCPRNewerCRL(X509_CRL *candidate, X509_CRL *current) {
+    if (current == NULL) return 1;
+    ASN1_INTEGER *a = X509_CRL_get_ext_d2i(candidate, NID_crl_number, NULL, NULL);
+    ASN1_INTEGER *b = X509_CRL_get_ext_d2i(current, NID_crl_number, NULL, NULL);
+    int newer = a != NULL && b != NULL ? ASN1_INTEGER_cmp(a, b) > 0
+        : ASN1_TIME_compare(X509_CRL_get0_lastUpdate(candidate), X509_CRL_get0_lastUpdate(current)) > 0;
+    ASN1_INTEGER_free(a); ASN1_INTEGER_free(b);
+    return newer;
+}
+
+/* Validate the entire local bundle; PEM_read alone can silently skip garbage or
+ * stop after a valid older CRL followed by a truncated replacement. */
+static int NFCPRPEMCRLCount(const unsigned char *data, size_t length) {
+    const char begin[] = "-----BEGIN X509 CRL-----", end[] = "-----END X509 CRL-----";
+    size_t offset = 0;
+    int count = 0;
+    while (offset < length) {
+        while (offset < length && (data[offset] == ' ' || data[offset] == '\t'
+            || data[offset] == '\r' || data[offset] == '\n')) ++offset;
+        if (offset == length) break;
+        if (length - offset < sizeof(begin) - 1 || memcmp(data + offset, begin, sizeof(begin) - 1) != 0) return -1;
+        offset += sizeof(begin) - 1;
+        while (length - offset >= sizeof(end) - 1 && memcmp(data + offset, end, sizeof(end) - 1) != 0) ++offset;
+        if (length - offset < sizeof(end) - 1) return -1;
+        offset += sizeof(end) - 1;
+        if (++count > 1024) return -1;
+    }
+    return count;
+}
+
+int NFCPRCheckRevocation(const unsigned char *data, size_t length, X509 *signer, X509 *issuer) {
+    if (data == NULL || length == 0 || length > 16 * 1024 * 1024 || signer == NULL || issuer == NULL) return 4;
+    int expectedCount = data[0] == 0x30 ? 0 : NFCPRPEMCRLCount(data, length);
+    if (expectedCount < 0) return 4;
+    BIO *input = BIO_new_mem_buf(data, (int)length);
+    if (input == NULL) return 4;
+    X509_CRL *latest = NULL;
+    int count = 0, invalidSignature = 0;
+    for (;;) {
+        X509_CRL *crl = PEM_read_bio_X509_CRL(input, NULL, NULL, NULL);
+        if (crl == NULL) break;
+        if (++count > 1024) { X509_CRL_free(crl); X509_CRL_free(latest); BIO_free(input); return 4; }
+        int matches = NFCPRCRLMatchesIssuer(crl, issuer);
+        if (matches < 0) invalidSignature = 1;
+        if (matches == 1 && NFCPRNewerCRL(crl, latest)) {
+            X509_CRL_free(latest); latest = crl;
+        } else { X509_CRL_free(crl); }
+    }
+    BIO_free(input);
+    ERR_clear_error();
+    if (count != expectedCount) { X509_CRL_free(latest); return 4; }
+    if (count == 0) {
+        const unsigned char *cursor = data;
+        X509_CRL *crl = d2i_X509_CRL(NULL, &cursor, (long)length);
+        int matches = crl != NULL && cursor == data + length ? NFCPRCRLMatchesIssuer(crl, issuer) : -1;
+        if (matches == 1) latest = crl;
+        else { if (matches < 0) invalidSignature = 1; X509_CRL_free(crl); }
+    }
+    if (latest == NULL) return invalidSignature ? 4 : 3;
+    int result = 1;
+    ASN1_INTEGER *number = X509_CRL_get_ext_d2i(latest, NID_crl_number, NULL, NULL);
+    BIGNUM *numberValue = number != NULL ? ASN1_INTEGER_to_BN(number, NULL) : NULL;
+    if (numberValue == NULL || BN_is_negative(numberValue)) result = 4;
+    BN_free(numberValue); ASN1_INTEGER_free(number);
+    if (X509_CRL_get_version(latest) != 1 || X509_CRL_get_ext_by_NID(latest, NID_crl_number, -1) < 0
+        || X509_CRL_get_ext_by_NID(latest, NID_delta_crl, -1) >= 0
+        || X509_CRL_get_ext_by_NID(latest, NID_issuing_distribution_point, -1) >= 0) result = 4;
+    for (int i = 0; i < X509_CRL_get_ext_count(latest); ++i) {
+        X509_EXTENSION *extension = X509_CRL_get_ext(latest, i);
+        if (X509_EXTENSION_get_critical(extension)) result = 4;
+    }
+    STACK_OF(X509_REVOKED) *entries = X509_CRL_get_REVOKED(latest);
+    for (int i = 0; entries != NULL && i < sk_X509_REVOKED_num(entries); ++i) {
+        X509_REVOKED *entry = sk_X509_REVOKED_value(entries, i);
+        for (int j = 0; j < X509_REVOKED_get_ext_count(entry); ++j) {
+            if (X509_EXTENSION_get_critical(X509_REVOKED_get_ext(entry, j))) result = 4;
+        }
+    }
+    if (result == 1) {
+        int before = X509_cmp_current_time(X509_CRL_get0_lastUpdate(latest));
+        const ASN1_TIME *next = X509_CRL_get0_nextUpdate(latest);
+        int after = next != NULL ? X509_cmp_current_time(next) : 0;
+        if (before == 0 || after == 0) result = 4;
+        else if (before > 0) result = 6;
+        else if (after < 0) result = 5;
+    }
+    if (result == 1) {
+        X509_REVOKED *revoked = NULL;
+        if (X509_CRL_get0_by_serial(latest, &revoked, X509_get0_serialNumber(signer)) == 1) result = 2;
+    }
+    X509_CRL_free(latest);
+    return result;
+}
+
 EVP_PKEY *NFCPRCreateDHMappedParameters(
     EVP_PKEY *mappingKey,
     const unsigned char *passportPublicKey,

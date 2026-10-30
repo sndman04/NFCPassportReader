@@ -9,6 +9,7 @@ public enum PassportDiagnosticStatus: String, Sendable, Encodable {
 public enum PassportDiagnosticReason: String, Sendable, Encodable {
     case none, notRequested, missingSOD, missingMasterList, missingDataGroup, prerequisiteFailed
     case notSupported, skippedByConfiguration, malformedStructure, unsupportedVersion, unsupportedAlgorithm
+    case revocationListUnavailable, revocationListInvalid, revocationListExpired, revocationListNotYetValid
     case signatureInvalid, signedContentDigestMismatch, hashMismatch, hashNotCovered, noHashesCompared
     case certificateUnavailable, trustStoreUnavailable, issuerNotFound, certificateExpired, certificateNotYetValid
     case certificateSignatureInvalid, certificateRevoked, invalidCertificatePurpose, chainInvalid
@@ -21,6 +22,7 @@ public enum PassportDiagnosticSubsystem: String, Sendable, Encodable {
 }
 
 public enum PassportDiagnosticOperation: String, Sendable, Encodable {
+    case checkRevocation
     case scan, connect, invalidateSession, sendCommand, parseDataGroup, parseSOD
     case manualVerification, cmsVerification, compareHashes, validateChain, activeAuthentication, chipAuthentication
 }
@@ -110,6 +112,11 @@ public enum PassportDiagnosticAlgorithm: String, Sendable, Encodable {
     case rsaSHA512 = "1.2.840.113549.1.1.13"
     case rsaPSS = "1.2.840.113549.1.1.10"
     case mgf1 = "1.2.840.113549.1.1.8"
+    case dsaSHA1 = "1.2.840.10040.4.3"
+    case dsaSHA224 = "2.16.840.1.101.3.4.3.1"
+    case dsaSHA256 = "2.16.840.1.101.3.4.3.2"
+    case dsaSHA384 = "2.16.840.1.101.3.4.3.3"
+    case dsaSHA512 = "2.16.840.1.101.3.4.3.4"
     case ecdsaSHA1 = "1.2.840.10045.4.1"
     case ecdsaSHA224 = "1.2.840.10045.4.3.1"
     case ecdsaSHA256 = "1.2.840.10045.4.3.2"

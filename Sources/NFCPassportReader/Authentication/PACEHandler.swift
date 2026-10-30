@@ -117,6 +117,9 @@ class PACEHandler {
             throw NFCPassportReaderError.NotYetSupported( "PACE not supported" )
         }
         
+        guard paceInfo.isImplementedForReading else {
+            throw NFCPassportReaderError.PACEError("Initialization", "Unsupported or untrusted domain parameters")
+        }
         paceOID = paceInfo.getObjectIdentifier()
         parameterSpec = try paceInfo.getParameterSpec()
         
@@ -694,7 +697,7 @@ extension PACEHandler {
     }
 
     private func integratedMappingPrimeBitLength() throws -> Int {
-        switch paceInfo.getParameterId() {
+        switch paceInfo.effectiveStandardParameterId {
         case PACEInfo.PARAM_ID_GFP_1024_160:
             return 1024
         case PACEInfo.PARAM_ID_GFP_2048_224, PACEInfo.PARAM_ID_GFP_2048_256:

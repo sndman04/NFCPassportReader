@@ -46,3 +46,10 @@ This script is pretty much based on the details from http://wiki.yobi.be/wiki/EP
 
 - `generate_diagnostic_fixtures.py`: creates the independent synthetic signed v0/v1 diagnostic corpus and test-only diagnostic CSCA. Requires Python cryptography; never saves private keys or modifies existing signed-passport fixtures. See `Tests/README.md`.
 - `generate_sod_version_fixtures.py`: adds the signed SOD version/structure corpus and its own test-only CSCA. Preserves the original rc.5 signed v0/v1 fixtures and their root; requires Python cryptography and never saves private keys. See `Tests/README.md`.
+
+
+## Synthetic standards fixtures
+
+The `generate_*` scripts are test-only corpus generators, separate from trust-store extraction. New profiles cover SOD versions, CMS/PSS/signer binding, ISO/IEC 39794-5 faces, PACE explicit parameters, AA and offline CRLs. See [Tests/README.md](../Tests/README.md) for provenance and regeneration. They persist public parameters, synthetic certificates/CRLs, signed content and generated non-person images; private keys are generated in memory and never saved. Do not run them against real passport exports or replace the unchanged original v0/v1 acceptance fixtures. `generate_face_profiles.py` needs Pillow, signing generators need Python cryptography, and explicit EC/DH generation uses the installed OpenSSL CLI.
+
+`release_check.sh` is the prescribed iOS regression gate. Its external API probe includes the optional local CRL configuration and revocation policy while continuing to require unsafe internal APIs to be inaccessible.

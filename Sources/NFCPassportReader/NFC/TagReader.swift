@@ -175,7 +175,7 @@ class TagReader {
     }
 
     nonisolated static func mseKeyIdentifierData(keyId: Int?) throws -> [UInt8]? {
-        guard let keyId, keyId != 0 else {
+        guard let keyId else {
             return nil
         }
 

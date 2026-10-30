@@ -1,5 +1,77 @@
 # NFCPassportReader Fork Plan
 
+## 2026-10-30 standards compatibility and security correction (privacy.6-rc.7)
+
+Status: implemented in the fork source repository on short-lived `feature/standards-compatibility`, based on local main `66d3aac` (rc.6 production code). The published/app compatibility baseline remains rc.5 / `6bd05b8b9ab5207f361c879044e8527a6d332cfe`. The user expanded the original SOD-only task to implement the identified ordinary-passport standards gaps and audit further coverage. They explicitly chose **“Separate restricted workflows”** for Terminal Authentication/LDS2. No app/backend/generated-checkout changes, production credentials or real passport data are included. The new immutable annotated candidate is `notary-2.3.1-privacy.6-rc.7`; publication remains blocked by repository write permissions, as detailed in release status below.
+
+### Findings and decisions
+
+The original SOD v1 defect and its rc.6 fix are recorded below. Its acceptance escape was a test-design error: the rc.5 test required rejection of valid independently signed v1. The signed original v0/v1 fixtures remain byte-for-byte unchanged. A new independently enumerated [standards coverage inventory](STANDARDS_COVERAGE.md) now distinguishes positive acceptance, malformed rejection, resource limits, intentional exclusions and unverified physical combinations.
+
+The broader audit confirmed two additional **security defects**, not just compatibility limits. An isolated archive of unchanged rc.6 production code (`e0fad5d`) ran two new regression methods: **2 tests, 4 expected failed assertions**. It accepted a PSS signature whose actual salt length contradicted its declaration, and accepted trusted-passive policy for an untrusted actual signer when an unrelated trusted certificate occupied the first certificate position. The old verifier/trust code is unchanged between rc.5 and rc.6; this also implicates the published baseline. Current `SignatureProfileTests` requires rejection of both cases and passes. Logs and isolated copy are ignored under `tmp/standards-implementation/`; no maintained branch was reset or modified for the reproduction. An initial test invocation in the wrong directory selected zero tests and is explicitly **not** evidence; the corrected archive-directory run produced the failures above.
+
+Normative clauses are linked in [STANDARDS_COVERAGE.md](STANDARDS_COVERAGE.md#standards-basis). In addition to Part 10 §§4.6.2.1–4.6.2.3/Table 37/Appendix D for SOD, this work uses Part 10 §4.5.6 and the August 2023 39794-5 TR §§2–5/Annex A; Part 11 §§6.1.2, 6.2.3–6.2.4, 9.2.1–9.2.7, 9.5/Table 12 and 8.3; Part 12 §§4.1.6.1–4.1.6.4, 6.1.2 and Appendix D.3; RFC 5652 §§5.3–5.6 and RFC 4055 §3/RFC 4056 §§2.2–3. The official large Part 11 PDF was read through local text extraction. Schema attribution/license is in THIRD_PARTY_NOTICES.md.
+
+### Implementation and acceptance
+
+- Typed SOD algorithm validation enforces PSS hash, MGF1 hash, salt, trailer and public-key restrictions, including defaults; RSA PKCS#1, DSA and ECDSA profiles are covered. Generic rsaEncryption now passes manual verification directly. An allowed PSS content/signature-digest variation provides actual CMS-to-manual fallback. The signature, signed-content digest, LDS parser, group hashes and trust results remain independent. Exact CMS field placement and SignerInfo structure are checked before verification.
+- Both verifiers use SID-matched signer certificates, including issuer/serial and SKI; certificate-set order is irrelevant. All signatures must pass; all corresponding chains must pass trusted verification. Ambiguous/missing signer certificates fail. Native wrappers have explicit ownership/size bounds. 143 independently generated signed profiles include 100 digest × MGF × salt combinations, restricted PSS SPKI cases, DSA SHA-224/256/384/512, explicit EC certificate parameters, certificate order, multiple signers and adversarial mismatches. Both preference configurations, policies and immutable redacted snapshots are exercised.
+- DG2 adds the ICAO ISO/IEC 39794-5 profile for JPEG/JPEG 2000 with multiple templates, explicit field boundaries, image size/resource limits and future extensions. Legacy 19794 remains. Twenty-five independent profiles (7 valid, 18 malformed) include signed v1 SODs, actual reader/result/photo decoding, both verifier orders, strict/trusted policy, truncation and scrubbed snapshots. Images are generated solid rectangles. Optional ancillary measurement fields are bounded/discarded rather than exposed as a biometric-analysis API.
+- CardAccess resolves explicit PACE parameters only when they match one of the 14 known standard groups; preserves local wire IDs; rejects conflicting/reserved/named/unsafe parameters before credential exchanges; selects available standard alternatives. P-224/IM exclusion is enforced. The test inventory derives 19 OIDs from the specification instead of iterating only the implementation allowlist: 141 permitted algorithm/parameter conversations plus 38 explicit-parameter conversations, complemented by retained independent ICAO vectors.
+- AA validates RSA recovery header/trailers and normal/complement recovery, requires declared permitted ECDSA hash metadata, checks hash/key sizes and prime/uncompressed EC keys, and rejects trailing public-key bytes. Forty-four independently generated RSA/ECDSA profiles plus compressed/binary/trailing-key negatives cover policy and privacy outcomes. The original independent AA response is retained with the required synthetic DG14 algorithm metadata added by its test.
+- The second audit found CA silently omitted explicit key ID zero and rejected valid same-key cipher alternatives. These are fixed: choose AES then larger symmetric keys, preserve key ID zero, reject contradictory version/key families/ambiguous identifiers, tolerate identical metadata, and require new-session authenticated confirmation. Fifty-six conversations span all 8 OIDs and compatible standard DH/EC parameters, with corrupt confirmation for every OID and a same-key cipher-selection conversation. Generated peers share native primitives; this does not replace independent vectors or physical testing.
+- Optional offline document-signer CRLs support a local PEM bundle or one DER CRL. Bind AKI and signature to the actual direct issuer with CRL-signing usage, including a CSCA link chain and issuer-name changes; choose the highest authenticated CRL number; check time interval, serial status and profile constraints. Reject malformed/truncated bundles, invalid signatures/critical extensions/delta/indirect structures and stale/future lists. Thirteen profiles plus link-chain and unauthorized-CRL-key cases cover both verifier orders, policy, prerequisites and scrubbing. Multiple-signer revocation success is only published after all checks pass. No network retrieval occurs.
+
+### API, privacy and migration
+
+Existing reader call signatures/defaults remain usable, including the trailing diagnostic closure. Additive CRL configuration and `requiresRevocationCheck` default off. Existing `.notaryStrict` still requires passive integrity only; trust, revocation, all-advertised-group coverage and photo presence are separate guarantees. Configuring invalid/stale/unavailable/revoking CRLs fails trusted verification. The new policy additionally requires trusted passive authentication and revocation success.
+
+Migration notes document new revocation status/reason cases and diagnostic DSA/revocation enum values, unconfigured `.notConfigured` replacing the old runtime `.notImplemented`, direct-issuer metadata for link chains, stricter malformed acceptance and changed fallback outcomes. Diagnostic schema 1 retains its structure; metadata remains declared/first-signer representative while aggregate results cover all signers. Exhaustive client enum switches may need new cases/default handling. No raw certificate/key/challenge/hash/image/APDU/identity data is added to public diagnostics or logs. Logging remains off by default; model/handler cleanup and immutable failure snapshots remain intact. Local CRL reads are the only new runtime I/O; generators persist only synthetic signed/public test artifacts and never private keys. Managed-memory erasure remains best effort.
+
+### Verification
+
+Final prescribed release workflow: **463 iOS Simulator XCTest methods, zero failures**; generic iOS build and build-for-testing, external safe/unsafe API compatibility probes (including CRL and original trailing-closure calls), privacy scan, NFC actor-boundary scan, whitespace check and targeted risky-pattern review passed. Exact command:
+
+```sh
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer scripts/release_check.sh
+```
+
+The script executes these commands from the source repository:
+
+```sh
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme NFCPassportReader -destination generic/platform=iOS build-for-testing
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5'
+scripts/api_surface_check.sh
+scripts/privacy_scan.sh
+scripts/nfc_boundary_check.sh
+git diff --check
+```
+
+Final focused checks (same Xcode environment/destination) included:
+
+```sh
+# 89 tests, zero failures: CA conversations and core regressions.
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:NFCPassportReaderTests/ChipAuthenticationConversationTests -only-testing:NFCPassportReaderTests/NFCPassportReaderTests
+# 134 tests, zero failures: signed profile/trust/CRL and parser audit.
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:NFCPassportReaderTests/RevocationProfileTests -only-testing:NFCPassportReaderTests/SignatureProfileTests -only-testing:NFCPassportReaderTests/DataGroupParsingTests
+# Run in ignored tmp/standards-implementation/rc6-regression, the unchanged rc.6 archive:
+# 2 tests, 4 EXPECTED failed assertions demonstrating the old security defects.
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -scheme NFCPassportReader -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:NFCPassportReaderTests/SignatureBaselineRegressionTests
+# Original independently signed v0/v1 artifacts unchanged from published baseline:
+git diff --exit-code 6bd05b8 -- Tests/NFCPassportReaderTests/Fixtures/diagnostic-passports.json Tests/NFCPassportReaderTests/Fixtures/diagnostic-csca.pem Tests/NFCPassportReaderTests/Fixtures/signed-passports.json
+```
+
+Logs: ignored `tmp/standards-implementation/final-release-check.log`, `ca-alternatives-tests.log`, `trust-audit-tests.log`, `rc6-security-regression.log` and earlier focused logs. Intermediate assertions were corrected for intentional generic-RSA success/fallback changes, deterministic snapshot JSON ordering, and a truncated-splice case that was actually valid ASN.1; explicit EC cofactor normalization was caught and hardened. A throwing-expression compiler error in CA suite selection was fixed before final validation. No failing final checks or changed-code compiler warnings remain. Known external XCTest AppIntents metadata warnings are safe to leave because the bundle has no AppIntents dependency/functionality; package destination metadata messages are external. Expected-red tests triggered Xcode's known simulator diagnostic-collection `simctl` lookup error; final passing tests did not depend on that collector. The unsafe API probe intentionally requires compile rejection. `swift test` was not used for this iOS-focused package.
+
+Targeted logging review found only existing typed events/fixed errors, synthetic test sentinels/public vectors and native type names. No new raw logging, persistence or network sink was introduced. New docs, scripts and allowlisted roots are reviewed with the production diff; original signed fixture files are unchanged.
+
+### Release status and remaining work
+
+The maintained local main contains the completed work with annotated `notary-2.3.1-privacy.6-rc.7`; resolve its exact revision using `git rev-parse 'notary-2.3.1-privacy.6-rc.7^{}'`. Prior rc.6/rc.5 tags are immutable and unchanged. The known GitHub HTTP 403 publication blocker remains external; no app pin changes until an authorized writer publishes and verifies the tag. The publication command is `git push --atomic origin main refs/tags/notary-2.3.1-privacy.6-rc.6 refs/tags/notary-2.3.1-privacy.6-rc.7`; never force or replace existing tags. Before-ref inspection confirmed origin/HEAD -> main, remote main/rc.5 at 6bd05b8, upstream/2.3.1 at 7dfc19c, and notary/2.3.0-baseline at deec449. No upstream upgrade, force push or history rewrite is needed.
+
+The [remaining-work inventory](STANDARDS_COVERAGE.md#remaining-work-after-the-second-audit) is the current follow-up list: physical document/device/RF and app validation; separate TA/LDS2 credential/API project; authenticated trust-store distribution, CRL refresh/anti-rollback and CSCA/root revocation operations; broader independent conformance/fuzz corpora for optional metadata, uncommon issuer paths and curve/device combinations. No claim of complete passport conformance is made. All new validation is synthetic/offline, iOS Simulator or generic iOS compilation; **zero physical-passport validation** was performed.
+
 ## 2026-10-30 support-boundary review after SOD v1
 
 Status: source/specification review of local rc.6 production code. This is an inventory and prioritization of gaps, not completion of another protocol implementation or a comprehensive conformance audit. Production code, tests, public APIs and the rc.6 tag are unchanged. The publication permission blocker remains as recorded below.

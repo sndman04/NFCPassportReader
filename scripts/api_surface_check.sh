@@ -66,6 +66,12 @@ public func compileSafePassportReaderSurface() {
     let _: PassportDiagnosticSnapshot? = reader.lastDiagnosticSnapshot
     reader.passiveAuthenticationUsesOpenSSL = false
     reader.setMasterListURL(URL(fileURLWithPath: "/tmp/masterList.pem"))
+    reader.setCertificateRevocationListURL(URL(fileURLWithPath: "/tmp/local-crls.pem"))
+    _ = PassportReader(certificateRevocationListURL: URL(fileURLWithPath: "/tmp/local-crls.pem"))
+    _ = PassportReader { _ in } // Preserve the pre-existing trailing diagnostic closure.
+    _ = PassportReaderSecurityPolicy(verificationRequirement: .trustedPassiveAuthentication, requiresRevocationCheck: true)
+    _ = PassportCertificateRevocationCheck(status: .failed, reason: .invalidList)
+    _ = PassportDiagnosticReason.revocationListExpired
     reader.cancelRead()
 
     let options = PassportScanOptions(

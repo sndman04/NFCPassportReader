@@ -168,17 +168,14 @@ final class DiagnosticSnapshotTests: XCTestCase {
         }
     }
 
-    func testRealManualToCMSFallbackKeepsBothOutcomes() throws {
+    func testGenericRSAEncryptionNowPassesManualVerificationDirectly() throws {
         let model = try makeModel(load("rsa_encryption"))
         model.verifyPassport(masterListURL: try root())
         let value = model.makeDiagnosticSnapshot(attemptID: 1, outcome: .succeeded)
-        XCTAssertTrue(value.sod.manualVerifier.attempted)
-        XCTAssertEqual(value.sod.manualVerifier.status, .unsupported)
-        XCTAssertEqual(value.sod.manualVerifier.reason, .unsupportedAlgorithm)
-        XCTAssertTrue(value.sod.cmsVerifier.attempted)
-        XCTAssertEqual(value.sod.cmsVerifier.status, .succeeded)
-        XCTAssertTrue(value.sod.fallbackAttempted)
-        XCTAssertEqual(value.sod.successfulVerifier, .cms)
+        XCTAssertEqual(value.sod.manualVerifier.status, .succeeded)
+        XCTAssertEqual(value.sod.cmsVerifier.status, .notAttempted)
+        XCTAssertFalse(value.sod.fallbackAttempted)
+        XCTAssertEqual(value.sod.successfulVerifier, .manual)
         XCTAssertEqual(value.sod.signatureAlgorithm?.identifier, .rsaEncryption)
         XCTAssertNoThrow(try PassportScanOptions.notaryStrict.securityPolicy.validate(model))
     }
@@ -227,7 +224,7 @@ final class DiagnosticSnapshotTests: XCTestCase {
             if profile == "unknown_signature" {
                 XCTAssertEqual(value.sod.signatureAlgorithm?.identifier, .unrecognized)
                 XCTAssertEqual(value.sod.manualVerifier.status, .unsupported)
-                XCTAssertEqual(value.sod.cmsVerifier.status, .failed)
+                XCTAssertEqual(value.sod.cmsVerifier.status, .unsupported)
                 XCTAssertEqual(value.verification.dataGroupHashes.status, .succeeded)
             } else {
                 XCTAssertEqual(value.verification.sodSignature.status, .succeeded)
@@ -579,6 +576,9 @@ final class DiagnosticSnapshotTests: XCTestCase {
         for tamper in [false, true] {
             let model = NFCPassportModel()
             model.addDataGroup(.DG15, dataGroup: try DataGroup15(bytes(fixture, "dg15")))
+            let aa = wrapDO(b: 0x30, arr: oidToBytes(oid: "2.23.136.1.1.5", replaceTag: false) + [2, 1, 1]
+                + oidToBytes(oid: "0.4.0.127.0.7.1.1.4.1.3", replaceTag: false))
+            model.addDataGroup(.DG14, dataGroup: try DataGroup14(wrapDO(b: 0x6E, arr: wrapDO(b: 0x31, arr: aa))))
             var response = try bytes(fixture, "response")
             if tamper { response[0] ^= 1 }
             model.verifyActiveAuthentication(challenge: try bytes(fixture, "challenge"), signature: response)
