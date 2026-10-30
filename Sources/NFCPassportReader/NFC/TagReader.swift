@@ -16,6 +16,8 @@ import Foundation
 // Revocation is checked after every transport suspension before using a response.
 @MainActor
 class TagReader {
+    var diagnosticHandler: ((PassportDiagnosticFailure) -> Void)?
+
     nonisolated private static let maxChainedResponseBytes = 2 * 1024 * 1024
     nonisolated private static let maxGetResponseSegments = 512
     nonisolated private static let initialFileHeaderReadLength = 6
@@ -46,6 +48,7 @@ class TagReader {
     func disconnect() {
         clearAuthenticationState()
         transport = nil
+        diagnosticHandler = nil
     }
 
     func overrideDataAmountToRead( newAmount : Int ) {
@@ -429,6 +432,7 @@ class TagReader {
             do {
                 rep = try sm.unprotect(rapdu: rep, useDO85: cmd.instructionCode & 1 == 1)
             } catch {
+                diagnosticHandler?(.capture(error, stage: .unknown, operation: .sendCommand))
                 clearAuthenticationState()
                 if case NFCPassportReaderError.InvalidResponseChecksum = error { throw error }
                 throw NFCPassportReaderError.UnableToUnprotectAPDU
@@ -442,6 +446,8 @@ class TagReader {
             hasData: responseDataCanBeUsed && !rep.data.isEmpty
         )
         if !Self.isSuccessStatus(sw1: rep.sw1, sw2: rep.sw2), !readBinaryEndOfFileWarning {
+            diagnosticHandler?(.init(subsystem: .transport, operation: .sendCommand, reason: .responseStatus,
+                                     statusWord: UInt16(rep.sw1) << 8 | UInt16(rep.sw2)))
             let tagError: NFCPassportReaderError
             if cmd.instructionCode == 0x82, rep.sw1 == 0x63, rep.sw2 == 0x00 {
                 tagError = NFCPassportReaderError.InvalidMRZKey
@@ -464,6 +470,9 @@ class TagReader {
             try Task.checkCancellation()
             return response
         } catch {
+            if self.transport != nil {
+                diagnosticHandler?(.capture(error, stage: .unknown, operation: .sendCommand))
+            }
             throw PassportAccessRecovery.interruption(from: error) ?? (error as? NFCPassportReaderError) ?? .UnexpectedError
         }
     }

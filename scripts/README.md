@@ -43,3 +43,5 @@ This can then be imported into the NFCPassportReader app and used to verify an e
 
 ## Credits
 This script is pretty much based on the details from http://wiki.yobi.be/wiki/EPassport with some additional bits for de-duplicating certificates. 
+
+- `generate_diagnostic_fixtures.py`: creates the independent synthetic signed v0/v1 diagnostic corpus and test-only diagnostic CSCA. Requires Python cryptography; never saves private keys or modifies existing signed-passport fixtures. See `Tests/README.md`.

@@ -21,14 +21,27 @@ class DataGroupParser {
     static let tagNameLookup: [UInt8: String] = Dictionary(uniqueKeysWithValues: zip(tags, dataGroupNames))
     
     
-    func parseDG( data : [UInt8] ) throws -> DataGroup {
+    func parseDG( data : [UInt8], diagnostic: ((PassportParserDiagnostic) -> Void)? = nil ) throws -> DataGroup {
         guard let tag = data.first else {
             throw NFCPassportReaderError.UnknownTag
         }
         
         let dg = try tagToDG(tag)
 
-        return try dg.init(data)
+        do {
+            return try dg.init(data)
+        } catch {
+            // Re-inspect structure only on failure. Never expose body bytes or values.
+            var metadata = PassportParserDiagnostic(actualTag: Int(tag), actualLength: data.count, offset: 0)
+            if let (length, header) = try? asn1Length(data.dropFirst().prefix(5)) {
+                metadata = .init(actualTag: Int(tag), expectedLength: length, actualLength: max(0, data.count - header - 1), offset: 1)
+                if tag == 0x77, length <= data.count - header - 1 {
+                    _ = try? SimpleASN1Node.parse(Array(data[(header + 1)..<(header + 1 + length)])) { metadata = $0 }
+                }
+            }
+            diagnostic?(metadata)
+            throw error
+        }
     }
     
     

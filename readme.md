@@ -283,3 +283,9 @@ I'd like to thank the writers of pypassport (Jean-Francois Houzard and Olivier R
 The EPassport section on YobiWiki (http://wiki.yobi.be/wiki/EPassport)  This has been an invaluable resource especially around Passive Authentication.
 
 Marcin Krzyżanowski for his OpenSSL-Universal repo.
+
+### Diagnostic snapshots on success and failure
+
+`PassportReader` accepts an optional `diagnosticHandler` that receives one immutable, versioned `PassportDiagnosticSnapshot` per completed scan, including early failures, cancellation and timeout. `lastDiagnosticSnapshot` exposes the latest completed attempt; successful `PassportChipReadResult` values also include `diagnosticSnapshot`. Snapshots preserve both verifier outcomes, independent verification failures, allowlisted SOD/algorithm metadata, hash coverage and safe numeric failure context before raw-model scrubbing. Logging remains off by default, and existing custom `PassportReaderLogging` sinks continue unchanged.
+
+See [diagnostic schema and integration example](DIAGNOSTICS.md) for every field's availability, concurrency and retention rules, remaining gaps, and candidate pin/repinning guidance. Existing scan acceptance is unchanged: valid signed SOD v1 documents still fail the current v0-only LDS parser, now with explicit diagnostic evidence. This change does not fix that parser or alter RSA-PSS verification.

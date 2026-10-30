@@ -154,6 +154,9 @@ final class ScanLifecycleTests: XCTestCase {
         XCTAssertEqual(transport.commands, [0xA4])
         XCTAssertEqual(events.values.last, .chipAuthenticationSucceeded)
         XCTAssertFalse(events.values.contains(.bacStarted))
+        reader.failActiveScan(error: .UserCanceled, scanID: id)
+        XCTAssertEqual(reader.lastDiagnosticSnapshot?.verification.chipAuthentication.status, .succeeded)
+        XCTAssertEqual(reader.lastDiagnosticSnapshot?.verification.chipAuthentication.attempted, true)
     }
 
     func testChipAuthenticationRecoveryPreservesBACKeyRejection() async throws {
@@ -169,6 +172,8 @@ final class ScanLifecycleTests: XCTestCase {
         XCTAssertTrue(events.values.contains(.chipAuthenticationFailedFallbackToBAC))
         XCTAssertEqual(reader.privacySafeFailure(for: .InvalidMRZKey).stage, .bac)
         XCTAssertFalse(events.values.contains(.complete))
+        XCTAssertEqual(reader.lastDiagnosticSnapshot?.verification.chipAuthentication.status, .failed)
+        XCTAssertEqual(reader.lastDiagnosticSnapshot?.verification.chipAuthentication.attempted, true)
     }
 
     func testChipAuthenticationInterruptionAndIntegrityNeverStartBAC() async throws {
@@ -392,7 +397,7 @@ final class LifecycleTransport: PassportTagTransport {
 }
 
 @MainActor
-private final class DeferredLifecycleTransport: PassportTagTransport {
+final class DeferredLifecycleTransport: PassportTagTransport {
     private var pending: CheckedContinuation<(Data, UInt8, UInt8), Error>?
     private var waiter: CheckedContinuation<Void, Never>?
     private(set) var commands: [UInt8] = []

@@ -8,7 +8,7 @@
 import Foundation
 
 @available(iOS 13, macOS 10.15, *)
-public enum PassportReaderScanStage: Sendable, Equatable, CustomStringConvertible {
+public enum PassportReaderScanStage: Sendable, Equatable, Encodable, CustomStringConvertible {
     case unknown
     case waitingForPassport
     case connecting
@@ -21,6 +21,30 @@ public enum PassportReaderScanStage: Sendable, Equatable, CustomStringConvertibl
     case activeAuthentication
     case passiveAuthentication
     case securityPolicyValidation
+
+    private enum CodingKeys: String, CodingKey { case name, dataGroup }
+
+    /// Stable structural encoding used by diagnostic schema version 1.
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        let name: String
+        switch self {
+        case .unknown: name = "unknown"
+        case .waitingForPassport: name = "waitingForPassport"
+        case .connecting: name = "connecting"
+        case .pace: name = "pace"
+        case .bacFallbackPreparation: name = "bacFallbackPreparation"
+        case .bac: name = "bac"
+        case .readingDataGroup(let group):
+            name = "readingDataGroup"
+            try container.encode(group, forKey: .dataGroup)
+        case .chipAuthentication: name = "chipAuthentication"
+        case .activeAuthentication: name = "activeAuthentication"
+        case .passiveAuthentication: name = "passiveAuthentication"
+        case .securityPolicyValidation: name = "securityPolicyValidation"
+        }
+        try container.encode(name, forKey: .name)
+    }
 
     public var description: String {
         switch self {

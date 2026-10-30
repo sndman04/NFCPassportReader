@@ -110,6 +110,27 @@ class SOD : DataGroup {
         asn1Root = try SimpleASN1Node.parse(body)
     }
 
+    /// Metadata probing never changes verifier selection or acceptance.
+    func captureDiagnosticMetadata(into evidence: inout PassportDiagnosticEvidence) {
+        evidence.stages[.envelope] = .passed
+        do {
+            let signedData = try signedDataItem()
+            evidence.stages[.signedData] = .passed
+            evidence.contentDigest = PassportAlgorithmDiagnostic.read(
+                signedData.children.dropFirst().first?.children.first, role: .digest)
+        } catch {
+            evidence.stages[.signedData] = .failed(.capture(error, stage: .passiveAuthentication, operation: .parseSOD))
+        }
+        do {
+            let signer = try signerInfoItem()
+            evidence.stages[.signerInfo] = .passed
+            evidence.signerDigest = PassportAlgorithmDiagnostic.read(signer.children.dropFirst(2).first, role: .digest)
+            evidence.signature = PassportAlgorithmDiagnostic.read(try signatureAlgorithmItem(in: signer), role: .signature)
+        } catch {
+            evidence.stages[.signerInfo] = .failed(.capture(error, stage: .passiveAuthentication, operation: .parseSOD))
+        }
+    }
+
     private func signedDataItem() throws -> SimpleASN1Node {
         guard let asn1Root,
               asn1Root.tag == 0x30,
@@ -227,17 +248,20 @@ class SOD : DataGroup {
     /// Gets the digest algorithm used to hash the encapsulated content in the signed data section (if present)
     /// - Returns: The digest algorithm used to hash the encapsulated content in the signed data section
     /// - Throws: Error if we can't find or read the digest algorithm
-    func getEncapsulatedContentDigestAlgorithm() throws -> String {
+    func getEncapsulatedContentDigestAlgorithm(diagnostic: ((PassportDiagnosticReason) -> Void)? = nil) throws -> String {
         let signedData = try signedDataItem()
         guard let digestAlgorithms = signedData.children.dropFirst().first,
               digestAlgorithms.tag == 0x31,
               !digestAlgorithms.children.isEmpty,
               digestAlgorithms.children.allSatisfy({ $0.tag == 0x30 }),
-              let digestAlgorithmOID = digestAlgorithms.children.first?.children.first?.objectIdentifier,
-              let digestAlgorithm = Self.digestAlgorithmNamesByOID[digestAlgorithmOID] else {
+              let digestAlgorithmOID = digestAlgorithms.children.first?.children.first?.objectIdentifier else {
             throw OpenSSLError.UnableToExtractSignedDataFromPKCS7("Data in invalid format")
         }
         
+        guard let digestAlgorithm = Self.digestAlgorithmNamesByOID[digestAlgorithmOID] else {
+            diagnostic?(.unsupportedAlgorithm)
+            throw OpenSSLError.UnableToExtractSignedDataFromPKCS7("Data in invalid format")
+        }
         return digestAlgorithm
     }
     
@@ -314,14 +338,17 @@ class SOD : DataGroup {
     /// Gets the signature algorithm used (if present)
     /// - Returns: the signature algorithm used
     /// - Throws: Error if we can't find or read the signature algorithm
-    func getSignatureAlgorithm( ) throws -> String {
+    func getSignatureAlgorithm(diagnostic: ((PassportDiagnosticReason) -> Void)? = nil) throws -> String {
         let signerInfo = try signerInfoItem()
         let signatureAlgorithm = try signatureAlgorithmItem(in: signerInfo)
-        guard let signatureAlgorithmOID = signatureAlgorithm.children.first?.objectIdentifier,
-              let signatureAlgorithmName = Self.signatureAlgorithmNamesByOID[signatureAlgorithmOID] else {
+        guard let signatureAlgorithmOID = signatureAlgorithm.children.first?.objectIdentifier else {
             throw OpenSSLError.UnableToExtractSignedDataFromPKCS7("Data in invalid format")
         }
         
+        guard let signatureAlgorithmName = Self.signatureAlgorithmNamesByOID[signatureAlgorithmOID] else {
+            diagnostic?(.unsupportedAlgorithm)
+            throw OpenSSLError.UnableToExtractSignedDataFromPKCS7("Data in invalid format")
+        }
         // Vals I've seen are:
         // sha1WithRSAEncryption => default pkcs1
         // sha256WithRSAEncryption => default pkcs1

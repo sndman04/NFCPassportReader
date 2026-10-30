@@ -137,3 +137,11 @@ Do not use low-level BAC/session-key APIs from app code. This fork keeps BAC key
 - Run an on-device passport scan.
 - Validate `.notaryStrict` against real passports before making it mandatory in production, especially when the master list is absent or incomplete.
 - Confirm Xcode console output contains no MRZ/access-key/APDU/key/data-group/photo byte dumps.
+
+## notary-2.3.1-privacy.6-rc.5: diagnostic snapshot API from rc.4 / 09eca86
+
+No existing call-site changes are required. Add `diagnosticHandler:` to the concrete `PassportReader` initializer to copy a `PassportDiagnosticSnapshot` on every success/failure. This delivery is independent of `logLevel`; keep the app's custom typed logger. Use `lastDiagnosticSnapshot` in `catch` when no newer scan has begun, or use the handler for reliable association by reader-local `attemptID`. Successful results add optional `diagnosticSnapshot`. The existing reading protocol and error/log/progress enum shapes remain unchanged. `DataGroupId` and `PassportReaderScanStage` gain `Encodable` conformance for the snapshot schema.
+
+The snapshot is separately `Encodable`; never encode or reflect the identity result or legacy underlying errors into diagnostic history. Its field-by-field schema and an integration example are in [DIAGNOSTICS.md](DIAGNOSTICS.md). Missing checks are explicit, and trust checks are separate from signature checks. `.notaryStrict` remains `PassportScanOptions.notaryStrict` with the existing `.notaryRecommended` acceptance policy; it does not newly require trusted-chain validation.
+
+The valid signed v1 SOD parsing defect and manual RSA-PSS parameter enforcement remain separate verification work. The user authorized publishing annotated candidate `notary-2.3.1-privacy.6-rc.5` on maintained main. Repin the consuming app to this tag in a separate app task; no app/backend edits are included here. Rc.4 and all prior tags remain unchanged. The candidate still requires physical NFC validation before a production release.

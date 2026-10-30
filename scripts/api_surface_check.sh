@@ -58,7 +58,12 @@ public final class ProbeLogger: PassportReaderLogging {
 @available(iOS 26, *)
 @MainActor
 public func compileSafePassportReaderSurface() {
-    let reader = PassportReader(logLevel: .debugRedacted, logger: ProbeLogger())
+    let reader = PassportReader(logLevel: .debugRedacted, logger: ProbeLogger(), diagnosticHandler: { snapshot in
+        let _: UInt64 = snapshot.attemptID
+        let _: PassportDiagnosticCheck = snapshot.sod.manualVerifier
+        _ = try? JSONEncoder().encode(snapshot)
+    })
+    let _: PassportDiagnosticSnapshot? = reader.lastDiagnosticSnapshot
     reader.passiveAuthenticationUsesOpenSSL = false
     reader.setMasterListURL(URL(fileURLWithPath: "/tmp/masterList.pem"))
     reader.cancelRead()

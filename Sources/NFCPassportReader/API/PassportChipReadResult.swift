@@ -23,12 +23,15 @@ public struct PassportChipReadResult: Sendable, Equatable {
     public let trustLevel: PassportTrustLevel
     public let certificateTrustMetadata: PassportCertificateTrustMetadata
     public let diagnosticsSummary: PassportReaderDiagnosticsSummary
+    /// Captured before model scrubbing; also delivered for failures by the reader's diagnostic handler.
+    public let diagnosticSnapshot: PassportDiagnosticSnapshot?
 
     init(
         passport: NFCPassportModel,
         photoPolicy: PassportPhotoPolicy = .read,
         securityPolicy: PassportReaderSecurityPolicy = .default
     ) {
+        self.diagnosticSnapshot = passport.completedDiagnosticSnapshot
         self.identity = PassportIdentityResult(passport: passport, photoPolicy: photoPolicy)
         if let dg2 = passport.getDataGroup(.DG2) as? DataGroup2 {
             self.faceImageData = PassportChipImageResult(dataGroup: dg2, photoPolicy: photoPolicy)

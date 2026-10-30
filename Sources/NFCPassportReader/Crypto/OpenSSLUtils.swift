@@ -144,7 +144,16 @@ class OpenSSLUtils {
     /// - Parameter x509Cert: The X509 certificate (in PEM format) to verify
     /// - Parameter CAFile: The URL path of a file containing the list of certificates used to try to discover and build a trust chain
     /// - Returns: either the X509 issue signing certificate that was used to sign the passed in X509 certificate or an error
-    static func verifyTrustAndGetIssuerCertificate( x509 : X509Wrapper, CAFile : URL ) -> Result<X509Wrapper, OpenSSLError> {
+    static func verifyTrustAndGetIssuerCertificate( x509 : X509Wrapper, CAFile : URL, diagnostic: ((PassportDiagnosticFailure) -> Void)? = nil ) -> Result<X509Wrapper, OpenSSLError> {
+        var failureReason: PassportDiagnosticReason = .trustStoreUnavailable
+        var validationCode: Int?
+        var succeeded = false
+        defer {
+            if !succeeded {
+                diagnostic?(.init(subsystem: .trust, operation: .validateChain, stage: .passiveAuthentication,
+                                  reason: failureReason, certificateValidationCode: validationCode))
+            }
+        }
         let cert_ctx: OpaquePointer
         do {
             cert_ctx = try makeX509Store(CAFile: CAFile)
@@ -155,6 +164,7 @@ class OpenSSLUtils {
         }
         defer { X509_STORE_free(cert_ctx) }
         
+        failureReason = .resourceFailure
         guard let store = X509_STORE_CTX_new() else {
             return .failure(OpenSSLError.UnableToVerifyX509CertificateForSOD("Unable to create new X509_STORE_CTX"))
         }
@@ -170,11 +180,24 @@ class OpenSSLUtils {
         let i = X509_verify_cert(store);
         if i != 1 {
             let err = X509_STORE_CTX_get_error(store)
+            validationCode = Int(err)
+            switch err {
+            case X509_V_ERR_CERT_HAS_EXPIRED: failureReason = .certificateExpired
+            case X509_V_ERR_CERT_NOT_YET_VALID: failureReason = .certificateNotYetValid
+            case X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT, X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY,
+                 X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT, X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN:
+                failureReason = .issuerNotFound
+            case X509_V_ERR_CERT_SIGNATURE_FAILURE: failureReason = .certificateSignatureInvalid
+            case X509_V_ERR_CERT_REVOKED: failureReason = .certificateRevoked
+            case X509_V_ERR_INVALID_PURPOSE: failureReason = .invalidCertificatePurpose
+            default: failureReason = .chainInvalid
+            }
             
             return .failure(OpenSSLError.UnableToVerifyX509CertificateForSOD("Verification of certificate failed - errorCode \(err)"))
         }
         
         // Get chain and issue certificate is the last cert in the chain
+        failureReason = .issuerNotFound
         let chain = X509_STORE_CTX_get1_chain(store);
         defer {
             if let chain {
@@ -185,6 +208,7 @@ class OpenSSLUtils {
         if nrCertsInChain > 1 {
             let cert = sk_X509_value(chain, nrCertsInChain-1)
             if let certWrapper = X509Wrapper(with: cert) {
+                succeeded = true
                 return .success( certWrapper )
             }
         }
@@ -206,11 +230,19 @@ class OpenSSLUtils {
     ///           the -noverify is don't verify against the signers certifcate (as we don' thave that!)
     ///
     ///      This should return Verification Successful and the signed data
-    static func verifyAndReturnSODEncapsulatedDataUsingCMS( sod : SOD ) throws -> Data {
-        return try verifyAndReturnCMSEncapsulatedData(Data(sod.body), trustedCertificatesURL: nil)
+    static func verifyAndReturnSODEncapsulatedDataUsingCMS( sod : SOD, diagnostic: ((PassportDiagnosticFailure) -> Void)? = nil ) throws -> Data {
+        return try verifyAndReturnCMSEncapsulatedData(Data(sod.body), trustedCertificatesURL: nil, diagnostic: diagnostic)
     }
 
-    static func verifyAndReturnCMSEncapsulatedData(_ cmsDer: Data, trustedCertificatesURL: URL?) throws -> Data {
+    static func verifyAndReturnCMSEncapsulatedData(_ cmsDer: Data, trustedCertificatesURL: URL?, diagnostic: ((PassportDiagnosticFailure) -> Void)? = nil) throws -> Data {
+        var reason: PassportDiagnosticReason = .resourceFailure
+        var succeeded = false
+        defer {
+            if !succeeded {
+                diagnostic?(.init(subsystem: .cryptography, operation: .cmsVerification,
+                                  stage: .passiveAuthentication, reason: reason))
+            }
+        }
         guard isNativeParserInputSizeValid(cmsDer.count) else {
             throw OpenSSLError.VerifyAndReturnSODEncapsulatedData("CMS - Invalid DER size")
         }
@@ -228,6 +260,7 @@ class OpenSSLUtils {
             throw OpenSSLError.VerifyAndReturnSODEncapsulatedData("CMS - Unable to write DER data")
         }
 
+        reason = .malformedStructure
         guard let cms = d2i_CMS_bio(inf, nil) else {
             throw OpenSSLError.VerifyAndReturnSODEncapsulatedData("CMS - Verification of P7 failed - unable to create CMS")
         }
@@ -245,9 +278,11 @@ class OpenSSLUtils {
 
         let flags: UInt32 = trustedCertificatesURL == nil ? UInt32(CMS_NO_SIGNER_CERT_VERIFY) : 0
 
+        reason = .signatureInvalid
         if CMS_verify(cms, nil, store, nil, out, flags) == 0 {
             throw OpenSSLError.VerifyAndReturnSODEncapsulatedData("CMS - Verification of P7 failed - unable to verify signature")
         }
+        reason = .malformedStructure
         let len = BIO_ctrl(out, BIO_CTRL_PENDING, 0, nil)
         guard len > 0,
               len <= maxNativeParserInputLength else {
@@ -260,6 +295,7 @@ class OpenSSLUtils {
         }
         let sigData = Data(buffer)
         
+        succeeded = true
         return sigData
     }
 
@@ -291,31 +327,43 @@ class OpenSSLUtils {
     }
     
     
-    static func verifyAndReturnSODEncapsulatedData( sod : SOD ) throws -> Data {
+    static func verifyAndReturnSODEncapsulatedData( sod : SOD, diagnostic: ((PassportDiagnosticFailure) -> Void)? = nil ) throws -> Data {
+        var reason: PassportDiagnosticReason = .malformedStructure
+        var succeeded = false
+        defer {
+            if !succeeded {
+                diagnostic?(.init(subsystem: reason == .malformedStructure ? .parser : .cryptography,
+                                  operation: .manualVerification, stage: .passiveAuthentication, reason: reason))
+            }
+        }
         
         let encapsulatedContent = try sod.getEncapsulatedContent()
-        let signedAttribsHashAlgo = try sod.getEncapsulatedContentDigestAlgorithm()
+        let signedAttribsHashAlgo = try sod.getEncapsulatedContentDigestAlgorithm { reason = $0 }
         let signedAttributes = try sod.getSignedAttributes()
         let messageDigest = try sod.getMessageDigestFromSignedAttributes()
         let signature = try sod.getSignature()
-        let sigType = try sod.getSignatureAlgorithm()
+        let sigType = try sod.getSignatureAlgorithm { reason = $0 }
         
+        reason = .certificateUnavailable
         let pubKey = try sod.getPublicKey()
         
         let mdHash : Data = try Data(calcHash(data: [UInt8](encapsulatedContent), hashAlgorithm: signedAttribsHashAlgo))
         
         // Make sure that hash equals the messageDigest
+        reason = .signedContentDigestMismatch
         if messageDigest != mdHash {
             // Invalid - signed data hash doesn't match message digest hash
             throw OpenSSLError.VerifyAndReturnSODEncapsulatedData("messageDigest Hash doesn't hatch that of the signed attributes")
         }
         
         // Verify signed attributes
+        reason = .signatureInvalid
         if  !verifySignature( data : [UInt8](signedAttributes), signature : [UInt8](signature), pubKey : pubKey, digestType: sigType ) {
             
             throw OpenSSLError.VerifyAndReturnSODEncapsulatedData("Unable to verify signature for signed attributes")
         }
         
+        succeeded = true
         return encapsulatedContent
     }
     /// Reads a public key in DER SubjectPublicKeyInfo format and converts it to an OpenSSL EVP_PKEY value.

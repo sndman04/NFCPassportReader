@@ -128,6 +128,10 @@ class NFCPassportModel: @unchecked Sendable {
     public private(set) var dataGroupHashes = [DataGroupId: DataGroupHash]()
     public private(set) var dataGroupReadReports: [PassportDataGroupReadReport] = []
     private var sodHashDataGroupIds = Set<DataGroupId>()
+    var diagnosticEvidence = PassportDiagnosticEvidence()
+    var activeAuthenticationDiagnostic: PassportDiagnosticCheck?
+    var chipAuthenticationDiagnostic: PassportDiagnosticCheck?
+    var completedDiagnosticSnapshot: PassportDiagnosticSnapshot?
 
     public internal(set) var cardAccess : CardAccess?
     internal var cardSecurity: CardSecurity?
@@ -290,6 +294,7 @@ class NFCPassportModel: @unchecked Sendable {
         }
         if id == .DG14 {
             chipAuthenticationStatus = .notDone
+            if chipAuthenticationDiagnostic?.status != .skipped { chipAuthenticationDiagnostic = nil }
         }
 
         if let existingDataGroup = self.dataGroupsRead[id],
@@ -313,6 +318,9 @@ class NFCPassportModel: @unchecked Sendable {
     /// model instance. Swift value copies and framework internals may still retain their own memory, so
     /// this is data minimization rather than a complete zeroization guarantee.
     func removeSensitiveDataForPrivacy() {
+        diagnosticEvidence = PassportDiagnosticEvidence()
+        activeAuthenticationDiagnostic = nil
+        chipAuthenticationDiagnostic = nil
         dataGroupsAvailable.removeAll(keepingCapacity: false)
         dataGroupsRead.values.forEach { $0.removeSensitiveDataForPrivacy() }
         dataGroupsRead.removeAll(keepingCapacity: false)
@@ -343,6 +351,8 @@ class NFCPassportModel: @unchecked Sendable {
     }
 
     private func resetPassiveVerificationStateForDataMutation() {
+        diagnosticEvidence = PassportDiagnosticEvidence()
+        completedDiagnosticSnapshot = nil
         passportVerificationAttempted = false
         masterListWasProvided = false
         masterListModifiedDate = nil
@@ -357,6 +367,7 @@ class NFCPassportModel: @unchecked Sendable {
     }
 
     private func resetActiveAuthenticationStateForDataMutation() {
+        activeAuthenticationDiagnostic = nil
         activeAuthenticationPassed = false
         activeAuthenticationAttempted = false
         activeAuthenticationChallenge.removeAll(keepingCapacity: false)
@@ -401,6 +412,15 @@ class NFCPassportModel: @unchecked Sendable {
     ///         Currently defaulting to manual verification - hoping this will replace the CMS verification totally
     ///         CMS Verification currently there just in case
     func verifyPassport( masterListURL: URL?, useCMSVerification : Bool = false ) {
+        diagnosticEvidence = PassportDiagnosticEvidence()
+        diagnosticEvidence.preferred = useCMSVerification ? .cms : .manual
+        if let sod = getDataGroup(.SOD) as? SOD {
+            sod.captureDiagnosticMetadata(into: &diagnosticEvidence)
+        } else {
+            diagnosticEvidence.signatureCheck = .init(.unavailable, .missingSOD)
+            diagnosticEvidence.hashes = .init(.unavailable, .missingSOD)
+        }
+        diagnosticEvidence.trust = .init(.unavailable, masterListURL == nil ? .missingMasterList : .missingSOD)
         passportVerificationAttempted = true
         masterListWasProvided = masterListURL != nil
         masterListModifiedDate = masterListURL?.privacySafeFileModificationDate
@@ -416,7 +436,11 @@ class NFCPassportModel: @unchecked Sendable {
         if let masterListURL = masterListURL {
             do {
                 try validateAndExtractSigningCertificates( masterListURL: masterListURL )
+                diagnosticEvidence.trust = .passed
             } catch let error {
+                if getDataGroup(.SOD) != nil, diagnosticEvidence.trust.failure == nil {
+                    diagnosticEvidence.trust = .failed(.capture(error, stage: .passiveAuthentication, operation: .validateChain))
+                }
                 verificationErrors.append( error )
             }
         }
@@ -432,17 +456,28 @@ class NFCPassportModel: @unchecked Sendable {
         // Get AA Public key
         self.activeAuthenticationAttempted = true
         self.activeAuthenticationPassed = false
+        activeAuthenticationDiagnostic = .init(.inProgress, .none, attempted: true)
+        defer {
+            if activeAuthenticationPassed { activeAuthenticationDiagnostic = .passed }
+            else if activeAuthenticationDiagnostic?.status == .inProgress {
+                activeAuthenticationDiagnostic = .init(.failed, .signatureInvalid, attempted: true)
+            }
+        }
         self.activeAuthenticationChallenge.removeAll(keepingCapacity: false)
         self.activeAuthenticationSignature.removeAll(keepingCapacity: false)
 
         guard Self.isValidActiveAuthenticationInput(challenge: challenge, signature: signature) else {
+            activeAuthenticationDiagnostic = .init(.failed, .invalidInput, attempted: true)
             return
         }
 
         self.activeAuthenticationChallenge = challenge
         self.activeAuthenticationSignature = signature
 
-        guard  let dg15 = self.dataGroupsRead[.DG15] as? DataGroup15 else { return }
+        guard let dg15 = self.dataGroupsRead[.DG15] as? DataGroup15 else {
+            activeAuthenticationDiagnostic = .init(.unavailable, .missingDataGroup, attempted: true)
+            return
+        }
         if let rsaKey = dg15.rsaPublicKey {
             do {
                 var decryptedSig = try OpenSSLUtils.decryptRSASignature(signature: Data(signature), pubKey: rsaKey)
@@ -477,10 +512,12 @@ class NFCPassportModel: @unchecked Sendable {
                         hashType = "SHA224"
                         hashLength = 28  // 224 bits for SHA-224 -> 28 bytes
                     default:
+                        activeAuthenticationDiagnostic = .init(.unsupported, .unsupportedAlgorithm, attempted: true)
                         return
                 }
                 
                 guard decryptedSig.count > hashLength + 1 else {
+                    activeAuthenticationDiagnostic = .init(.failed, .malformedStructure, attempted: true)
                     return
                 }
 
@@ -499,6 +536,7 @@ class NFCPassportModel: @unchecked Sendable {
                 } else {
                 }
             } catch {
+                activeAuthenticationDiagnostic = .failed(.capture(error, stage: .activeAuthentication, operation: .activeAuthentication))
             }
         } else if let ecdsaPublicKey = dg15.ecdsaPublicKey {
             var digestType = ""
@@ -515,6 +553,9 @@ class NFCPassportModel: @unchecked Sendable {
     }
 
     func recordActiveAuthenticationFailure() {
+        if activeAuthenticationDiagnostic == nil || activeAuthenticationDiagnostic?.status == .inProgress {
+            activeAuthenticationDiagnostic = .init(.failed, .cryptoFailure, attempted: true)
+        }
         activeAuthenticationAttempted = true
         activeAuthenticationPassed = false
         activeAuthenticationChallenge.removeAll(keepingCapacity: false)
@@ -544,7 +585,9 @@ class NFCPassportModel: @unchecked Sendable {
         }
         self.certificateSigningGroups[.documentSigningCertificate] = cert
 
-        let rc = OpenSSLUtils.verifyTrustAndGetIssuerCertificate( x509:cert, CAFile: masterListURL )
+        let rc = OpenSSLUtils.verifyTrustAndGetIssuerCertificate(x509: cert, CAFile: masterListURL) {
+            self.diagnosticEvidence.trust = .failed($0)
+        }
         switch rc {
         case .success(let csca):
             self.certificateSigningGroups[.issuerSigningCertificate] = csca
@@ -568,13 +611,28 @@ class NFCPassportModel: @unchecked Sendable {
             documentSigningCertificateVerified = true
         } catch let signatureVerificationError {
             verificationErrors.append(signatureVerificationError)
-            signedData = try sod.getEncapsulatedContent()
+            do {
+                signedData = try sod.getEncapsulatedContent()
+            } catch {
+                diagnosticEvidence.stages[.encapsulatedContent] = .failed(.capture(error, stage: .passiveAuthentication, operation: .parseSOD))
+                diagnosticEvidence.hashes = .init(.unavailable, .prerequisiteFailed)
+                throw error
+            }
         }
+        diagnosticEvidence.stages[.encapsulatedContent] = .passed
                 
         // Now Verify passport data by comparing compare Hashes in SOD against
         // computed hashes to ensure data not been tampered with
         passportDataNotTampered = false
-        let (sodHashAlgorythm, sodHashes) = try parseSODSignatureContent(data: signedData)
+        let sodHashAlgorythm: String
+        let sodHashes: [DataGroupId: String]
+        do {
+            (sodHashAlgorythm, sodHashes) = try parseSODSignatureContent(data: signedData)
+        } catch {
+            diagnosticEvidence.hashes = .init(.unavailable, .prerequisiteFailed)
+            throw error
+        }
+        diagnosticEvidence.hashCoverageAvailable = true
         sodHashDataGroupIds = Set(sodHashes.keys)
         
         var errorSummaries: [String] = []
@@ -601,36 +659,78 @@ class NFCPassportModel: @unchecked Sendable {
         }
         
         if !errorSummaries.isEmpty {
+            diagnosticEvidence.hashes = .failed(.init(subsystem: .cryptography, operation: .compareHashes,
+                                                       stage: .passiveAuthentication, reason: .hashMismatch))
             throw PassiveAuthenticationError.InvalidDataGroupHash(errorSummaries.joined(separator: "; "))
         }
         guard comparedDataGroupCount > 0 else {
+            diagnosticEvidence.hashes = .init(.unavailable, .noHashesCompared)
             throw PassiveAuthenticationError.NoDataGroupHashesCompared("No read data groups were present in SOD hashes")
         }
         passportDataNotTampered = true
+        diagnosticEvidence.hashes = .passed
     }
 
     private func verifySODAndReturnEncapsulatedContent(sod: SOD, preferCMSVerification: Bool) throws -> Data {
-        if preferCMSVerification {
+        let first: PassportSODVerifier = preferCMSVerification ? .cms : .manual
+        let second: PassportSODVerifier = preferCMSVerification ? .manual : .cms
+        do {
+            let data = try attemptSODVerifier(first, sod: sod)
+            diagnosticEvidence.signatureCheck = .passed
+            return data
+        } catch {
+            diagnosticEvidence.fallback = true
             do {
-                return try OpenSSLUtils.verifyAndReturnSODEncapsulatedDataUsingCMS(sod: sod)
+                let data = try attemptSODVerifier(second, sod: sod)
+                diagnosticEvidence.signatureCheck = .passed
+                return data
             } catch {
-                return try OpenSSLUtils.verifyAndReturnSODEncapsulatedData(sod: sod)
-            }
-        } else {
-            do {
-                return try OpenSSLUtils.verifyAndReturnSODEncapsulatedData(sod: sod)
-            } catch {
-                return try OpenSSLUtils.verifyAndReturnSODEncapsulatedDataUsingCMS(sod: sod)
+                let check = second == .manual ? diagnosticEvidence.manual : diagnosticEvidence.cms
+                diagnosticEvidence.signatureCheck = check
+                throw error
             }
         }
     }
-    
-    
+
+    private func attemptSODVerifier(_ verifier: PassportSODVerifier, sod: SOD) throws -> Data {
+        var context: PassportDiagnosticFailure?
+        do {
+            let data: Data
+            if verifier == .manual {
+                data = try OpenSSLUtils.verifyAndReturnSODEncapsulatedData(sod: sod) { context = $0 }
+            } else {
+                data = try OpenSSLUtils.verifyAndReturnSODEncapsulatedDataUsingCMS(sod: sod) { context = $0 }
+            }
+            if verifier == .manual { diagnosticEvidence.manual = .passed } else { diagnosticEvidence.cms = .passed }
+            diagnosticEvidence.winner = verifier
+            return data
+        } catch {
+            let failure = context ?? .capture(error, stage: .passiveAuthentication,
+                                              operation: verifier == .manual ? .manualVerification : .cmsVerification)
+            if verifier == .manual { diagnosticEvidence.manual = .failed(failure) }
+            else { diagnosticEvidence.cms = .failed(failure) }
+            throw error
+        }
+    }
+
     /// Parses the structured LDS Security Object and extracts the digest algorithm and data-group hashes.
     /// - Parameter data: DER-encoded LDS Security Object content.
     /// - Returns: The digest algorithm and a dictionary of hashes for SOD-listed data groups.
     func parseSODSignatureContent(data: Data) throws -> (String, [DataGroupId : String]) {
-        let root = try SimpleASN1Node.parse([UInt8](data))
+        var parseFailure: PassportDiagnosticFailure?
+        var parsingStage: PassportSODParsingStage = .ldsSecurityObject
+        var succeeded = false
+        defer {
+            if !succeeded {
+                diagnosticEvidence.stages[parsingStage] = .failed(parseFailure ?? .init(
+                    subsystem: .parser, operation: .parseSOD, stage: .passiveAuthentication, reason: .malformedStructure))
+            }
+        }
+        let root = try SimpleASN1Node.parse([UInt8](data)) { metadata in
+            parseFailure = .init(subsystem: .parser, operation: .parseSOD, stage: .passiveAuthentication,
+                                 reason: .malformedStructure, parser: metadata)
+        }
+        diagnosticEvidence.captureLDSMetadata(root)
         guard root.tag == 0x30,
               let version = root.children.first,
               version.tag == 0x02,
@@ -639,8 +739,15 @@ class NFCPassportModel: @unchecked Sendable {
               digestAlgorithmInfo.tag == 0x30,
               let digestAlgorithmOID = digestAlgorithmInfo.children.first?.objectIdentifier,
               let digestAlgorithm = hashAlgorithmName(for: digestAlgorithmOID) else {
+            let reason: PassportDiagnosticReason = diagnosticEvidence.version == .v1 || diagnosticEvidence.version == .other
+                ? .unsupportedVersion : diagnosticEvidence.groupDigest?.identifier == .unrecognized
+                    && diagnosticEvidence.groupDigest?.parameterForm != .malformed ? .unsupportedAlgorithm : .malformedStructure
+            parseFailure = .init(subsystem: .parser, operation: .parseSOD, stage: .passiveAuthentication, reason: reason,
+                                 parser: .init(expectedTag: 0x30, actualTag: root.tag, actualLength: root.value.count, offset: root.offset))
             throw PassiveAuthenticationError.UnableToParseSODHashes("Unable to parse structured SOD hashes")
         }
+        diagnosticEvidence.stages[.ldsSecurityObject] = .passed
+        parsingStage = .dataGroupHashes
 
         guard let dataGroupHashValues = root.children.dropFirst(2).first,
               dataGroupHashValues.tag == 0x30 else {
@@ -663,12 +770,16 @@ class NFCPassportModel: @unchecked Sendable {
                 throw PassiveAuthenticationError.UnableToParseSODHashes("Invalid data group hash structure")
             }
             guard hashNode.value.count == expectedHashLength else {
+                parseFailure = .init(subsystem: .parser, operation: .parseSOD, stage: .passiveAuthentication, reason: .malformedStructure,
+                                     parser: .init(expectedTag: 0x04, actualTag: hashNode.tag, expectedLength: expectedHashLength,
+                                                   actualLength: hashNode.value.count, offset: hashNode.offset))
                 throw PassiveAuthenticationError.UnableToParseSODHashes("Invalid data group hash length")
             }
             guard sodHashes[dataGroupId] == nil else {
                 throw PassiveAuthenticationError.UnableToParseSODHashes("Duplicate data group hash")
             }
 
+            diagnosticEvidence.observedHashGroups.insert(dataGroupId)
             sodHashes[dataGroupId] = binToHexRep(hashNode.value)
         }
 
@@ -676,7 +787,82 @@ class NFCPassportModel: @unchecked Sendable {
             throw PassiveAuthenticationError.UnableToParseSODHashes("Unable to extract hashes")
         }
 
+        succeeded = true
+        diagnosticEvidence.stages[.dataGroupHashes] = .passed
         return (digestAlgorithm, sodHashes)
+    }
+
+    func makeDiagnosticSnapshot(attemptID: UInt64, outcome: PassportDiagnosticOutcome,
+                                terminalFailure: PassportDiagnosticFailure? = nil,
+                                failures: [PassportDiagnosticFailure] = [], droppedFailureCount: Int = 0) -> PassportDiagnosticSnapshot {
+        var evidence = diagnosticEvidence
+        // A scan can end after reading SOD and before passive authentication starts.
+        // Extract only metadata; never run an additional verifier or compare hashes here.
+        if !passportVerificationAttempted, let sod = getDataGroup(.SOD) as? SOD {
+            sod.captureDiagnosticMetadata(into: &evidence)
+            do {
+                let content = try sod.getEncapsulatedContent()
+                evidence.stages[.encapsulatedContent] = .passed
+                if let root = try? SimpleASN1Node.parse([UInt8](content)) { evidence.captureLDSMetadata(root) }
+            } catch {
+                evidence.stages[.encapsulatedContent] = .failed(.capture(error, stage: .passiveAuthentication, operation: .parseSOD))
+            }
+        }
+        let active = activeAuthenticationPassed ? PassportDiagnosticCheck.passed
+            : activeAuthenticationDiagnostic ?? (activeAuthenticationAttempted ? .init(.failed, .cryptoFailure, attempted: true)
+                : authenticationAvailability(for: .DG15, supported: activeAuthenticationSupported))
+        let chip: PassportDiagnosticCheck
+        switch chipAuthenticationStatus {
+        case .success: chip = .passed
+        case .failed:
+            if let recorded = chipAuthenticationDiagnostic, recorded.status == .failed || recorded.status == .unsupported {
+                chip = recorded
+            } else { chip = .init(.failed, .cryptoFailure, attempted: true) }
+        case .notDone:
+            chip = chipAuthenticationDiagnostic ?? authenticationAvailability(for: .DG14, supported: isChipAuthenticationSupported)
+        }
+        let checks = PassportVerificationDiagnostics(sodSignature: evidence.signatureCheck,
+            dataGroupHashes: evidence.hashes, documentSignerTrust: evidence.trust,
+            countrySignerTrust: evidence.trust, activeAuthentication: active, chipAuthentication: chip,
+            revocation: .init())
+        let groups = DataGroupId.allCases.filter { $0 != .COM && $0 != .SOD && $0 != .Unknown }.map { id in
+            let read = dataGroupsRead[id] != nil
+            let coverage: PassportHashCoverage = evidence.observedHashGroups.contains(id) ? .covered
+                : evidence.hashCoverageAvailable ? .notCovered : .unavailable
+            let comparison: PassportDiagnosticCheck
+            if let hash = dataGroupHashes[id] {
+                comparison = hash.match ? .passed : .init(.failed, .hashMismatch, attempted: true)
+            } else {
+                comparison = .init(.unavailable, !read ? .missingDataGroup : coverage == .notCovered ? .hashNotCovered : .prerequisiteFailed)
+            }
+            return PassportDataGroupHashDiagnostic(dataGroup: id, wasRead: read, coverage: coverage, comparison: comparison)
+        }
+        let evidenceFailures = [evidence.manual.failure, evidence.cms.failure,
+            evidence.trust.failure, evidence.hashes.failure, active.failure, chip.failure]
+            + PassportSODParsingStage.allCases.map { evidence.stages[$0]?.failure }
+        var all = Array(failures.prefix(32))
+        var dropped = droppedFailureCount
+        for failure in evidenceFailures.compactMap({ $0 }) where !all.contains(failure) {
+            if all.count < 32 { all.append(failure) } else { dropped = min(65_535, dropped + 1) }
+        }
+        return PassportDiagnosticSnapshot(schemaVersion: 1, attemptID: attemptID, outcome: outcome,
+            terminalFailure: terminalFailure, verification: checks, sod: evidence.sod,
+            dataGroups: groups, failures: all, droppedFailureCount: dropped)
+    }
+
+    private func authenticationAvailability(for group: DataGroupId, supported: Bool) -> PassportDiagnosticCheck {
+        let statuses = dataGroupReadReports.filter { $0.dataGroup == group }.map(\.status)
+        if statuses.contains(.skippedByProfile) || statuses.contains(.blockedByPolicy) {
+            return .init(.skipped, .skippedByConfiguration)
+        }
+        if supported { return .init() }
+        if statuses.contains(.failed) { return .init(.unavailable, .missingDataGroup) }
+        if dataGroupsRead[group] != nil || statuses.contains(.unsupported) { return .init(.unsupported, .notSupported) }
+        if let com = dataGroupsRead[.COM] as? COM {
+            return com.dataGroupsPresent.contains(group.getName())
+                ? .init(.unavailable, .missingDataGroup) : .init(.unsupported, .notSupported)
+        }
+        return .init()
     }
 
     private func hashLength(for algorithm: String) -> Int? {
