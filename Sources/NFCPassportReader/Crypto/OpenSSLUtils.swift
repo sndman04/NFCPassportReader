@@ -173,7 +173,9 @@ class OpenSSLUtils {
     /// - Parameter x509Cert: The X509 certificate (in PEM format) to verify
     /// - Parameter CAFile: The URL path of a file containing the list of certificates used to try to discover and build a trust chain
     /// - Returns: either the X509 issue signing certificate that was used to sign the passed in X509 certificate or an error
-    static func verifyTrustAndGetIssuerCertificate( x509 : X509Wrapper, CAFile : URL, diagnostic: ((PassportDiagnosticFailure) -> Void)? = nil ) -> Result<X509Wrapper, OpenSSLError> {
+    static func verifyTrustAndGetIssuerCertificate( x509 : X509Wrapper, CAFile : URL,
+        untrustedCertificates: [X509Wrapper] = [], verificationDate: Date? = nil,
+        diagnostic: ((PassportDiagnosticFailure) -> Void)? = nil ) -> Result<X509Wrapper, OpenSSLError> {
         var failureReason: PassportDiagnosticReason = .trustStoreUnavailable
         var validationCode: Int?
         var succeeded = false
@@ -197,12 +199,29 @@ class OpenSSLUtils {
         guard let store = X509_STORE_CTX_new() else {
             return .failure(OpenSSLError.UnableToVerifyX509CertificateForSOD("Unable to create new X509_STORE_CTX"))
         }
-        defer { X509_STORE_CTX_free(store) }
-        
-        X509_STORE_set_flags(cert_ctx, 0)
-        let rc = X509_STORE_CTX_init(store, cert_ctx, x509.cert, nil)
+        let untrusted = OPENSSL_sk_new_null()
+        guard let untrusted else {
+            X509_STORE_CTX_free(store)
+            return .failure(OpenSSLError.UnableToVerifyX509CertificateForSOD("Unable to allocate certificate chain"))
+        }
+        defer {
+            // The context borrows both the container and certificates.
+            X509_STORE_CTX_free(store)
+            OPENSSL_sk_free(untrusted)
+            withExtendedLifetime(untrustedCertificates) {}
+        }
+        for certificate in untrustedCertificates {
+            guard OPENSSL_sk_push(untrusted, UnsafeMutableRawPointer(certificate.cert)) > 0 else {
+                return .failure(OpenSSLError.UnableToVerifyX509CertificateForSOD("Unable to prepare certificate chain"))
+            }
+        }
+        let rc = X509_STORE_CTX_init(store, cert_ctx, x509.cert, untrusted)
         if rc == 0 {
             return .failure(OpenSSLError.UnableToVerifyX509CertificateForSOD("Unable to initialise X509_STORE_CTX"))
+        }
+        // Internal deterministic corpus clock; production callers use the current time.
+        if let verificationDate {
+            X509_STORE_CTX_set_time(store, 0, Int(verificationDate.timeIntervalSince1970))
         }
 
         // discover and verify X509 certificte chain
@@ -339,11 +358,36 @@ class OpenSSLUtils {
         guard let store = X509_STORE_new() else {
             throw OpenSSLError.UnableToVerifyX509CertificateForSOD("Unable to create certificate store")
         }
+        // Enforce certificate structure/CA constraints; ICAO explicitly permits
+        // explicit EC parameters, retained by the narrow callback below.
+        // A locally trusted CSCA key may be carried in a link certificate rather
+        // than a self-signed certificate (Doc 9303 Part 12 Appendix D.1.1.1).
+        guard X509_STORE_set_flags(store, UInt(X509_V_FLAG_X509_STRICT | X509_V_FLAG_PARTIAL_CHAIN)) == 1 else {
+            X509_STORE_free(store)
+            throw OpenSSLError.UnableToVerifyX509CertificateForSOD("Unable to configure certificate store")
+        }
 
         X509_STORE_set_verify_cb(store) { (ok, ctx) -> Int32 in
             let certError = X509_STORE_CTX_get_error(ctx)
             if ok == 0 && certError == X509_V_ERR_EC_KEY_EXPLICIT_PARAMS {
+                X509_STORE_CTX_set_error(ctx, X509_V_OK)
                 return 1
+            }
+            // RFC 5280 §4.1.2.5 includes the notAfter second. OpenSSL's default
+            // comparison treats equality as expired; allow only exact equality,
+            // then continue every remaining chain/extension/signature check.
+            if ok == 0 && certError == X509_V_ERR_CERT_HAS_EXPIRED,
+               let certificate = X509_STORE_CTX_get_current_cert(ctx),
+               let parameters = X509_STORE_CTX_get0_param(ctx) {
+                let clock = X509_VERIFY_PARAM_get_flags(parameters) & UInt(X509_V_FLAG_USE_CHECK_TIME) != 0
+                    ? X509_VERIFY_PARAM_get_time(parameters) : Int(Date().timeIntervalSince1970)
+                if let instant = ASN1_TIME_set(nil, clock) {
+                    defer { ASN1_TIME_free(instant) }
+                    if ASN1_TIME_compare(X509_get0_notAfter(certificate), instant) == 0 {
+                        X509_STORE_CTX_set_error(ctx, X509_V_OK)
+                        return 1
+                    }
+                }
             }
             return ok
         }
@@ -436,7 +480,39 @@ class OpenSSLUtils {
             EVP_PKEY_free(key)
             throw OpenSSLError.UnableToReadECPublicKey("Unexpected trailing public key data")
         }
+        guard publicKeyType(key) != EVP_PKEY_EC || ecParameterDeclarationMatchesKey(data, key: key) else {
+            EVP_PKEY_free(key)
+            throw OpenSSLError.UnableToReadECPublicKey("Invalid elliptic curve parameters")
+        }
         return key
+    }
+
+    private static func ecParameterDeclarationMatchesKey(_ encoded: [UInt8], key: OpaquePointer) -> Bool {
+        guard let root = try? SimpleASN1Node.parse(encoded), root.children.count == 2,
+              root.children[0].children.count == 2 else { return false }
+        let parameters = root.children[0].children[1]
+        if parameters.tag == 0x06 { return true }
+        guard parameters.tag == 0x30, (5...6).contains(parameters.children.count) else { return false }
+        if parameters.children.count == 5 {
+            // X9.62 permits omission. Infer h only for a fully matched known ICAO
+            // group, never an arbitrary attacker-selected explicit curve.
+            return parameters.encodedBytes.withUnsafeBufferPointer {
+                NFCPRMatchKnownPACEParameters($0.baseAddress, $0.count, 1) >= 0
+            }
+        }
+        let cofactor = parameters.children[5]
+        guard cofactor.tag == 2, let first = cofactor.value.first, first & 0x80 == 0,
+              cofactor.value.count == 1 || first != 0 || cofactor.value[1] & 0x80 != 0 else { return false }
+        var actual: OpaquePointer?
+        guard EVP_PKEY_get_bn_param(key, "cofactor", &actual) == 1, let actual else { return false }
+        defer { BN_free(actual) }
+        let bytes = cofactor.value
+        let declared = bytes.withUnsafeBufferPointer { BN_bin2bn($0.baseAddress, Int32($0.count), nil) }
+        defer { BN_free(declared) }
+        guard let declared else { return false }
+        // OpenSSL may replace a contradictory cofactor with the named group's
+        // value. Compare the original declaration before that detail is lost.
+        return BN_cmp(declared, actual) == 0 && BN_is_zero(actual) == 0
     }
     
     /// This code is taken pretty much from rsautl.c - to decrypt a signature with a public key
@@ -705,7 +781,7 @@ class OpenSSLUtils {
 
     /// Apply every declared PSS parameter, including exact salt length. EVP also enforces
     /// restrictions carried by an RSA-PSS SubjectPublicKeyInfo (RFC 4056 §3).
-    private static func verifySODSignature(data: Data, signature: Data, publicKey: OpaquePointer,
+    static func verifySODSignature(data: Data, signature: Data, publicKey: OpaquePointer,
                                            algorithm: SODSignatureAlgorithm) -> Bool {
         guard !signature.isEmpty, signature.count <= maxSignatureInputLength,
               let md = EVP_get_digestbyname(algorithm.digest), let ctx = EVP_MD_CTX_new() else { return false }

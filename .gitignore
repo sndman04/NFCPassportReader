@@ -82,6 +82,7 @@ scripts/*
 !scripts/generate_active_authentication_profiles.py
 !scripts/generate_revocation_profiles.py
 !scripts/generate_edge_case_fixtures.py
+!scripts/fetch_external_corpora.py
 !scripts/nfc_boundary_check.sh
 !scripts/privacy_scan.sh
 !scripts/release_check.sh
@@ -103,3 +104,6 @@ passport*.json
 !Tests/NFCPassportReaderTests/Fixtures/signature-profile-csca.pem
 !Tests/NFCPassportReaderTests/Fixtures/face-profile-csca.pem
 !Tests/NFCPassportReaderTests/Fixtures/revocation-profile-csca.pem
+
+# Optional pinned public stress corpora, fetched only for the test bundle.
+Tests/NFCPassportReaderTests/Fixtures/ExternalCorpora/

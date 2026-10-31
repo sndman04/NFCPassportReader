@@ -1,0 +1,301 @@
+{
+  "format": 1,
+  "sources": [
+    {
+      "corpus": "wycheproof",
+      "repository": "C2SP/wycheproof",
+      "revision": "d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9",
+      "path": "testvectors_v1/dsa_2048_224_sha224_test.json",
+      "sha256": "b7d1838d85e539985b4de37d363e66cfb9f47af1d0817efd07901046c2040fb7",
+      "size": 255400
+    },
+    {
+      "corpus": "wycheproof",
+      "repository": "C2SP/wycheproof",
+      "revision": "d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9",
+      "path": "testvectors_v1/dsa_2048_224_sha256_test.json",
+      "sha256": "892abcf306947823a979597c15452db6a21f5ab4b6d2cd85960ec7744067f4da",
+      "size": 265646
+    },
+    {
+      "corpus": "wycheproof",
+      "repository": "C2SP/wycheproof",
+      "revision": "d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9",
+      "path": "testvectors_v1/dsa_2048_256_sha256_test.json",
+      "sha256": "08a050e4e000bf56bc7ef2399c9c3155ac24fb22be9a0a78eaf391018456d94c",
+      "size": 280604
+    },
+    {
+      "corpus": "wycheproof",
+      "repository": "C2SP/wycheproof",
+      "revision": "d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9",
+      "path": "testvectors_v1/ecdsa_brainpoolP224r1_sha224_test.json",
+      "sha256": "d48602361aa945dbfdb69e9b2cff6897c63d042e17529aa85287241e8e2b5cba",
+      "size": 296947
+    },
+    {
+      "corpus": "wycheproof",
+      "repository": "C2SP/wycheproof",
+      "revision": "d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9",
+      "path": "testvectors_v1/ecdsa_brainpoolP256r1_sha256_test.json",
+      "sha256": "0c1bb62a715cf20a0de88d5e81d05dbd8d0b439e4e8edd88d2229e98961583d4",
+      "size": 323644
+    },
+    {
+      "corpus": "wycheproof",
+      "repository": "C2SP/wycheproof",
+      "revision": "d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9",
+      "path": "testvectors_v1/ecdsa_brainpoolP512r1_sha512_test.json",
+      "sha256": "4977b4e1effc815adb4d9cbeeb7d3d5896bda5078b29deda5a7d03c2e750d02b",
+      "size": 468335
+    },
+    {
+      "corpus": "wycheproof",
+      "repository": "C2SP/wycheproof",
+      "revision": "d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9",
+      "path": "testvectors_v1/ecdsa_secp256r1_sha256_test.json",
+      "sha256": "182db4f3e230f6f9fa9f800d2a614dede30284b8e8438bbfe1171905402e9332",
+      "size": 327156
+    },
+    {
+      "corpus": "wycheproof",
+      "repository": "C2SP/wycheproof",
+      "revision": "d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9",
+      "path": "testvectors_v1/ecdsa_secp256r1_sha512_test.json",
+      "sha256": "8e940baad7c6172c58c8f354b10366d307be43a3cb82a5880cb46686c3e8f858",
+      "size": 354250
+    },
+    {
+      "corpus": "wycheproof",
+      "repository": "C2SP/wycheproof",
+      "revision": "d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9",
+      "path": "testvectors_v1/ecdsa_secp384r1_sha256_test.json",
+      "sha256": "660c948e5433279ecdf966e8a1386b69ecec618efc1ff00269e85aa9dc84f0a6",
+      "size": 361096
+    },
+    {
+      "corpus": "wycheproof",
+      "repository": "C2SP/wycheproof",
+      "revision": "d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9",
+      "path": "testvectors_v1/ecdsa_secp384r1_sha512_test.json",
+      "sha256": "f44bae32e419fc75c5b5af751cff4e35145cfbcc24944e378d5f30889d310513",
+      "size": 393091
+    },
+    {
+      "corpus": "wycheproof",
+      "repository": "C2SP/wycheproof",
+      "revision": "d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9",
+      "path": "testvectors_v1/ecdsa_secp521r1_sha512_test.json",
+      "sha256": "0fa3bb09a2319242253028b53d555fb8ec2081d891271321205cdaeabb3eef3e",
+      "size": 455046
+    },
+    {
+      "corpus": "wycheproof",
+      "repository": "C2SP/wycheproof",
+      "revision": "d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9",
+      "path": "testvectors_v1/rsa_pss_2048_sha1_mgf1_20_params_test.json",
+      "sha256": "94876cebcf1841e6848034a9b6ac6b6354d9ff233d6e3e64ac2a6258dba1773d",
+      "size": 69810
+    },
+    {
+      "corpus": "wycheproof",
+      "repository": "C2SP/wycheproof",
+      "revision": "d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9",
+      "path": "testvectors_v1/rsa_pss_2048_sha1_mgf1_20_test.json",
+      "sha256": "96d13ecdc356a24aec01dcbef7c5a15458b78373283113c294a60f8ddf717b29",
+      "size": 69693
+    },
+    {
+      "corpus": "wycheproof",
+      "repository": "C2SP/wycheproof",
+      "revision": "d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9",
+      "path": "testvectors_v1/rsa_pss_2048_sha256_mgf1_0_params_test.json",
+      "sha256": "3c3cc9f83b8fc16d6234468cbef249b118728e5763ce92eb43e5b7f1b50991d9",
+      "size": 81352
+    },
+    {
+      "corpus": "wycheproof",
+      "repository": "C2SP/wycheproof",
+      "revision": "d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9",
+      "path": "testvectors_v1/rsa_pss_2048_sha256_mgf1_0_test.json",
+      "sha256": "b22a8d9a2e7e47f681d0ff1d1a55455daaf325d989c64ad005f848bd50b9b4c0",
+      "size": 81057
+    },
+    {
+      "corpus": "wycheproof",
+      "repository": "C2SP/wycheproof",
+      "revision": "d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9",
+      "path": "testvectors_v1/rsa_pss_2048_sha256_mgf1_32_params_test.json",
+      "sha256": "d22d10a3ac770f8318a590a0ef1e41dd9b00538f57f6c446ce658e99528f89c9",
+      "size": 85097
+    },
+    {
+      "corpus": "wycheproof",
+      "repository": "C2SP/wycheproof",
+      "revision": "d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9",
+      "path": "testvectors_v1/rsa_pss_2048_sha256_mgf1_32_test.json",
+      "sha256": "7f6efafc160f4816b96cbf1c12188a31051d7e3f001e27505d9edb5f2a0e325c",
+      "size": 85280
+    },
+    {
+      "corpus": "wycheproof",
+      "repository": "C2SP/wycheproof",
+      "revision": "d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9",
+      "path": "testvectors_v1/rsa_pss_2048_sha256_mgf1sha1_20_test.json",
+      "sha256": "8099d28e300c86cf1cac2ab09cd777186b5ecc0f555d7c178c665b4ff3c08307",
+      "size": 84800
+    },
+    {
+      "corpus": "wycheproof",
+      "repository": "C2SP/wycheproof",
+      "revision": "d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9",
+      "path": "testvectors_v1/rsa_pss_2048_sha512_mgf1sha256_32_params_test.json",
+      "sha256": "842aeb908eeb6c2a9c384cbc2d9179aa6e8d31052ba3e5835795e512693e9929",
+      "size": 138038
+    },
+    {
+      "corpus": "wycheproof",
+      "repository": "C2SP/wycheproof",
+      "revision": "d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9",
+      "path": "testvectors_v1/rsa_signature_2048_sha224_test.json",
+      "sha256": "81b9da6e58f8a55ccc02b96f64a1d84d93100b9767dddbc906cee52d4c7daeac",
+      "size": 202818
+    },
+    {
+      "corpus": "wycheproof",
+      "repository": "C2SP/wycheproof",
+      "revision": "d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9",
+      "path": "testvectors_v1/rsa_signature_2048_sha256_test.json",
+      "sha256": "94a917b01ff50fb874cfc05bf29b4af44868d944a6558201cf18380da93fb393",
+      "size": 211075
+    },
+    {
+      "corpus": "wycheproof",
+      "repository": "C2SP/wycheproof",
+      "revision": "d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9",
+      "path": "testvectors_v1/rsa_signature_2048_sha512_test.json",
+      "sha256": "16ea24b039905d054bdb6004f5fd179374e150b7b6d73a7ba654b6d00eab12ef",
+      "size": 207663
+    },
+    {
+      "corpus": "wycheproof",
+      "repository": "C2SP/wycheproof",
+      "revision": "d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9",
+      "path": "testvectors_v1/ecdh_secp256r1_test.json",
+      "sha256": "cdb8bd5d1206fddb6618c69ffa18f303b4752caba321d348d4aacae3f20cbec4",
+      "size": 418368
+    },
+    {
+      "corpus": "wycheproof",
+      "repository": "C2SP/wycheproof",
+      "revision": "d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9",
+      "path": "testvectors_v1/ecdh_secp384r1_test.json",
+      "sha256": "25a9c41573dbea97c5b4be2dd00369fa68dc37ac8f41807d8e16226d188ec6a7",
+      "size": 817540
+    },
+    {
+      "corpus": "wycheproof",
+      "repository": "C2SP/wycheproof",
+      "revision": "d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9",
+      "path": "testvectors_v1/ecdh_secp521r1_test.json",
+      "sha256": "b5e379919833afa94ef6cb7e085367408a5ea63cf486ad008ad36ef9be4bebf0",
+      "size": 854004
+    },
+    {
+      "corpus": "wycheproof",
+      "repository": "C2SP/wycheproof",
+      "revision": "d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9",
+      "path": "testvectors_v1/aes_cmac_test.json",
+      "sha256": "c1b441008b5355d8070c50e2533f9c1230759015268c3770ea4b0d6d19f8f134",
+      "size": 107462
+    },
+    {
+      "corpus": "limbo",
+      "repository": "C2SP/x509-limbo",
+      "revision": "1080e565f26e544bbe9cf99953be8a57c08e7e20",
+      "path": "limbo.json",
+      "sha256": "611e337b9fb477b927bae65434650692cb9d2070ff5b05f975d0403510acd4de",
+      "size": 41791455
+    },
+    {
+      "corpus": "openjpeg",
+      "repository": "uclouvain/openjpeg-data",
+      "revision": "39524bd3a601d90ed8e0177559400d23945f96a9",
+      "path": "input/nonregression/gdal_fuzzer_assert_in_opj_j2k_read_SQcd_SQcc.patch.jp2",
+      "sha256": "5c731f57b55cb15a0be47603e573d6f45b11a4c12c3b126d014390e6b9e53c06",
+      "size": 181
+    },
+    {
+      "corpus": "openjpeg",
+      "repository": "uclouvain/openjpeg-data",
+      "revision": "39524bd3a601d90ed8e0177559400d23945f96a9",
+      "path": "input/nonregression/gdal_fuzzer_check_comp_dx_dy.jp2",
+      "sha256": "de2ae797d70776b7e327a8a9989b3bbc554d9a0559c0be5bc9b8dd7d39c4e8ba",
+      "size": 181
+    },
+    {
+      "corpus": "openjpeg",
+      "repository": "uclouvain/openjpeg-data",
+      "revision": "39524bd3a601d90ed8e0177559400d23945f96a9",
+      "path": "input/nonregression/gdal_fuzzer_check_number_of_tiles.jp2",
+      "sha256": "71e6b493b62a744fbd0f6927b513131d4d6ee6c0f5c8a611c8dee911cdbed219",
+      "size": 181
+    },
+    {
+      "corpus": "openjpeg",
+      "repository": "uclouvain/openjpeg-data",
+      "revision": "39524bd3a601d90ed8e0177559400d23945f96a9",
+      "path": "input/nonregression/gdal_fuzzer_unchecked_numresolutions.jp2",
+      "sha256": "db2ed918049e162c7487b1717190dd85144fb45f3393227ce5fc038f178f7a0a",
+      "size": 181
+    },
+    {
+      "corpus": "openjpeg",
+      "repository": "uclouvain/openjpeg-data",
+      "revision": "39524bd3a601d90ed8e0177559400d23945f96a9",
+      "path": "input/nonregression/huge-tile-size.jp2",
+      "sha256": "621e2000ac34bab0c19cc014e7a21dff63ffc84ac0c2d073949ebc63ff29391f",
+      "size": 193
+    },
+    {
+      "corpus": "openjpeg",
+      "repository": "uclouvain/openjpeg-data",
+      "revision": "39524bd3a601d90ed8e0177559400d23945f96a9",
+      "path": "input/nonregression/issue1438.j2k",
+      "sha256": "8524da390f5e742ef73bb4f079d887f6fcaa007b7465a7c4bcd25eb0155a62cf",
+      "size": 79
+    },
+    {
+      "corpus": "openjpeg",
+      "repository": "uclouvain/openjpeg-data",
+      "revision": "39524bd3a601d90ed8e0177559400d23945f96a9",
+      "path": "input/nonregression/issue1472-bigloop.j2k",
+      "sha256": "fbe2c09b85d8791fd2518fa40f6c521f11c69860e0712d1ee3fc667ee356cab1",
+      "size": 139
+    },
+    {
+      "corpus": "openjpeg",
+      "repository": "uclouvain/openjpeg-data",
+      "revision": "39524bd3a601d90ed8e0177559400d23945f96a9",
+      "path": "input/nonregression/issue427-illegal-tile-offset.jp2",
+      "sha256": "369a21da770aa2da0b2cf6742087db4d5ba4e32a62f41f7ea2c6f038c060812f",
+      "size": 182
+    },
+    {
+      "corpus": "openjpeg",
+      "repository": "uclouvain/openjpeg-data",
+      "revision": "39524bd3a601d90ed8e0177559400d23945f96a9",
+      "path": "input/nonregression/issue427-null-image-size.jp2",
+      "sha256": "b2ebab4acdd841c49c874ffac390d4e8ef405fa29c0188242b545efe7bb0303c",
+      "size": 182
+    },
+    {
+      "corpus": "openjpeg",
+      "repository": "uclouvain/openjpeg-data",
+      "revision": "39524bd3a601d90ed8e0177559400d23945f96a9",
+      "path": "input/nonregression/issue823.jp2",
+      "sha256": "7ba0815613ca757d9d5fb1df76e17e5a351a82996390e01125960ef0834f3b21",
+      "size": 182
+    }
+  ]
+}

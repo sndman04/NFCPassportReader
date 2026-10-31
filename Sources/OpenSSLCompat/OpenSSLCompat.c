@@ -114,6 +114,29 @@ static int NFCPRCRLMatchesIssuer(X509_CRL *crl, X509 *issuer) {
 /* Only complete, direct ICAO CRLs are supported. Validate every matching
  * authenticated CRL before selecting by number; invalid replacements cannot
  * disappear behind an older valid list in the same supplied bundle. */
+static int NFCPRCompareRevokedSerials(const X509_REVOKED *const *a, const X509_REVOKED *const *b) {
+    return ASN1_INTEGER_cmp(X509_REVOKED_get0_serialNumber(*a), X509_REVOKED_get0_serialNumber(*b));
+}
+
+static int NFCPRUniqueRevokedSerials(const STACK_OF(X509_REVOKED) *entries) {
+    if (entries == NULL || sk_X509_REVOKED_num(entries) < 2) return 1;
+    // Sort a shallow copy of the container, not the authenticated CRL's entries.
+    // O(n log n), without rewriting signed TBS bytes or taking entry ownership.
+    STACK_OF(X509_REVOKED) *sorted = sk_X509_REVOKED_dup(entries);
+    if (sorted == NULL) return 0;
+    sk_X509_REVOKED_set_cmp_func(sorted, NFCPRCompareRevokedSerials);
+    sk_X509_REVOKED_sort(sorted);
+    int unique = 1;
+    for (int i = 1; i < sk_X509_REVOKED_num(sorted); ++i) {
+        if (ASN1_INTEGER_cmp(X509_REVOKED_get0_serialNumber(sk_X509_REVOKED_value(sorted, i - 1)),
+                             X509_REVOKED_get0_serialNumber(sk_X509_REVOKED_value(sorted, i))) == 0) {
+            unique = 0; break;
+        }
+    }
+    sk_X509_REVOKED_free(sorted);
+    return unique;
+}
+
 static int NFCPRValidCRLProfile(X509_CRL *crl) {
     const ASN1_TIME *thisUpdate = X509_CRL_get0_lastUpdate(crl);
     const ASN1_TIME *nextUpdate = X509_CRL_get0_nextUpdate(crl);
@@ -136,6 +159,7 @@ static int NFCPRValidCRLProfile(X509_CRL *crl) {
         }
     }
     STACK_OF(X509_REVOKED) *entries = X509_CRL_get_REVOKED(crl);
+    if (!NFCPRUniqueRevokedSerials(entries)) return 0;
     for (int i = 0; entries != NULL && i < sk_X509_REVOKED_num(entries); ++i) {
         X509_REVOKED *entry = sk_X509_REVOKED_value(entries, i);
         if (X509_REVOKED_get_ext_count(entry) > 32

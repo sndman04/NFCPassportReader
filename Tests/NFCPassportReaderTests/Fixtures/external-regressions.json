@@ -1,0 +1,358 @@
+{
+  "provenance": "Public synthetic cases from C2SP Wycheproof and x509-limbo; original DER/PEM bytes unchanged, private keys omitted. Apache-2.0; source revisions and SHA-256 in Tests/ExternalCorpora/manifest.json. See profile-mapping.json for the three omitted-cofactor cases.",
+  "publicKeys": [
+    {
+      "id": "ecdh_secp256r1_test/1",
+      "public": "3059301306072a8648ce3d020106082a8648ce3d0301070342000462d5bd3372af75fe85a040715d0f502428e07046868b0bfdfa61d731afe44f26ac333a93a9e70a81cd5a95b5bf8d13990eb741c8c38872b4a07d275a014e30cf",
+      "accepted": true
+    },
+    {
+      "id": "ecdh_secp256r1_test/359",
+      "public": "308201303081e906072a8648ce3d02013081dd020101302c06072a8648ce3d0101022100ffffffff00000001000000000000000000000000ffffffffffffffffffffffff30440420ffffffff00000001000000000000000000000000fffffffffffffffffffffffc04205ac635d8aa3a93e7b3ebbd55769886bc651d06b0cc53b0f63bce3c3e27d2604b0441046b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5022100ffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551034200041510264c189c3d523ff9916abd7069efa6968d8dc7ddb6457d7869b53ea60cdcfafb7ed4786da15d29ee59256f536da3575a4888c1bb0a95b256f4a7e9fd764a",
+      "accepted": true
+    },
+    {
+      "id": "ecdh_secp256r1_test/361",
+      "public": "308201553082010d06072a8648ce3d020130820100020101302c06072a8648ce3d0101022100ffffffff00000001000000000000000000000000ffffffffffffffffffffffff30440420ffffffff00000001000000000000000000000000fffffffffffffffffffffffc04205ac635d8aa3a93e7b3ebbd55769886bc651d06b0cc53b0f63bce3c3e27d2604b0441046b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5022100ffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551022100ffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551034200041510264c189c3d523ff9916abd7069efa6968d8dc7ddb6457d7869b53ea60cdcfafb7ed4786da15d29ee59256f536da3575a4888c1bb0a95b256f4a7e9fd764a",
+      "accepted": false
+    },
+    {
+      "id": "ecdh_secp384r1_test/1",
+      "public": "3076301006072a8648ce3d020106052b8104002203620004790a6e059ef9a5940163183d4a7809135d29791643fc43a2f17ee8bf677ab84f791b64a6be15969ffa012dd9185d8796d9b954baa8a75e82df711b3b56eadff6b0f668c3b26b4b1aeb308a1fcc1c680d329a6705025f1c98a0b5e5bfcb163caa",
+      "accepted": true
+    },
+    {
+      "id": "ecdh_secp384r1_test/799",
+      "public": "308201b23082014a06072a8648ce3d02013082013d020101303c06072a8648ce3d0101023100fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffeffffffff0000000000000000ffffffff30640430fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffeffffffff0000000000000000fffffffc0430b3312fa7e23ee7e4988e056be3f82d19181d9c6efe8141120314088f5013875ac656398d8a2ed19d2a85c8edd3ec2aef046104aa87ca22be8b05378eb1c71ef320ad746e1d3b628ba79b9859f741e082542a385502f25dbf55296c3a545e3872760ab73617de4a96262c6f5d9e98bf9292dc29f8f41dbd289a147ce9da3113b5f0b8c00a60b1ce1d7e819d7a431d7c90ea0e5f023100ffffffffffffffffffffffffffffffffffffffffffffffffc7634d81f4372ddf581a0db248b0a77aecec196accc52973036200042121a348f9743855859c496f91d0f39fe728fc46e48d007713051b22f1c0257fe20dd85b21df7e1ec82bf8b39b2138a2ae74f80e6257778f8cca9f279b57d25eeeb155960642972f0567e204514f0ac1eb1e27db5115053211914961d09644c6",
+      "accepted": true
+    },
+    {
+      "id": "ecdh_secp384r1_test/801",
+      "public": "308201e53082017d06072a8648ce3d020130820170020101303c06072a8648ce3d0101023100fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffeffffffff0000000000000000ffffffff30640430fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffeffffffff0000000000000000fffffffc0430b3312fa7e23ee7e4988e056be3f82d19181d9c6efe8141120314088f5013875ac656398d8a2ed19d2a85c8edd3ec2aef046104aa87ca22be8b05378eb1c71ef320ad746e1d3b628ba79b9859f741e082542a385502f25dbf55296c3a545e3872760ab73617de4a96262c6f5d9e98bf9292dc29f8f41dbd289a147ce9da3113b5f0b8c00a60b1ce1d7e819d7a431d7c90ea0e5f023100ffffffffffffffffffffffffffffffffffffffffffffffffc7634d81f4372ddf581a0db248b0a77aecec196accc52973023100ffffffffffffffffffffffffffffffffffffffffffffffffc7634d81f4372ddf581a0db248b0a77aecec196accc52973036200042121a348f9743855859c496f91d0f39fe728fc46e48d007713051b22f1c0257fe20dd85b21df7e1ec82bf8b39b2138a2ae74f80e6257778f8cca9f279b57d25eeeb155960642972f0567e204514f0ac1eb1e27db5115053211914961d09644c6",
+      "accepted": false
+    },
+    {
+      "id": "ecdh_secp521r1_test/1",
+      "public": "30819b301006072a8648ce3d020106052b8104002303818600040064da3e94733db536a74a0d8a5cb2265a31c54a1da6529a198377fbd38575d9d79769ca2bdf2d4c972642926d444891a652e7f492337251adf1613cf3077999b5ce00e04ad19cf9fd4722b0c824c069f70c3c0e7ebc5288940dfa92422152ae4a4f79183ced375afb54db1409ddf338b85bb6dbfc5950163346bb63a90a70c5aba098f7",
+      "accepted": true
+    },
+    {
+      "id": "ecdh_secp521r1_test/660",
+      "public": "30820243308201b606072a8648ce3d0201308201a9020101304d06072a8648ce3d0101024201ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff308188044201fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffc04420051953eb9618e1c9a1f929a21a0b68540eea2da725b99b315f3b8b489918ef109e156193951ec7e937b1652c0bd3bb1bf073573df883d2c34f1ef451fd46b503f000481850400c6858e06b70404e9cd9e3ecb662395b4429c648139053fb521f828af606b4d3dbaa14b5e77efe75928fe1dc127a2ffa8de3348b3c1856a429bf97e7e31c2e5bd66011839296a789a3bc0045c8a5fb42c7d1bd998f54449579b446817afbd17273e662c97ee72995ef42640c550b9013fad0761353c7086a272c24088be94769fd16650024201fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffa51868783bf2f966b7fcc0148f709a5d03bb5c9b8899c47aebb6fb71e91386409038186000400c2a43ac3742b09e006c2dfc9c36444d7e699f567a73f674ce257330b312dd7a8a04fbe92d1d9acbcc65f6184711ada5bf39f6e11e0cbde98f1640d099eb90dfce701802d7755c2fe3180848d4a70b170096ec64eba99b478ba7f6fc129b0566279b8e1ab7962fa912fc4ae53b5202a03520617843dc63e5cb5f956ec7f1453d0865fdf",
+      "accepted": true
+    },
+    {
+      "id": "ecdh_secp521r1_test/662",
+      "public": "30820287308201fa06072a8648ce3d0201308201ed020101304d06072a8648ce3d0101024201ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff308188044201fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffc04420051953eb9618e1c9a1f929a21a0b68540eea2da725b99b315f3b8b489918ef109e156193951ec7e937b1652c0bd3bb1bf073573df883d2c34f1ef451fd46b503f000481850400c6858e06b70404e9cd9e3ecb662395b4429c648139053fb521f828af606b4d3dbaa14b5e77efe75928fe1dc127a2ffa8de3348b3c1856a429bf97e7e31c2e5bd66011839296a789a3bc0045c8a5fb42c7d1bd998f54449579b446817afbd17273e662c97ee72995ef42640c550b9013fad0761353c7086a272c24088be94769fd16650024201fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffa51868783bf2f966b7fcc0148f709a5d03bb5c9b8899c47aebb6fb71e91386409024201fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffa51868783bf2f966b7fcc0148f709a5d03bb5c9b8899c47aebb6fb71e91386409038186000400c2a43ac3742b09e006c2dfc9c36444d7e699f567a73f674ce257330b312dd7a8a04fbe92d1d9acbcc65f6184711ada5bf39f6e11e0cbde98f1640d099eb90dfce701802d7755c2fe3180848d4a70b170096ec64eba99b478ba7f6fc129b0566279b8e1ab7962fa912fc4ae53b5202a03520617843dc63e5cb5f956ec7f1453d0865fdf",
+      "accepted": false
+    }
+  ],
+  "trust": [
+    {
+      "id": "crl::structure::crl-empty",
+      "description": "Tests that an valid but empty CRL (with no revocation entries) is accepted.",
+      "expected": "SUCCESS",
+      "roots": [
+        "-----BEGIN CERTIFICATE-----\nMIIBjzCCATWgAwIBAgIUR4PLmBaj+r6vpE6qMSasJ4HX+7kwCgYIKoZIzj0EAwIw\nGjEYMBYGA1UEAwwPeDUwOS1saW1iby1yb290MCAXDTcwMDEwMTAwMDAwMVoYDzI5\nNjkwNTAzMDAwMDAxWjAaMRgwFgYDVQQDDA94NTA5LWxpbWJvLXJvb3QwWTATBgcq\nhkjOPQIBBggqhkjOPQMBBwNCAASurIqFThBrrfQkT5NZ3NyGjGrIp9F2sjCECvG6\nutdenxYhdeKsEEX8dryqGPvoRNefwqXWVe+yzGcePZRinFnLo1cwVTAPBgNVHRMB\nAf8EBTADAQH/MAsGA1UdDwQEAwIBBjAWBgNVHREEDzANggtleGFtcGxlLmNvbTAd\nBgNVHQ4EFgQUHzjF/rZ/3Mqur1u5baVBgeYIDFUwCgYIKoZIzj0EAwIDSAAwRQIh\nAPEVtdNVSpDS3gZPp5bfl7M5gQ8gV++l0fo8qMoFG8YnAiAzFOFxlM6Y9rUcS5M/\nwhFY31az2TOVQhBpmwWwk0hruA==\n-----END CERTIFICATE-----\n"
+      ],
+      "intermediates": [],
+      "certificate": "-----BEGIN CERTIFICATE-----\nMIIBsDCCAVagAwIBAgIUXgQgY6C9SZBmquq+HF0F6sOEqZMwCgYIKoZIzj0EAwIw\nGjEYMBYGA1UEAwwPeDUwOS1saW1iby1yb290MCAXDTcwMDEwMTAwMDAwMVoYDzI5\nNjkwNTAzMDAwMDAxWjAWMRQwEgYDVQQDDAtleGFtcGxlLmNvbTBZMBMGByqGSM49\nAgEGCCqGSM49AwEHA0IABJdkW3pqxMbOzwtFIXdCy8+4SMjua7zZF2InubOmmWLY\n31mEL55zDvT/eCDYWmIFgZsXthFwvPOnWCIjy/HGJKajfDB6MB0GA1UdDgQWBBSE\nVqrFoLjOTqJbFmTq1cwpwOnXUjAfBgNVHSMEGDAWgBQfOMX+tn/cyq6vW7ltpUGB\n5ggMVTALBgNVHQ8EBAMCB4AwEwYDVR0lBAwwCgYIKwYBBQUHAwEwFgYDVR0RBA8w\nDYILZXhhbXBsZS5jb20wCgYIKoZIzj0EAwIDSAAwRQIhAK6pHse5y1j1hpMvm62V\nlhM8tvpYsXfAJIWuj5J85E4cAiAkNfEFkDGwBy0lErDTXM44ZWD/5kUEFgCp+a9U\nmOyfTg==\n-----END CERTIFICATE-----\n",
+      "date": "2024-01-01T00:00:00+00:00",
+      "crls": [
+        "-----BEGIN X509 CRL-----\nMIHVMH0CAQEwCgYIKoZIzj0EAwIwGjEYMBYGA1UEAwwPeDUwOS1saW1iby1yb290\nFw03MDAxMDEwMDAwMDFaGA8yOTY5MDUwMzAwMDAwMVqgMDAuMB8GA1UdIwQYMBaA\nFB84xf62f9zKrq9buW2lQYHmCAxVMAsGA1UdFAQEAgIFOTAKBggqhkjOPQQDAgNI\nADBFAiBYD2gOcn9STlDsvJ+zSRcbv0i1nbv0DSGpOQK3fzUEhQIhAObQsmVZZmM6\nQ2Or9pVYBoEtw8tMR4cehogEtkpEUoux\n-----END X509 CRL-----\n"
+      ]
+    },
+    {
+      "id": "crl::structure::crl-duplicate-revoked-serial",
+      "description": "Tests that a CRL with a duplicate revoked serial number is rejected.\n\nFor more context, see <https://github.com/cabforum/servercert/issues/589>.",
+      "expected": "FAILURE",
+      "roots": [
+        "-----BEGIN CERTIFICATE-----\nMIIBjzCCATWgAwIBAgIUTV3v97dBlcjKDjL79TfeDwfwIk8wCgYIKoZIzj0EAwIw\nGjEYMBYGA1UEAwwPeDUwOS1saW1iby1yb290MCAXDTcwMDEwMTAwMDAwMVoYDzI5\nNjkwNTAzMDAwMDAxWjAaMRgwFgYDVQQDDA94NTA5LWxpbWJvLXJvb3QwWTATBgcq\nhkjOPQIBBggqhkjOPQMBBwNCAAQ4QCIYdcs8UJWHH0OKpv2s1eU5BZrIYqvnoPWY\nwcLnPnyRkH5sCqdItINwsLJxDeQKe7/KIGqDO2nsYsCVE6vGo1cwVTAPBgNVHRMB\nAf8EBTADAQH/MAsGA1UdDwQEAwIBBjAWBgNVHREEDzANggtleGFtcGxlLmNvbTAd\nBgNVHQ4EFgQUhKpC0cqpMJ+ugBgjQD9rz6SW9uUwCgYIKoZIzj0EAwIDSAAwRQIg\nG4xC84XZBNXMB3ZS0wta8ZjFNvq0YySfz09LIEkxc9sCIQCcEAgVifGDX9/14Bnx\n1n4ky2SHoql1HDUdKUUuFaYeFQ==\n-----END CERTIFICATE-----\n"
+      ],
+      "intermediates": [],
+      "certificate": "-----BEGIN CERTIFICATE-----\nMIIBsDCCAVagAwIBAgIUPkcTgX54oGKQVA8i1t2AOIEcBnEwCgYIKoZIzj0EAwIw\nGjEYMBYGA1UEAwwPeDUwOS1saW1iby1yb290MCAXDTcwMDEwMTAwMDAwMVoYDzI5\nNjkwNTAzMDAwMDAxWjAWMRQwEgYDVQQDDAtleGFtcGxlLmNvbTBZMBMGByqGSM49\nAgEGCCqGSM49AwEHA0IABCn8xNF2KtqBUcnjki63aQdh0GGpK4OIxb4b3pvy6W7+\n6WdOHMbNC1xYfr9ZwAEl6kVcA9aobnvHUQCKewHCNAujfDB6MB0GA1UdDgQWBBRC\n6ghbq2NbDtLl4dPz+YTEFrUjqTAfBgNVHSMEGDAWgBSEqkLRyqkwn66AGCNAP2vP\npJb25TALBgNVHQ8EBAMCB4AwEwYDVR0lBAwwCgYIKwYBBQUHAwEwFgYDVR0RBA8w\nDYILZXhhbXBsZS5jb20wCgYIKoZIzj0EAwIDSAAwRQIhAO1c8cM3Elkl6DYLN/6D\neLVx+WmBJ4Rvyk4H0rKNFvBpAiBGC3F7WMzrB2Mw1vdBCaNmyDvdi3Fq6ZbBjI+7\nflx4wg==\n-----END CERTIFICATE-----\n",
+      "date": "2024-01-01T00:00:00+00:00",
+      "crls": [
+        "-----BEGIN X509 CRL-----\nMIIBJjCBzQIBATAKBggqhkjOPQQDAjAaMRgwFgYDVQQDDA94NTA5LWxpbWJvLXJv\nb3QXDTcwMDEwMTAwMDAwMVoYDzI5NjkwNTAzMDAwMDAxWjBOMCUCFDHDwagbLKUU\nV8RozEz3c7g4ZkUxFw0yMzEyMzEwMDAwMDBaMCUCFDHDwagbLKUUV8RozEz3c7g4\nZkUxFw0yMzEyMzEwMDAwMDBaoDAwLjAfBgNVHSMEGDAWgBSEqkLRyqkwn66AGCNA\nP2vPpJb25TALBgNVHRQEBAICBTkwCgYIKoZIzj0EAwIDSAAwRQIhAIibutGtBLc6\nXYYglaFFSsq7uxWAXy57Hp+kMpS6S7BvAiAC6ml3PvCQSFMfFcLY3VtsFnJxSOxK\nPHhd8fEoQDggUg==\n-----END X509 CRL-----\n"
+      ]
+    },
+    {
+      "id": "cve::cve-2024-0567",
+      "description": "Tests CVE-2024-0567.\n\nProduces the following **valid** trust graph:\n\n```\nleaf -> A1 -> (A <-> B <-> C) -> Root A\n```\n\nIn other words: `leaf` is signed by intermediate `A1`, which in turn is signed\nby `A`, which is mutually cross-signed by CAs `B` and `C`. This naively results\nin a cycle, which can be resolved because `A` is also present as a self-signed\nroot in the trusted set.\n\n`B` and `C` also have subordinate CAs (`B1` and `C1`), but these do not factor\ninto the constructed chain.\n\nAffects GnuTLS prior to 3.8.3.\n\n* Announcement: <https://lists.gnupg.org/pipermail/gnutls-help/2024-January/004841.html>\n* Patch: <https://gitlab.com/gnutls/gnutls/-/commit/9edbdaa84e38b1bfb53a7d72c1de44f8de373405>\n\nThis testcase is an independent recreation of the testcase in the patch, for CABF\nconformance.",
+      "expected": "SUCCESS",
+      "roots": [
+        "-----BEGIN CERTIFICATE-----\nMIIBhjCCASygAwIBAgIURhLAb6+BC7Uj6tmtIhwjWMtTXCYwCgYIKoZIzj0EAwIw\nGjEYMBYGA1UEAwwPeDUwOS1saW1iby1yb290MCAXDTcwMDEwMTAwMDAwMVoYDzI5\nNjkwNTAzMDAwMDAxWjARMQ8wDQYDVQQDDAZSb290IEEwWTATBgcqhkjOPQIBBggq\nhkjOPQMBBwNCAAR3MhAmL85Lt+tr6XkAaliGewkxDXm2yIAPr/4gYGT/FQt6/P5K\n1r8HkSIvJpjRkigX0yBx4bJ7Qv2TGFnlGvwxo1cwVTAPBgNVHRMBAf8EBTADAQH/\nMAsGA1UdDwQEAwIBBjAWBgNVHREEDzANggtleGFtcGxlLmNvbTAdBgNVHQ4EFgQU\n9frD0GXqHgdDhvDFmp50QXnCwcowCgYIKoZIzj0EAwIDSAAwRQIgL+ph2SLcIVuc\nVYnznPTExYi6Y/6SfM/t+57eL/8tciECIQCcc8Zjv0a50z4gPDwvWf8a9PJxjQjp\n3kK9BLChjnsBPg==\n-----END CERTIFICATE-----\n"
+      ],
+      "intermediates": [
+        "-----BEGIN CERTIFICATE-----\nMIIBkDCCATWgAwIBAgIUSIzZJ+irMqEI2upQiCpXMOnnAlEwCgYIKoZIzj0EAwIw\nETEPMA0GA1UEAwwGUm9vdCBBMCAXDTcwMDEwMTAwMDAwMVoYDzI5NjkwNTAzMDAw\nMDAxWjAaMRgwFgYDVQQDDA9JbnRlcm1lZGlhdGUgQTEwWTATBgcqhkjOPQIBBggq\nhkjOPQMBBwNCAATfmD0z2nLASZAsOVtt0TqDf3+2TupJ2BsczhOW5rBnrjSmmPrP\nW9XmCrEm/595FdyY3t/q0a4/V64ItdBz7sI7o2AwXjAPBgNVHRMBAf8EBTADAQH/\nMAsGA1UdDwQEAwICBDAfBgNVHSMEGDAWgBT1+sPQZeoeB0OG8MWannRBecLByjAd\nBgNVHQ4EFgQUut8QMSMYq+c7RWiKQEmT2imb7Z4wCgYIKoZIzj0EAwIDSQAwRgIh\nAMu/MsaF230TY/IZz/XQwcxRiDFAdz3jvQU7xV0PN/CwAiEAmEHIAj+qWyQTnsHd\nY8XV/TNaDM6yTTvbcWbvJsB01Yc=\n-----END CERTIFICATE-----\n",
+        "-----BEGIN CERTIFICATE-----\nMIIBhjCCASygAwIBAgIUcERS7ykBpaAf7LvoRZP/CRAhcyEwCgYIKoZIzj0EAwIw\nETEPMA0GA1UEAwwGUm9vdCBCMCAXDTcwMDEwMTAwMDAwMVoYDzI5NjkwNTAzMDAw\nMDAxWjARMQ8wDQYDVQQDDAZSb290IEEwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNC\nAAR3MhAmL85Lt+tr6XkAaliGewkxDXm2yIAPr/4gYGT/FQt6/P5K1r8HkSIvJpjR\nkigX0yBx4bJ7Qv2TGFnlGvwxo2AwXjAPBgNVHRMBAf8EBTADAQH/MAsGA1UdDwQE\nAwICBDAfBgNVHSMEGDAWgBSMx6VgES7p5JyTB4DmoXTOSxRpYDAdBgNVHQ4EFgQU\n9frD0GXqHgdDhvDFmp50QXnCwcowCgYIKoZIzj0EAwIDSAAwRQIgO8umJh6ajdqi\nnxbjYb3xOeee5Gdfp7KokUsGRlYuSfICIQD0V/75dQ6d7S0dELrRYP1fovh7RWFC\nIr2ts9aPNzNrag==\n-----END CERTIFICATE-----\n",
+        "-----BEGIN CERTIFICATE-----\nMIIBhjCCASygAwIBAgIUEwc+VqHy6Y8MkdurkhNuf+23TZMwCgYIKoZIzj0EAwIw\nETEPMA0GA1UEAwwGUm9vdCBDMCAXDTcwMDEwMTAwMDAwMVoYDzI5NjkwNTAzMDAw\nMDAxWjARMQ8wDQYDVQQDDAZSb290IEEwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNC\nAAR3MhAmL85Lt+tr6XkAaliGewkxDXm2yIAPr/4gYGT/FQt6/P5K1r8HkSIvJpjR\nkigX0yBx4bJ7Qv2TGFnlGvwxo2AwXjAPBgNVHRMBAf8EBTADAQH/MAsGA1UdDwQE\nAwICBDAfBgNVHSMEGDAWgBRYywhfdDzbHEQcJItYpwHIn+mjKzAdBgNVHQ4EFgQU\n9frD0GXqHgdDhvDFmp50QXnCwcowCgYIKoZIzj0EAwIDSAAwRQIgRfhHQq4tV+EH\n3xShu2Pp8Qns/hh6SbMzIb9iQwiAqHcCIQCfQisgxHJMjDttN4oQxdnvibDbOd36\nqObGkSzW1+yfJQ==\n-----END CERTIFICATE-----\n",
+        "-----BEGIN CERTIFICATE-----\nMIIBjzCCATWgAwIBAgIUc8036iJRpb/Rjn24I6DYPPbI/M4wCgYIKoZIzj0EAwIw\nETEPMA0GA1UEAwwGUm9vdCBCMCAXDTcwMDEwMTAwMDAwMVoYDzI5NjkwNTAzMDAw\nMDAxWjAaMRgwFgYDVQQDDA9JbnRlcm1lZGlhdGUgQjEwWTATBgcqhkjOPQIBBggq\nhkjOPQMBBwNCAAT3O/kNWvyDm4B1IuTsS5YU5+UEj9FqIEicdmHi+9YvXePWk/Xo\nVksB5un+5NbWJETWze8qZPj3/jJsHhJnAT1oo2AwXjAPBgNVHRMBAf8EBTADAQH/\nMAsGA1UdDwQEAwICBDAfBgNVHSMEGDAWgBSMx6VgES7p5JyTB4DmoXTOSxRpYDAd\nBgNVHQ4EFgQUv/Mbb40XSXwMyw03xPv/6vTEusMwCgYIKoZIzj0EAwIDSAAwRQIg\nLWs+jSAOXhxxzR7rna2FsbkO5f+xyNxAatEZGN3UdXoCIQDaJYelER7LE2e9UKYF\ncn6uR1fJnzS+u4uiVMav1HDG8w==\n-----END CERTIFICATE-----\n",
+        "-----BEGIN CERTIFICATE-----\nMIIBhzCCASygAwIBAgIUUQjxxT8yqKfIIWYg/u4Y5ATWHiMwCgYIKoZIzj0EAwIw\nETEPMA0GA1UEAwwGUm9vdCBBMCAXDTcwMDEwMTAwMDAwMVoYDzI5NjkwNTAzMDAw\nMDAxWjARMQ8wDQYDVQQDDAZSb290IEIwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNC\nAAT7S1d+AvMfrsUybQJoWQazIka0TvJo0+KiFMOt96WUdTfs/7wGjAXBqd956afC\ndZqyx1CJ+DZpuVmWX9H6DhTBo2AwXjAPBgNVHRMBAf8EBTADAQH/MAsGA1UdDwQE\nAwICBDAfBgNVHSMEGDAWgBT1+sPQZeoeB0OG8MWannRBecLByjAdBgNVHQ4EFgQU\njMelYBEu6eSckweA5qF0zksUaWAwCgYIKoZIzj0EAwIDSQAwRgIhAMhQi+2npwh0\ncyYUBzmi17V3JDWrKMXHcVyKkaXwuCNQAiEAuZ+JMuqXJodvBx/Va1/qpezouN7C\nXFWpdSQioNW3cEA=\n-----END CERTIFICATE-----\n",
+        "-----BEGIN CERTIFICATE-----\nMIIBhTCCASygAwIBAgIUPR2pmutnXEYjjHbrGVOpxnQi6qMwCgYIKoZIzj0EAwIw\nETEPMA0GA1UEAwwGUm9vdCBDMCAXDTcwMDEwMTAwMDAwMVoYDzI5NjkwNTAzMDAw\nMDAxWjARMQ8wDQYDVQQDDAZSb290IEIwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNC\nAAT7S1d+AvMfrsUybQJoWQazIka0TvJo0+KiFMOt96WUdTfs/7wGjAXBqd956afC\ndZqyx1CJ+DZpuVmWX9H6DhTBo2AwXjAPBgNVHRMBAf8EBTADAQH/MAsGA1UdDwQE\nAwICBDAfBgNVHSMEGDAWgBRYywhfdDzbHEQcJItYpwHIn+mjKzAdBgNVHQ4EFgQU\njMelYBEu6eSckweA5qF0zksUaWAwCgYIKoZIzj0EAwIDRwAwRAIgY0qHR4wVhael\nOX41BLgKInoC7xoSGhddINqcBA0YrrMCIDkcRHv8fOZmDe3HQTbj3ElsX2mQRpwe\nU06MGYQCZW44\n-----END CERTIFICATE-----\n",
+        "-----BEGIN CERTIFICATE-----\nMIIBjzCCATWgAwIBAgIUDb33mIBdY1nScgrEMj/9Zoqt/9QwCgYIKoZIzj0EAwIw\nETEPMA0GA1UEAwwGUm9vdCBDMCAXDTcwMDEwMTAwMDAwMVoYDzI5NjkwNTAzMDAw\nMDAxWjAaMRgwFgYDVQQDDA9JbnRlcm1lZGlhdGUgQzEwWTATBgcqhkjOPQIBBggq\nhkjOPQMBBwNCAAQJ4SovKCckShNSVtcy29I/fkOnmvC9o8TQNCLdJjgdgxwR7lrB\nPC9xJa4UpwurkcNA3872Y3nAfRP2sRuC4iSHo2AwXjAPBgNVHRMBAf8EBTADAQH/\nMAsGA1UdDwQEAwICBDAfBgNVHSMEGDAWgBRYywhfdDzbHEQcJItYpwHIn+mjKzAd\nBgNVHQ4EFgQUDVyv51fWvkVsEHENrJwDylSuRy0wCgYIKoZIzj0EAwIDSAAwRQIg\nXt2h+bHQnZHx5XrUkiyfSrr/4lPpvkugEDBf2Nk/FMwCIQDyiiW1nX+qqKXy8PW7\nfI205m+rHFRtc/RAAdHSDxFoZg==\n-----END CERTIFICATE-----\n",
+        "-----BEGIN CERTIFICATE-----\nMIIBhzCCASygAwIBAgIUUWua5uMtDMUfCsaAR+STrqJ3hQkwCgYIKoZIzj0EAwIw\nETEPMA0GA1UEAwwGUm9vdCBBMCAXDTcwMDEwMTAwMDAwMVoYDzI5NjkwNTAzMDAw\nMDAxWjARMQ8wDQYDVQQDDAZSb290IEMwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNC\nAAQgp726NZmNPcqRZWObKrkV9AlW3WGTQgnmCkn9pJGvIBP35vAXVC+hqYfmG1mu\n5q2DPrWtfJnzBF8IDmajfA2jo2AwXjAPBgNVHRMBAf8EBTADAQH/MAsGA1UdDwQE\nAwICBDAfBgNVHSMEGDAWgBT1+sPQZeoeB0OG8MWannRBecLByjAdBgNVHQ4EFgQU\nWMsIX3Q82xxEHCSLWKcByJ/poyswCgYIKoZIzj0EAwIDSQAwRgIhAMtZH953QoFf\nLOt9girWkt05fJmZh/wke1LuYfR4KXesAiEAyKceu0U8i06LvIXxah8Y2W8KoJyS\ndAFR2VgZ810l7Ks=\n-----END CERTIFICATE-----\n",
+        "-----BEGIN CERTIFICATE-----\nMIIBhzCCASygAwIBAgIUF2VCEslMEkSR0IVbL9CFeL9oT+YwCgYIKoZIzj0EAwIw\nETEPMA0GA1UEAwwGUm9vdCBCMCAXDTcwMDEwMTAwMDAwMVoYDzI5NjkwNTAzMDAw\nMDAxWjARMQ8wDQYDVQQDDAZSb290IEMwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNC\nAAQgp726NZmNPcqRZWObKrkV9AlW3WGTQgnmCkn9pJGvIBP35vAXVC+hqYfmG1mu\n5q2DPrWtfJnzBF8IDmajfA2jo2AwXjAPBgNVHRMBAf8EBTADAQH/MAsGA1UdDwQE\nAwICBDAfBgNVHSMEGDAWgBSMx6VgES7p5JyTB4DmoXTOSxRpYDAdBgNVHQ4EFgQU\nWMsIX3Q82xxEHCSLWKcByJ/poyswCgYIKoZIzj0EAwIDSQAwRgIhAOERgZtzrbCU\nPflQ+SI7I5L7sT5/cPdktmlVjRmGJeu4AiEAlgk9nG3AvCH9y6C7cFHiG14ONdYB\nlrx8cof0S8Twp2w=\n-----END CERTIFICATE-----\n"
+      ],
+      "certificate": "-----BEGIN CERTIFICATE-----\nMIIBrDCCAVOgAwIBAgIUXG03NtwTLTl+dl3fOEizECKXCFEwCgYIKoZIzj0EAwIw\nGjEYMBYGA1UEAwwPSW50ZXJtZWRpYXRlIEExMCAXDTcwMDEwMTAwMDAwMVoYDzI5\nNjkwNTAzMDAwMDAxWjAAMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE9T+ZfjRp\n6ooql6qL7IbBnJRB6KeXTMJV1JE07MYuL9mz597OTQ4ddwMH5mRMMTvtFKWNIEw7\nSN0DlKAK6zydL6OBjjCBizAdBgNVHQ4EFgQUPN67mxNHp/fJRM88ZfD+ohpPuEww\nHwYDVR0jBBgwFoAUut8QMSMYq+c7RWiKQEmT2imb7Z4wCwYDVR0PBAQDAgeAMBMG\nA1UdJQQMMAoGCCsGAQUFBwMBMCcGA1UdEQEB/wQdMBuCGWN2ZS0yMDI0LTA1Njcu\nZXhhbXBsZS5jb20wCgYIKoZIzj0EAwIDRwAwRAIgdirlRwbcy3GeGedodDi6tA4i\noagsO2zL7V1IlofAr7ICIEjyYNRVRVHwm50S4X0dL6aAXQhiO5rMCiQyXaTElnWk\n-----END CERTIFICATE-----\n",
+      "date": null,
+      "crls": []
+    },
+    {
+      "id": "rfc5280::aki::leaf-missing-aki",
+      "description": "Produces the following **invalid** chain:\n\n```\nroot -> EE\n```\n\nThe EE cert is signed by the root but missing the AKI extension, which is\nforbidden under RFC 5280 4.2.1.1.\n\n> The keyIdentifier field of the authorityKeyIdentifier extension MUST\n> be included in all certificates generated by conforming CAs to\n> facilitate certification path construction.",
+      "expected": "FAILURE",
+      "roots": [
+        "-----BEGIN CERTIFICATE-----\nMIIBjzCCATWgAwIBAgIUTcY1k47WJ0Moe1TdibIds2nvmO0wCgYIKoZIzj0EAwIw\nGjEYMBYGA1UEAwwPeDUwOS1saW1iby1yb290MCAXDTcwMDEwMTAwMDAwMVoYDzI5\nNjkwNTAzMDAwMDAxWjAaMRgwFgYDVQQDDA94NTA5LWxpbWJvLXJvb3QwWTATBgcq\nhkjOPQIBBggqhkjOPQMBBwNCAAQ94ysQca/urdQZ+kvShOaMjwfYKuiKuJKfj3cX\nlwp6DYerZbXgFUtf+xkh484CqzUL7mqAxGCS43cZRK2ffxsPo1cwVTAPBgNVHRMB\nAf8EBTADAQH/MAsGA1UdDwQEAwIBBjAWBgNVHREEDzANggtleGFtcGxlLmNvbTAd\nBgNVHQ4EFgQU7126ujPqaUzemtgVo/L0YwittYgwCgYIKoZIzj0EAwIDSAAwRQIh\nAJXd0BUXUA7GyP42KRxn3Aq3cuQLKH0rl3yJJorWJsk9AiAWoSSO9Je6fQEe1HGu\nIr0n0CkN3nGA7lsWhiRGuf3u2Q==\n-----END CERTIFICATE-----\n"
+      ],
+      "intermediates": [],
+      "certificate": "-----BEGIN CERTIFICATE-----\nMIIBjzCCATWgAwIBAgIUaJY/dELGpIi8tctnsKHhPfKw0TgwCgYIKoZIzj0EAwIw\nGjEYMBYGA1UEAwwPeDUwOS1saW1iby1yb290MCAXDTcwMDEwMTAwMDAwMVoYDzI5\nNjkwNTAzMDAwMDAxWjAWMRQwEgYDVQQDDAtleGFtcGxlLmNvbTBZMBMGByqGSM49\nAgEGCCqGSM49AwEHA0IABOOqmdJLzZ8iEOmQ2W63Xg075+gOzPpBYAqr4d5lyG/p\nL17FYHR68+aNQkZGxr7XQm9AyHlG3z+GMFXZRD6M3nejWzBZMB0GA1UdDgQWBBSY\nws0WN1Np3gPGc0owm6bNvOFUGDALBgNVHQ8EBAMCB4AwEwYDVR0lBAwwCgYIKwYB\nBQUHAwEwFgYDVR0RBA8wDYILZXhhbXBsZS5jb20wCgYIKoZIzj0EAwIDSAAwRQIh\nAMhLRAolkuAEtpsZeMos+3sS/Wt17fZSwowAdQxcVoMuAiBXQrKUZ9cD/o/t1oUK\nJvvS6Xzq2heiu0z47hsthk0fXA==\n-----END CERTIFICATE-----\n",
+      "date": null,
+      "crls": []
+    },
+    {
+      "id": "rfc5280::aki::intermediate-missing-aki",
+      "description": "Produces the following **invalid** chain:\n\n```\nroot -> intermediate -> EE\n```\n\nThe intermediate is signed by the root but missing the AKI extension, which\nis forbidden under RFC 5280 4.2.1.1.\n\n> The keyIdentifier field of the authorityKeyIdentifier extension MUST\n> be included in all certificates generated by conforming CAs to\n> facilitate certification path construction.",
+      "expected": "FAILURE",
+      "roots": [
+        "-----BEGIN CERTIFICATE-----\nMIIBjzCCATWgAwIBAgIUVGTtKKbmzzUsy1ZjVG4xlK9YKjQwCgYIKoZIzj0EAwIw\nGjEYMBYGA1UEAwwPeDUwOS1saW1iby1yb290MCAXDTcwMDEwMTAwMDAwMVoYDzI5\nNjkwNTAzMDAwMDAxWjAaMRgwFgYDVQQDDA94NTA5LWxpbWJvLXJvb3QwWTATBgcq\nhkjOPQIBBggqhkjOPQMBBwNCAARiAnUiJKE2fYu9HVe6h2o0OeRn9j76xS8PRTTU\nyv0lgV2JzF/YSJMb4KNODvqnvfmU3/Vsix6Bg8Ybg6TBpz58o1cwVTAPBgNVHRMB\nAf8EBTADAQH/MAsGA1UdDwQEAwIBBjAWBgNVHREEDzANggtleGFtcGxlLmNvbTAd\nBgNVHQ4EFgQUifskk0zOx0Jf2Dc87/mavsGcUBgwCgYIKoZIzj0EAwIDSAAwRQIg\nMmqUuS4njqoGwSah0k47ZUNWrgKmh41/JMb03ymmTZQCIQDvkFwYUoUIh+ChE0uC\ngeCfTLKOLpfOz4LMcCNNvdsA+g==\n-----END CERTIFICATE-----\n"
+      ],
+      "intermediates": [
+        "-----BEGIN CERTIFICATE-----\nMIIB3zCCAYWgAwIBAgIUVcxvHFYi0vW2ru7wIijpliBHgLcwCgYIKoZIzj0EAwIw\nGjEYMBYGA1UEAwwPeDUwOS1saW1iby1yb290MCAXDTcwMDEwMTAwMDAwMVoYDzI5\nNjkwNTAzMDAwMDAxWjBnMTkwNwYDVQQLDDA0ODE4MDU5NTg3MTM5NjYzNjQ2MTUy\nMzQyMjA2OTkxOTMyMzI2ODIzMzg3NTcxNzIxKjAoBgNVBAMMIXg1MDktbGltYm8t\naW50ZXJtZWRpYXRlLXBhdGhsZW4tMDBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IA\nBKzND+9SFEpm6gQA56jfCEfBaxcoPeoEPqkb6WZcvxnlXggUlArGtgyRDcUmad/y\nReMOf0BT5VVvjmHVuJHDMrKjWjBYMBIGA1UdEwEB/wQIMAYBAf8CAQAwCwYDVR0P\nBAQDAgIEMBYGA1UdEQQPMA2CC2V4YW1wbGUuY29tMB0GA1UdDgQWBBRcCotmeFNL\nBfjrzmly+gs+rsNxvjAKBggqhkjOPQQDAgNIADBFAiEA4bo2xksiLJxvvAYYSNSm\nL39wLiGpJx4+tqv26iadbYACID0gl4+Sb6Du6iUtgRrvtJmL8++l71vtZqvewqUt\nrUm9\n-----END CERTIFICATE-----\n"
+      ],
+      "certificate": "-----BEGIN CERTIFICATE-----\nMIIB/TCCAaOgAwIBAgIUBPhMSctVB7Dwh2d4SQwhXRBZqggwCgYIKoZIzj0EAwIw\nZzE5MDcGA1UECwwwNDgxODA1OTU4NzEzOTY2MzY0NjE1MjM0MjIwNjk5MTkzMjMy\nNjgyMzM4NzU3MTcyMSowKAYDVQQDDCF4NTA5LWxpbWJvLWludGVybWVkaWF0ZS1w\nYXRobGVuLTAwIBcNNzAwMTAxMDAwMDAxWhgPMjk2OTA1MDMwMDAwMDFaMBYxFDAS\nBgNVBAMMC2V4YW1wbGUuY29tMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEjNA7\nLLCilQOM0HZXKfjdDTyze1+2d1xK1VpIAiVcZoICiABZYVDOjlqjNuEYDFVrHULT\nWHAahS5+XfhfhOhAiqN8MHowHQYDVR0OBBYEFNVxHDtHj+IINxie0LOEzafFFORT\nMB8GA1UdIwQYMBaAFFwKi2Z4U0sF+OvOaXL6Cz6uw3G+MAsGA1UdDwQEAwIHgDAT\nBgNVHSUEDDAKBggrBgEFBQcDATAWBgNVHREEDzANggtleGFtcGxlLmNvbTAKBggq\nhkjOPQQDAgNIADBFAiBWatyNmUz88iUNW8icTfIArI3CmnWDm/lYxw/47sZWQAIh\nANyTZMewrwmJuPEeLmZnRANbSpMhL0yxyOKuKrv9uXtF\n-----END CERTIFICATE-----\n",
+      "date": null,
+      "crls": []
+    },
+    {
+      "id": "rfc5280::ski::root-missing-ski",
+      "description": "Produces the following **invalid** chain:\n\n```\nroot -> EE\n```\n\nThe root cert is missing the SKI extension, which is disallowed under\nRFC 5280 4.2.1.2.\n\n> To facilitate certification path construction, this extension MUST\n> appear in all conforming CA certificates, that is, all certificates\n> including the basic constraints extension (Section 4.2.1.9) where the\n> value of cA is TRUE.\n\nNote: for roots, the SKI should be the same value as the AKI, therefore,\nthis extension isn't strictly necessary, although required by the RFC.",
+      "expected": "FAILURE",
+      "roots": [
+        "-----BEGIN CERTIFICATE-----\nMIIBbzCCARagAwIBAgIUL1uzyeOP32hB1Ajp6TTBSlU0BLMwCgYIKoZIzj0EAwIw\nGjEYMBYGA1UEAwwPeDUwOS1saW1iby1yb290MCAXDTcwMDEwMTAwMDAwMVoYDzI5\nNjkwNTAzMDAwMDAxWjAaMRgwFgYDVQQDDA94NTA5LWxpbWJvLXJvb3QwWTATBgcq\nhkjOPQIBBggqhkjOPQMBBwNCAATzyv1oDDVnxEDzipaU8QnL38IidC5tqiy4PE/R\nWY0eVjNNhQn1xi6PHDajViALGK49WIovP58wa0m5WR0HfzyTozgwNjAPBgNVHRMB\nAf8EBTADAQH/MAsGA1UdDwQEAwIBBjAWBgNVHREEDzANggtleGFtcGxlLmNvbTAK\nBggqhkjOPQQDAgNHADBEAiA1PTIG7CGiuDccwFw2+CbRUZTMXyDflHOYO4WMr+Pb\nsQIgNUo6VSaoFLKFeX6/WADtI9FSGZhiQ+x0pw+ZKB7sjQw=\n-----END CERTIFICATE-----\n"
+      ],
+      "intermediates": [],
+      "certificate": "-----BEGIN CERTIFICATE-----\nMIIBrzCCAVagAwIBAgIUNYPArp0rKuqJ1VFeVISpIOIv53QwCgYIKoZIzj0EAwIw\nGjEYMBYGA1UEAwwPeDUwOS1saW1iby1yb290MCAXDTcwMDEwMTAwMDAwMVoYDzI5\nNjkwNTAzMDAwMDAxWjAWMRQwEgYDVQQDDAtleGFtcGxlLmNvbTBZMBMGByqGSM49\nAgEGCCqGSM49AwEHA0IABLPBC/9DxEFAYPVkPHebf2QxBULnOAaGVbUROPbCGmUi\n7wmTICyuMGTSkPRNEkjPElZw0On5W75x5Q8z8dMSVLqjfDB6MB0GA1UdDgQWBBR7\nCvwyuEreg0qO4GS2Bv00ajohnjAfBgNVHSMEGDAWgBRmnroODJQI7NgCeHqOMWn2\ngobw6TALBgNVHQ8EBAMCB4AwEwYDVR0lBAwwCgYIKwYBBQUHAwEwFgYDVR0RBA8w\nDYILZXhhbXBsZS5jb20wCgYIKoZIzj0EAwIDRwAwRAIgfB25W6qLtow40Rm+NAEB\nECKz6rc/kPdDsUSx9VTp3osCIBG99TKMVdewEbuaY0HmLc8gPEC54K0dG/Z+SofR\noX/k\n-----END CERTIFICATE-----\n",
+      "date": null,
+      "crls": []
+    },
+    {
+      "id": "rfc5280::ski::intermediate-missing-ski",
+      "description": "Produces the following **invalid** chain:\n\n```\nroot -> ICA -> EE\n```\n\nThe intermediate cert is missing the SKI extension, which is disallowed under\nRFC 5280 4.2.1.2.\n\n> To facilitate certification path construction, this extension MUST\n> appear in all conforming CA certificates, that is, all certificates\n> including the basic constraints extension (Section 4.2.1.9) where the\n> value of cA is TRUE.",
+      "expected": "FAILURE",
+      "roots": [
+        "-----BEGIN CERTIFICATE-----\nMIIBjzCCATWgAwIBAgIUbCavgYYUQQmcpQECl5ibgPcORiUwCgYIKoZIzj0EAwIw\nGjEYMBYGA1UEAwwPeDUwOS1saW1iby1yb290MCAXDTcwMDEwMTAwMDAwMVoYDzI5\nNjkwNTAzMDAwMDAxWjAaMRgwFgYDVQQDDA94NTA5LWxpbWJvLXJvb3QwWTATBgcq\nhkjOPQIBBggqhkjOPQMBBwNCAATP65xXrF1GNVxB9K4Jq6kbJaDebEtRal/ke85U\n7bFeTrLRPhNOTXEX7XX6+Ce3iFCUijv/ltL+mFaUKr5T89pko1cwVTAPBgNVHRMB\nAf8EBTADAQH/MAsGA1UdDwQEAwIBBjAWBgNVHREEDzANggtleGFtcGxlLmNvbTAd\nBgNVHQ4EFgQUqmaJl2hsNEwoQhaN75/I3cIbA78wCgYIKoZIzj0EAwIDSAAwRQIh\nAIQRYp8Tn/JcukJngj7/60p2tsfk3Zoo3dkw0I0WTQaBAiBKOv5GZc05n/dIAnO/\nYSSpzoclIVCOddqzbw3sInh4hg==\n-----END CERTIFICATE-----\n"
+      ],
+      "intermediates": [
+        "-----BEGIN CERTIFICATE-----\nMIIB4TCCAYegAwIBAgIUTLLu7ctZ0bBbxP5mVWwtUdPg7JcwCgYIKoZIzj0EAwIw\nGjEYMBYGA1UEAwwPeDUwOS1saW1iby1yb290MCAXDTcwMDEwMTAwMDAwMVoYDzI5\nNjkwNTAzMDAwMDAxWjBqMTkwNwYDVQQLDDA2MTc0MzM3MjAyOTEyMDM5Mzk2MzEy\nODkxMDQ2MjU0NjcwNTY5MTIyNzI4Njg5MDExLTArBgNVBAMMJHg1MDktbGltYm8t\naW50ZXJtZWRpYXRlLXBhdGhsZW4tTm9uZTBZMBMGByqGSM49AgEGCCqGSM49AwEH\nA0IABIgWZX79e8MgoUNfRsPu0xJTk+MdC2D0K+yQjnYeDT9qXnkm3y+qtO0whvVw\nYSRnEEVQG2evQfiFuX5nggVw2IOjWTBXMA8GA1UdEwEB/wQFMAMBAf8wCwYDVR0P\nBAQDAgIEMBYGA1UdEQQPMA2CC2V4YW1wbGUuY29tMB8GA1UdIwQYMBaAFKpmiZdo\nbDRMKEIWje+fyN3CGwO/MAoGCCqGSM49BAMCA0gAMEUCICq7LmPyUEUvfJuTP+/r\n6xD+/wMQaqUW6YhKN/k1ZuDHAiEAwlAF2W+MO5ikO/kVljUdpa01r6w81rul+zgQ\n0gxi6mc=\n-----END CERTIFICATE-----\n"
+      ],
+      "certificate": "-----BEGIN CERTIFICATE-----\nMIICATCCAaagAwIBAgIUcBMZnFahgfWErtLmPRph8wGPbzMwCgYIKoZIzj0EAwIw\najE5MDcGA1UECwwwNjE3NDMzNzIwMjkxMjAzOTM5NjMxMjg5MTA0NjI1NDY3MDU2\nOTEyMjcyODY4OTAxMS0wKwYDVQQDDCR4NTA5LWxpbWJvLWludGVybWVkaWF0ZS1w\nYXRobGVuLU5vbmUwIBcNNzAwMTAxMDAwMDAxWhgPMjk2OTA1MDMwMDAwMDFaMBYx\nFDASBgNVBAMMC2V4YW1wbGUuY29tMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE\nGu8et1Qu3rh6Q18CMFdrMqoFI+DZ7oCeev+DnPtpPBKMjaA6ywrpy8sCU5WSUwJc\nb/uzgWHmHMCjIhaPesELMKN8MHowHQYDVR0OBBYEFCB6X6ZCVM4MHJ/IIsHFz38J\n+a5CMB8GA1UdIwQYMBaAFMWj2pBi7MbeSqeZkDtCDyfZhSJnMAsGA1UdDwQEAwIH\ngDATBgNVHSUEDDAKBggrBgEFBQcDATAWBgNVHREEDzANggtleGFtcGxlLmNvbTAK\nBggqhkjOPQQDAgNJADBGAiEAnvgETOcahl83TbXcBOicbw2wrUPSTJSZz4ezYJr9\nfPQCIQCfyALr5/vvJQsAMmH9hhI/JQ4B68v6AucTJO2GaflAsw==\n-----END CERTIFICATE-----\n",
+      "date": null,
+      "crls": []
+    },
+    {
+      "id": "rfc5280::validity::expired-root",
+      "description": "Produces the following **invalid** chain:\n\n```\nroot -> intermediate -> EE\n```\n\nAll three certificates are well-formed, but the root\n(and only the root) is expired at the validation time.",
+      "expected": "FAILURE",
+      "roots": [
+        "-----BEGIN CERTIFICATE-----\nMIIBjjCCATOgAwIBAgIUDy3CcuqSlaNvjpkwyH00F3/NrlowCgYIKoZIzj0EAwIw\nGjEYMBYGA1UEAwwPeDUwOS1saW1iby1yb290MB4XDTE2MDEwMTAwMDAwMFoXDTIw\nMDEwMTAwMDAwMFowGjEYMBYGA1UEAwwPeDUwOS1saW1iby1yb290MFkwEwYHKoZI\nzj0CAQYIKoZIzj0DAQcDQgAEcy49SxUN7+cNP7XKC5G1kG/IWXi4Hm47AsIigjkX\n99/NEMGlCsx+PoOeWtO6d+y79dX/yUh5X6DGPbxMcTzg4KNXMFUwDwYDVR0TAQH/\nBAUwAwEB/zALBgNVHQ8EBAMCAQYwFgYDVR0RBA8wDYILZXhhbXBsZS5jb20wHQYD\nVR0OBBYEFOOw8TNn2taaHEL/RQgFiX1UrMcnMAoGCCqGSM49BAMCA0kAMEYCIQCC\n/Z0Ib18IlsD7WtVnGTy66J8p1na3/pxlXJH5gTEb0wIhAI+fUs41eCh9korWE+m0\n9D+tuQd6wPdGuITZ7KSVFl1Y\n-----END CERTIFICATE-----\n"
+      ],
+      "intermediates": [
+        "-----BEGIN CERTIFICATE-----\nMIIB/DCCAaOgAwIBAgIUMemQI8RPTipJrInetKwE3M4q+6owCgYIKoZIzj0EAwIw\nGjEYMBYGA1UEAwwPeDUwOS1saW1iby1yb290MB4XDTE2MDEwMTAwMDAwMFoXDTI2\nMDEwMTAwMDAwMFowaTE4MDYGA1UECwwvODY2NTUzMzM5ODM3NTI1MjI3NjI0NjM2\nMDUzNDYyMDEwNTg0ODY3Nzg3MDM0NTAxLTArBgNVBAMMJHg1MDktbGltYm8taW50\nZXJtZWRpYXRlLXBhdGhsZW4tTm9uZTBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IA\nBA4lto4RBbPWcVaghm1aVIORSyTYGFQ2tI651WIhS+xJI59s6pu2D3LZXuTQrwYy\nJskaEeLSSKTXM8gl8zZvXAKjeDB2MA8GA1UdEwEB/wQFMAMBAf8wCwYDVR0PBAQD\nAgIEMBYGA1UdEQQPMA2CC2V4YW1wbGUuY29tMB8GA1UdIwQYMBaAFOOw8TNn2taa\nHEL/RQgFiX1UrMcnMB0GA1UdDgQWBBTQqHqamLdZ3Sgc7t1+thNHiSRDiTAKBggq\nhkjOPQQDAgNHADBEAiACcjKsI/96RswAthVCyWFfxaywqKq2kGecDCpMpQO0bAIg\nSxu25qxLmzUEXy+6I9JfgMEArOL8iVo/oHjmz0wKXGU=\n-----END CERTIFICATE-----\n"
+      ],
+      "certificate": "-----BEGIN CERTIFICATE-----\nMIIB+zCCAaKgAwIBAgITekeIodkPjvBB4nP1V/qSISbLdzAKBggqhkjOPQQDAjBp\nMTgwNgYDVQQLDC84NjY1NTMzMzk4Mzc1MjUyMjc2MjQ2MzYwNTM0NjIwMTA1ODQ4\nNjc3ODcwMzQ1MDEtMCsGA1UEAwwkeDUwOS1saW1iby1pbnRlcm1lZGlhdGUtcGF0\naGxlbi1Ob25lMB4XDTE4MDEwMTAwMDAwMFoXDTIzMDEwMTAwMDAwMFowFjEUMBIG\nA1UEAwwLZXhhbXBsZS5jb20wWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAATz80WJ\nVov1UnwRTlbXXtT0r83pZUUt0PuEkXdq9xqqwD4qnX2G9SciQNRj0LOj645aHoKi\nWApGWeJOzLTLXe1uo3wwejAdBgNVHQ4EFgQU+GAnxTBfhuGYBVQSpjsG1+tAKk8w\nHwYDVR0jBBgwFoAU0Kh6mpi3Wd0oHO7dfrYTR4kkQ4kwCwYDVR0PBAQDAgeAMBMG\nA1UdJQQMMAoGCCsGAQUFBwMBMBYGA1UdEQQPMA2CC2V4YW1wbGUuY29tMAoGCCqG\nSM49BAMCA0cAMEQCIBZiI7kx/3rILA8LVy+hG1fbxAjQQq5nz8X5D7rAuQJCAiAa\nIhMTow6nhieOolcCtBI6GQ9UabPIGNOOjct/NYIQ5A==\n-----END CERTIFICATE-----\n",
+      "date": "2022-01-01T00:00:00+00:00",
+      "crls": []
+    },
+    {
+      "id": "rfc5280::validity::expired-intermediate",
+      "description": "Produces the following **invalid** chain:\n\n```\nroot -> intermediate -> EE\n```\n\nAll three certificates are well-formed, but the intermediate\n(and only the intermediate) is expired at the validation time.",
+      "expected": "FAILURE",
+      "roots": [
+        "-----BEGIN CERTIFICATE-----\nMIIBjjCCATOgAwIBAgIUBT00m0Gss5k1vyvGkQS130TZ0LswCgYIKoZIzj0EAwIw\nGjEYMBYGA1UEAwwPeDUwOS1saW1iby1yb290MB4XDTE2MDEwMTAwMDAwMFoXDTI2\nMDEwMTAwMDAwMFowGjEYMBYGA1UEAwwPeDUwOS1saW1iby1yb290MFkwEwYHKoZI\nzj0CAQYIKoZIzj0DAQcDQgAE5daB9sYS+364qH2c18MvOeAHZD8cvp73kf6Aou6N\nOzs4VSn7P6BdsvpYdp2wOCEsSQmRT+o1ULVXeUlNRLFlO6NXMFUwDwYDVR0TAQH/\nBAUwAwEB/zALBgNVHQ8EBAMCAQYwFgYDVR0RBA8wDYILZXhhbXBsZS5jb20wHQYD\nVR0OBBYEFMhdPiNVFOv9q/GlLGzzLWwTgelvMAoGCCqGSM49BAMCA0kAMEYCIQCT\nXmUpigqbOg22sGiYvQkDEAb0Ffwbm4uhLB714Glv1wIhAM4vzJij/H5U2iNW9QpV\nrB7HtC7GBmnajeWJQGvLJDNS\n-----END CERTIFICATE-----\n"
+      ],
+      "intermediates": [
+        "-----BEGIN CERTIFICATE-----\nMIIB/DCCAaOgAwIBAgIUVcfQ4tLmqfngBpiYlTRyfZgI6vgwCgYIKoZIzj0EAwIw\nGjEYMBYGA1UEAwwPeDUwOS1saW1iby1yb290MB4XDTE2MDEwMTAwMDAwMFoXDTIw\nMDEwMTAwMDAwMFowaTE4MDYGA1UECwwvMjk5MDk4ODE5ODExNjE0MjczODY2MzYx\nMTY5Njg1MDU0Mjg4NjkwMzc4MDU3NTUxLTArBgNVBAMMJHg1MDktbGltYm8taW50\nZXJtZWRpYXRlLXBhdGhsZW4tTm9uZTBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IA\nBGp3OrbCDFfJiYfUe+Sw/P1NErJsyU93TA22bgqGynGn4IAwjhddrklVhBstxnBP\n0RPaFnZ/riE4OuZH/j2DooOjeDB2MA8GA1UdEwEB/wQFMAMBAf8wCwYDVR0PBAQD\nAgIEMBYGA1UdEQQPMA2CC2V4YW1wbGUuY29tMB8GA1UdIwQYMBaAFMhdPiNVFOv9\nq/GlLGzzLWwTgelvMB0GA1UdDgQWBBRWfv2OHKLWt4GaP90oEh/knqnazDAKBggq\nhkjOPQQDAgNHADBEAiA5co4K8Lh5gLZWnshxo9t+Oeqh1QMHkf4w3Eo1eTcqqAIg\nS9dbmV6aHlgKVm6o7FrstG+CJ1jmW3KTcOcJcOzRgNg=\n-----END CERTIFICATE-----\n"
+      ],
+      "certificate": "-----BEGIN CERTIFICATE-----\nMIIB/jCCAaOgAwIBAgIUXyyoypWDYB0UwVlBgaMP6m4mIyQwCgYIKoZIzj0EAwIw\naTE4MDYGA1UECwwvMjk5MDk4ODE5ODExNjE0MjczODY2MzYxMTY5Njg1MDU0Mjg4\nNjkwMzc4MDU3NTUxLTArBgNVBAMMJHg1MDktbGltYm8taW50ZXJtZWRpYXRlLXBh\ndGhsZW4tTm9uZTAeFw0xODAxMDEwMDAwMDBaFw0yMzAxMDEwMDAwMDBaMBYxFDAS\nBgNVBAMMC2V4YW1wbGUuY29tMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEzIHu\nlYNjWhz+SVJuiFqejqB1wwwBESeKzTU0EwpaAT9b6EqzItYy8lK4kUTVIz9VojPm\nHyHnkpRJDxq/BVvg6qN8MHowHQYDVR0OBBYEFO5cenLBATYHUPLtBj2+iUaTemMZ\nMB8GA1UdIwQYMBaAFFZ+/Y4cota3gZo/3SgSH+SeqdrMMAsGA1UdDwQEAwIHgDAT\nBgNVHSUEDDAKBggrBgEFBQcDATAWBgNVHREEDzANggtleGFtcGxlLmNvbTAKBggq\nhkjOPQQDAgNJADBGAiEAxt1/1PZ3X19SUNfQO56qZFjLX49SoHkqr1qeBkJbifEC\nIQDO5+xKfE69drl0Oliw8I4DwtZ+wF4NL561u+azzpDUyQ==\n-----END CERTIFICATE-----\n",
+      "date": "2022-01-01T00:00:00+00:00",
+      "crls": []
+    },
+    {
+      "id": "rfc5280::validity::expired-leaf",
+      "description": "Produces the following **invalid** chain:\n\n```\nroot -> intermediate -> EE\n```\n\nAll three certificates are well-formed, but the leaf\n(and only the leaf) is expired at the validation time.",
+      "expected": "FAILURE",
+      "roots": [
+        "-----BEGIN CERTIFICATE-----\nMIIBjDCCATKgAwIBAgITaLPjlWahnRXzjC13OrbDdQmduDAKBggqhkjOPQQDAjAa\nMRgwFgYDVQQDDA94NTA5LWxpbWJvLXJvb3QwHhcNMTYwMTAxMDAwMDAwWhcNMjYw\nMTAxMDAwMDAwWjAaMRgwFgYDVQQDDA94NTA5LWxpbWJvLXJvb3QwWTATBgcqhkjO\nPQIBBggqhkjOPQMBBwNCAAQfiPqq5PSMCWPjkWEZFJvys7fDqS3eKgeSUx9u8zaa\nF4sMayBT7UiXdPqe0PI4hklr9NsKP4ArQORyXRwXlMwTo1cwVTAPBgNVHRMBAf8E\nBTADAQH/MAsGA1UdDwQEAwIBBjAWBgNVHREEDzANggtleGFtcGxlLmNvbTAdBgNV\nHQ4EFgQU7wuCb3Y1/KeTGVaMhGREkXvzDEcwCgYIKoZIzj0EAwIDSAAwRQIhAOfE\ny+S/N8vC+H2P1256ssb0MLVd+PIaerzv0LrPSVAvAiAOm5uLY5eVPYD19bIZg/Ct\npK0VZNdC9+ptkg+U4AIi3A==\n-----END CERTIFICATE-----\n"
+      ],
+      "intermediates": [
+        "-----BEGIN CERTIFICATE-----\nMIIB+zCCAaKgAwIBAgIUVs3pEukJU4qLuEyxGk5R/JWqNckwCgYIKoZIzj0EAwIw\nGjEYMBYGA1UEAwwPeDUwOS1saW1iby1yb290MB4XDTE2MDEwMTAwMDAwMFoXDTI2\nMDEwMTAwMDAwMFowaDE3MDUGA1UECwwuMjMzNDk0ODA0MjUxNDEyNDUwODk4NTAw\nMjg1NDAzNTk1Njg0NTQzMTU5NDQyNDEtMCsGA1UEAwwkeDUwOS1saW1iby1pbnRl\ncm1lZGlhdGUtcGF0aGxlbi1Ob25lMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE\nBciRqEO7kwgCUBuUHXO5AYFo4rdh42WLl7vnf7SgPXernhSluIGEEkZTJPI4bVrd\ndDE4x06zhd1CPeqU967pU6N4MHYwDwYDVR0TAQH/BAUwAwEB/zALBgNVHQ8EBAMC\nAgQwFgYDVR0RBA8wDYILZXhhbXBsZS5jb20wHwYDVR0jBBgwFoAU7wuCb3Y1/KeT\nGVaMhGREkXvzDEcwHQYDVR0OBBYEFGR4oHmw+U8ZJ0+wwUHgOB768f2IMAoGCCqG\nSM49BAMCA0cAMEQCIF6QGWwrU9HLTcvYe4LY1lL6pmi1oSkvnkygKH780SEhAiAQ\n2Sw8odvkfmq2Whfnn2XoCdPIQkUig21dBCklgeIKsA==\n-----END CERTIFICATE-----\n"
+      ],
+      "certificate": "-----BEGIN CERTIFICATE-----\nMIIB/DCCAaKgAwIBAgIUdwEWNWkHMbd9kS9C41Phjgy19TEwCgYIKoZIzj0EAwIw\naDE3MDUGA1UECwwuMjMzNDk0ODA0MjUxNDEyNDUwODk4NTAwMjg1NDAzNTk1Njg0\nNTQzMTU5NDQyNDEtMCsGA1UEAwwkeDUwOS1saW1iby1pbnRlcm1lZGlhdGUtcGF0\naGxlbi1Ob25lMB4XDTE4MDEwMTAwMDAwMFoXDTIxMDEwMTAwMDAwMFowFjEUMBIG\nA1UEAwwLZXhhbXBsZS5jb20wWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAAQ7VLXj\nKaMGmBdKcV9Nv7wTgcyveFlhaeLJDFBLuXV5qvsZ7t8sGeMNfDOWKuaBUgYk3Grb\nD3wRmjRGTyBI367/o3wwejAdBgNVHQ4EFgQUARSb3wG2XP8duvYpAJyqxPuTV9Mw\nHwYDVR0jBBgwFoAUZHigebD5TxknT7DBQeA4Hvrx/YgwCwYDVR0PBAQDAgeAMBMG\nA1UdJQQMMAoGCCsGAQUFBwMBMBYGA1UdEQQPMA2CC2V4YW1wbGUuY29tMAoGCCqG\nSM49BAMCA0gAMEUCIQCMYjnFvSKFqpPxZ+oURTAew3nWnpCcKXINfyDkXYvO+gIg\nURhkPNGrB1JusqCJl2o3JNW9cTEQlGGN/w+5otLNx1U=\n-----END CERTIFICATE-----\n",
+      "date": "2022-01-01T00:00:00+00:00",
+      "crls": []
+    },
+    {
+      "id": "rfc5280::validity::notbefore-exact",
+      "description": "Produces the following valid chain:\n\n```\nroot -> ICA -> EE\n```\n\nEE becomes valid at `2024-03-01T00:00:00Z`, and the chain is validated at\nexactly `2024-03-01T00:00:00Z`.\n\nRFC 5280 4.1.2.5 says that `notBefore` is inclusive, so this chain should\nvalidate:\n\n> The validity period for a certificate is the period of time from\n> notBefore through notAfter, inclusive.",
+      "expected": "SUCCESS",
+      "roots": [
+        "-----BEGIN CERTIFICATE-----\nMIIBjDCCATOgAwIBAgIUIDgS1V11RTga6kS+hKOQ/XYT6aEwCgYIKoZIzj0EAwIw\nGjEYMBYGA1UEAwwPeDUwOS1saW1iby1yb290MB4XDTI0MDMwMTAwMDAwMFoXDTI0\nMDQwMTAwMDAwMFowGjEYMBYGA1UEAwwPeDUwOS1saW1iby1yb290MFkwEwYHKoZI\nzj0CAQYIKoZIzj0DAQcDQgAEig+Euu2XLPqp19P79Im8mCj5VLxs/V3CKwY/EN9I\nDN1171d3Nf7ssiicECMmf6nFfyH0+Z9y64NBH6tF1CZYDKNXMFUwDwYDVR0TAQH/\nBAUwAwEB/zALBgNVHQ8EBAMCAQYwFgYDVR0RBA8wDYILZXhhbXBsZS5jb20wHQYD\nVR0OBBYEFNdjGHdBES8YVUmlizJ6kBQZG4F9MAoGCCqGSM49BAMCA0cAMEQCIDVk\nZz5u06Y2EU+0ZzO3gNZTMY4UK5Jzdm94VwaelSWFAiBdujaikE1Hwtf3P26Fw13E\nnAfV4coxSvx1KX/xDU2aAA==\n-----END CERTIFICATE-----\n"
+      ],
+      "intermediates": [
+        "-----BEGIN CERTIFICATE-----\nMIIB/jCCAaSgAwIBAgIUNah97eKduyA9uvvLe1try9W14rAwCgYIKoZIzj0EAwIw\nGjEYMBYGA1UEAwwPeDUwOS1saW1iby1yb290MB4XDTI0MDMwMTAwMDAwMFoXDTI0\nMDQwMTAwMDAwMFowajE5MDcGA1UECwwwMTgzOTM4MTg3MDIyOTk4NjExNzg3NTM0\nMjg4NTUwOTQ1MDQyOTM4MTcyMDA4ODY1MS0wKwYDVQQDDCR4NTA5LWxpbWJvLWlu\ndGVybWVkaWF0ZS1wYXRobGVuLU5vbmUwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNC\nAAQFWFu1RPAZQScTaIPk2m6+NcPXtx4GsKZe/KjBmwqBqCZZfoMfGWKCfY4h5TPt\n+4nysD1FFf67wHi4L3+DYDpjo3gwdjAPBgNVHRMBAf8EBTADAQH/MAsGA1UdDwQE\nAwICBDAWBgNVHREEDzANggtleGFtcGxlLmNvbTAfBgNVHSMEGDAWgBTXYxh3QREv\nGFVJpYsyepAUGRuBfTAdBgNVHQ4EFgQUT871p/j/q1gEkaQ7PMFSPXz7oRAwCgYI\nKoZIzj0EAwIDSAAwRQIhAIF1f3qOZE012ps63bHxCP9S6SM2zBCJs/qqcUL57QQQ\nAiAIQTE8b5nOHfSywXsh/UzW33zzy0rqQbh9ZBqVY4REWQ==\n-----END CERTIFICATE-----\n"
+      ],
+      "certificate": "-----BEGIN CERTIFICATE-----\nMIIB/TCCAaSgAwIBAgIUB13Tq7l0UBcx47ET7wEZQFKoEMcwCgYIKoZIzj0EAwIw\najE5MDcGA1UECwwwMTgzOTM4MTg3MDIyOTk4NjExNzg3NTM0Mjg4NTUwOTQ1MDQy\nOTM4MTcyMDA4ODY1MS0wKwYDVQQDDCR4NTA5LWxpbWJvLWludGVybWVkaWF0ZS1w\nYXRobGVuLU5vbmUwHhcNMjQwMzAxMDAwMDAwWhcNMjQwNDAxMDAwMDAwWjAWMRQw\nEgYDVQQDDAtleGFtcGxlLmNvbTBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABHXI\nRA7dBEnHzE8ZZXXOVeHbAz2eyRhy+Bv0z5aFA0fDvoPics2ehmVG+Ub3Ak55g+Om\n/G1xCji6fJ6SZ/7h4wajfDB6MB0GA1UdDgQWBBSgTKhsWpzeGYzJFJkRImgPcIo3\nCDAfBgNVHSMEGDAWgBRPzvWn+P+rWASRpDs8wVI9fPuhEDALBgNVHQ8EBAMCB4Aw\nEwYDVR0lBAwwCgYIKwYBBQUHAwEwFgYDVR0RBA8wDYILZXhhbXBsZS5jb20wCgYI\nKoZIzj0EAwIDRwAwRAIgSmCG3nwwMUf9gaICPW+21qUiX9OUVmkMmYLDUq49QNEC\nIAWAiOHRKK0cA1jBXoBfRw6H7c9xxS0MLBNr9ZduKoFO\n-----END CERTIFICATE-----\n",
+      "date": "2024-03-01T00:00:00+00:00",
+      "crls": []
+    },
+    {
+      "id": "rfc5280::validity::notbefore-fractional",
+      "description": "Produces the following **invalid** chain:\n\n```\nroot -> ICA -> EE\n```\n\nEE becomes valid at `2024-03-01T00:00:01Z`, and the chain is validated at\nexactly `2024-03-01T00:00:00.999Z`.\n\nThis is the counterpart to `rfc5280::validity::notafter-fractional`:\ndespite rounding to the `notBefore` date, implementations should\n`floor` the validation time instead and subsequently reject this chain.",
+      "expected": "FAILURE",
+      "roots": [
+        "-----BEGIN CERTIFICATE-----\nMIIBjTCCATOgAwIBAgIUDtgZ8576VauDJibzgoN/HYpxfikwCgYIKoZIzj0EAwIw\nGjEYMBYGA1UEAwwPeDUwOS1saW1iby1yb290MB4XDTI0MDMwMTAwMDAwMVoXDTI0\nMDQwMTAwMDAwMFowGjEYMBYGA1UEAwwPeDUwOS1saW1iby1yb290MFkwEwYHKoZI\nzj0CAQYIKoZIzj0DAQcDQgAELlYC8qUppcsKf4sDDUzf2IR5hCd/pBpmJI7Y+WHU\nzyhCjqKe6WGnQkuW+jTzgFIyNHCKnAXiAbK62Bea1OYD6aNXMFUwDwYDVR0TAQH/\nBAUwAwEB/zALBgNVHQ8EBAMCAQYwFgYDVR0RBA8wDYILZXhhbXBsZS5jb20wHQYD\nVR0OBBYEFOl+sgDcuUQbCJXTBVtwI9lVxRcYMAoGCCqGSM49BAMCA0gAMEUCIQCv\nV9Al5ACEtg15WZfxRsAW2BXIs7vQstBKtAYB7TOsaQIgTNTgmbkNQBjsg1iQZpXr\niHWA8wb0aWYCUYGeLDK/vYI=\n-----END CERTIFICATE-----\n"
+      ],
+      "intermediates": [
+        "-----BEGIN CERTIFICATE-----\nMIIB/DCCAaOgAwIBAgIUSmwMFVutmgcUf7c1Uxc1pQKgyeQwCgYIKoZIzj0EAwIw\nGjEYMBYGA1UEAwwPeDUwOS1saW1iby1yb290MB4XDTI0MDMwMTAwMDAwMVoXDTI0\nMDQwMTAwMDAwMFowaTE4MDYGA1UECwwvODQ3NDUwOTI0NjE0OTc2NTg4NzQxMTk2\nOTEyMDAzMzQwNjU2NTkxODYwODU0MTcxLTArBgNVBAMMJHg1MDktbGltYm8taW50\nZXJtZWRpYXRlLXBhdGhsZW4tTm9uZTBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IA\nBFBbvlBsgq/vlEfCD8qN66i4HXBEFOZWreQ5FT1jvdqcK6oP0xZck+NEnO9uUMHj\n8beyDy1j0Ay4XV8uXlW1JvqjeDB2MA8GA1UdEwEB/wQFMAMBAf8wCwYDVR0PBAQD\nAgIEMBYGA1UdEQQPMA2CC2V4YW1wbGUuY29tMB8GA1UdIwQYMBaAFOl+sgDcuUQb\nCJXTBVtwI9lVxRcYMB0GA1UdDgQWBBSos0BKfyIi5UdZbfshT1DbB8w5AjAKBggq\nhkjOPQQDAgNHADBEAiBkewEYFAS+Ija15Se6tUQ/+1eq7z+5swdFQc7oLQoJ2AIg\nNrO5lkS8XJCKTGWNiaaPYNAwEKWqz0Z+6e+47sCjP+Q=\n-----END CERTIFICATE-----\n"
+      ],
+      "certificate": "-----BEGIN CERTIFICATE-----\nMIIB/DCCAaOgAwIBAgIUaT/WrqJMyJmcXOXCV/MrPkO8R70wCgYIKoZIzj0EAwIw\naTE4MDYGA1UECwwvODQ3NDUwOTI0NjE0OTc2NTg4NzQxMTk2OTEyMDAzMzQwNjU2\nNTkxODYwODU0MTcxLTArBgNVBAMMJHg1MDktbGltYm8taW50ZXJtZWRpYXRlLXBh\ndGhsZW4tTm9uZTAeFw0yNDAzMDEwMDAwMDFaFw0yNDA0MDEwMDAwMDBaMBYxFDAS\nBgNVBAMMC2V4YW1wbGUuY29tMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEsNyp\n+JG8PbO1lg6Y5I5FXnJmxU5HVtj6qBt3DHGL9d/MwNEJNS5nSc3IyiB0n6V7e2Fb\n0TlGhTjQOQABNnZf+KN8MHowHQYDVR0OBBYEFNcpthr1GqoWB9GbTZITcd+PxG72\nMB8GA1UdIwQYMBaAFKizQEp/IiLlR1lt+yFPUNsHzDkCMAsGA1UdDwQEAwIHgDAT\nBgNVHSUEDDAKBggrBgEFBQcDATAWBgNVHREEDzANggtleGFtcGxlLmNvbTAKBggq\nhkjOPQQDAgNHADBEAiBR/5DDNASjPLhxwUxISZL7B1gIuBM1JvJO9GSdH7kYVAIg\nK01Lr3u9B9DYQLHwB0UUYj1MfS5Y/Z1k+clr/6+ul/A=\n-----END CERTIFICATE-----\n",
+      "date": "2024-03-01T00:00:00.999+00:00",
+      "crls": []
+    },
+    {
+      "id": "rfc5280::validity::notafter-exact",
+      "description": "Produces the following valid chain:\n\n```\nroot -> ICA -> EE\n```\n\nEE expires at `2024-04-01T00:00:00Z`, and the chain is validated at\nexactly `2024-04-01T00:00:00Z`.\n\nRFC 5280 4.1.2.5 says that `notAfter` is inclusive, so this chain should\nvalidate:\n\n> The validity period for a certificate is the period of time from\n> notBefore through notAfter, inclusive.",
+      "expected": "SUCCESS",
+      "roots": [
+        "-----BEGIN CERTIFICATE-----\nMIIBjDCCATOgAwIBAgIUed6M3pMez3msUqRn+kBjg4ENjFMwCgYIKoZIzj0EAwIw\nGjEYMBYGA1UEAwwPeDUwOS1saW1iby1yb290MB4XDTI0MDMwMTAwMDAwMFoXDTI0\nMDQwMTAwMDAwMFowGjEYMBYGA1UEAwwPeDUwOS1saW1iby1yb290MFkwEwYHKoZI\nzj0CAQYIKoZIzj0DAQcDQgAEEgEtaDftHvO5B8WWE7gha690yUP+wf2NR1c3Plyf\nwG01D/DydMwXY0d1iL/koNDZHbw5QUFM5+tkImF2x+Q/kqNXMFUwDwYDVR0TAQH/\nBAUwAwEB/zALBgNVHQ8EBAMCAQYwFgYDVR0RBA8wDYILZXhhbXBsZS5jb20wHQYD\nVR0OBBYEFMGXwuKxloWsnMEpCmLtIupRlivtMAoGCCqGSM49BAMCA0cAMEQCIEbg\nB5vV7V0YjiTygSG5HVTf+bx6qb5zrZsEwD6cShI4AiBSuzdvrhGZ0Fk2W8VLj2RY\nYCfz+qsjNi2SdahJ8vz8dQ==\n-----END CERTIFICATE-----\n"
+      ],
+      "intermediates": [
+        "-----BEGIN CERTIFICATE-----\nMIIB/jCCAaSgAwIBAgIUYdU/0sXVCg3c//PlCoSzll2ZoBMwCgYIKoZIzj0EAwIw\nGjEYMBYGA1UEAwwPeDUwOS1saW1iby1yb290MB4XDTI0MDMwMTAwMDAwMFoXDTI0\nMDQwMTAwMDAwMFowajE5MDcGA1UECwwwNjk1NzUwOTIwMTYyMDMwNzc2MDM3MzY2\nMzgzMTQ1Mjg1MDQ5MjkxMDc1NTg3MTU1MS0wKwYDVQQDDCR4NTA5LWxpbWJvLWlu\ndGVybWVkaWF0ZS1wYXRobGVuLU5vbmUwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNC\nAAR74D5ArctDrMeYLYfPxMNkoQgtLDg6k0/ITtIFUnV+XILuZoM7B+e23Ag7Eko/\nnQUr7II2BvSy66NRf5sLCIg8o3gwdjAPBgNVHRMBAf8EBTADAQH/MAsGA1UdDwQE\nAwICBDAWBgNVHREEDzANggtleGFtcGxlLmNvbTAfBgNVHSMEGDAWgBTBl8LisZaF\nrJzBKQpi7SLqUZYr7TAdBgNVHQ4EFgQUW5lUpVG5DFYUv1USaoVjAz6dJVgwCgYI\nKoZIzj0EAwIDSAAwRQIhAOrS5fRMRCXEl6wFiF96/t6nMige7d5+30MHWnd6R6Dg\nAiByiKirYiix34wvM9v4btKDGe4m7hkjmjlSKT9zidTRuA==\n-----END CERTIFICATE-----\n"
+      ],
+      "certificate": "-----BEGIN CERTIFICATE-----\nMIIB/jCCAaSgAwIBAgIUP++dswBOK2UJce/cGYxqe7ELXBwwCgYIKoZIzj0EAwIw\najE5MDcGA1UECwwwNjk1NzUwOTIwMTYyMDMwNzc2MDM3MzY2MzgzMTQ1Mjg1MDQ5\nMjkxMDc1NTg3MTU1MS0wKwYDVQQDDCR4NTA5LWxpbWJvLWludGVybWVkaWF0ZS1w\nYXRobGVuLU5vbmUwHhcNMjQwMzAxMDAwMDAwWhcNMjQwNDAxMDAwMDAwWjAWMRQw\nEgYDVQQDDAtleGFtcGxlLmNvbTBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABKqd\nhGydPtl5otQ7h0r7kF4AsERlei3iASInIRMRBsplCNjmjAvlSM8PZWI+NtEWBUNR\nY937UcHV6lTdL0O2aNKjfDB6MB0GA1UdDgQWBBTNGTweXUB3V4GU93490sI2x9vf\nujAfBgNVHSMEGDAWgBRbmVSlUbkMVhS/VRJqhWMDPp0lWDALBgNVHQ8EBAMCB4Aw\nEwYDVR0lBAwwCgYIKwYBBQUHAwEwFgYDVR0RBA8wDYILZXhhbXBsZS5jb20wCgYI\nKoZIzj0EAwIDSAAwRQIgYOmGOL0PsaGrvA/rtYwXKmoMhRLpe2YXr1b8aeIaKUkC\nIQCy+RGHcUZ5v5zZuHj/uKQSAZEbUK/voU8jTmaswiudjg==\n-----END CERTIFICATE-----\n",
+      "date": "2024-04-01T00:00:00+00:00",
+      "crls": []
+    },
+    {
+      "id": "rfc5280::validity::notafter-fractional",
+      "description": "Produces the following **ambiguous** chain:\n\n```\nroot -> ICA -> EE\n```\n\nEE expires at `2024-04-01T00:00:00Z`, and the chain is validated at\n`2024-04-01T00:00:00.005Z`, i.e. 5 milliseconds after the `notAfter`\ndate.\n\nRFC 5280 only allows second granularities in the validity interval, with\ntwo conflicting interpretations of how to handle the validity check:\n\n1. Comparisons are performed at the granularity of the encoded\n   representation, i.e. `floor(time)`. Under this interpretation,\n   the chain is valid, since the entire millisecond interval `[0, .999...]`\n   is truncated to `0`.\n2. Comparisons are instantaneous. Under this interpretation the chain\n   is **invalid**, since 5 milliseconds after the `notAfter` is factually\n   after the `notAfter`.\n\nThere is no clear \"winning\" interpretation here, although\nCAs in the Web PKI have filed and handled compliance reports based on\ninterpretation (1).\n\nSee also:\n\n* <https://bugzilla.mozilla.org/show_bug.cgi?id=1715455>\n* <https://groups.google.com/a/mozilla.org/g/dev-security-policy/c/-BogZx_IJyk/m/gHm3l613AgAJ>",
+      "expected": "SUCCESS",
+      "roots": [
+        "-----BEGIN CERTIFICATE-----\nMIIBjDCCATOgAwIBAgIUIKPSm7n6Fu84HDfh7FQUTJxgduUwCgYIKoZIzj0EAwIw\nGjEYMBYGA1UEAwwPeDUwOS1saW1iby1yb290MB4XDTI0MDMwMTAwMDAwMFoXDTI0\nMDQwMTAwMDAwMFowGjEYMBYGA1UEAwwPeDUwOS1saW1iby1yb290MFkwEwYHKoZI\nzj0CAQYIKoZIzj0DAQcDQgAELs4obBb11WU+iQEBvhiEIZcGOa+QOc8gBCB+G4JE\nOriDXUcMWdr/jUjn6o4hGWEsLXwUG5NDZFT5I0TtxJqq/aNXMFUwDwYDVR0TAQH/\nBAUwAwEB/zALBgNVHQ8EBAMCAQYwFgYDVR0RBA8wDYILZXhhbXBsZS5jb20wHQYD\nVR0OBBYEFJcMRwt8b5rzVuRP+nlDx8PlUiy3MAoGCCqGSM49BAMCA0cAMEQCIH9Y\noOzSB9hzi22DtlpwgdMa5BSirb40hCtq7xwE3PT/AiAVWBB3Xm8+2Vc+Iz7sqhI2\nV4L0GkMt/lDDuNhjazVPWQ==\n-----END CERTIFICATE-----\n"
+      ],
+      "intermediates": [
+        "-----BEGIN CERTIFICATE-----\nMIIB/TCCAaSgAwIBAgIUX371RbDPeT1jVN924GEIZ3yKSi8wCgYIKoZIzj0EAwIw\nGjEYMBYGA1UEAwwPeDUwOS1saW1iby1yb290MB4XDTI0MDMwMTAwMDAwMFoXDTI0\nMDQwMTAwMDAwMFowajE5MDcGA1UECwwwMTg2MzQxMDcyNzA0NzQxNjE3MzQ1NTM5\nMDkzMDIwODQ3NDUyMzg3MTcxOTIzNjg1MS0wKwYDVQQDDCR4NTA5LWxpbWJvLWlu\ndGVybWVkaWF0ZS1wYXRobGVuLU5vbmUwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNC\nAASzaOkPX2Vs5HjjqfMnTmhR4sZXVpgHmalywv40ZEJWTA+gRKut/Fyhgj33om36\n10+/pdd6CQNDeGbu6vp7AD2ro3gwdjAPBgNVHRMBAf8EBTADAQH/MAsGA1UdDwQE\nAwICBDAWBgNVHREEDzANggtleGFtcGxlLmNvbTAfBgNVHSMEGDAWgBSXDEcLfG+a\n81bkT/p5Q8fD5VIstzAdBgNVHQ4EFgQUFblJEeTZDsD9lrSKGgcKWfnxlzkwCgYI\nKoZIzj0EAwIDRwAwRAIgOrK6eFXFfJLmwMAx2LvGMI1Tnx7bySGvPi0sGxHUl0MC\nIFpIjSOloodFJ6fVIqsV9LTO8mXxcf0KpS+dyOOTcyBb\n-----END CERTIFICATE-----\n"
+      ],
+      "certificate": "-----BEGIN CERTIFICATE-----\nMIIB/jCCAaSgAwIBAgIUfqLoXeCi/vn7DpbzycCY7L6ohv0wCgYIKoZIzj0EAwIw\najE5MDcGA1UECwwwMTg2MzQxMDcyNzA0NzQxNjE3MzQ1NTM5MDkzMDIwODQ3NDUy\nMzg3MTcxOTIzNjg1MS0wKwYDVQQDDCR4NTA5LWxpbWJvLWludGVybWVkaWF0ZS1w\nYXRobGVuLU5vbmUwHhcNMjQwMzAxMDAwMDAwWhcNMjQwNDAxMDAwMDAwWjAWMRQw\nEgYDVQQDDAtleGFtcGxlLmNvbTBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABG5h\ng6p9pznP2pZNrkSD4PXWQh/F4v3lmEd1yIr1bD7JqD8PZnB6MgDcs+PP1MJ28npk\nseza0AOibwsckQRyMrijfDB6MB0GA1UdDgQWBBRthgn1zhG8i/Pjhfr6ao8F2KLY\nfTAfBgNVHSMEGDAWgBQVuUkR5NkOwP2WtIoaBwpZ+fGXOTALBgNVHQ8EBAMCB4Aw\nEwYDVR0lBAwwCgYIKwYBBQUHAwEwFgYDVR0RBA8wDYILZXhhbXBsZS5jb20wCgYI\nKoZIzj0EAwIDSAAwRQIhAPbs+qVYSHHzRrOH8yRa4d4UsSUl09f7RiSRVU1/lcrK\nAiA68IREXjolgT/nZ+zXjqS2aSVxQZ0ubluLOq4ip0/X3Q==\n-----END CERTIFICATE-----\n",
+      "date": "2024-04-01T00:00:00.005+00:00",
+      "crls": []
+    },
+    {
+      "id": "rfc5280::validity::expired-1-second",
+      "description": "Produces the following **invalid** chain:\n\n```\nroot -> ICA -> EE\n```\n\nThe EE certificate expires at `2024-04-01T00:00:00Z`, and the chain is\nvalidated at `2024-04-01T00:00:01Z`, i.e. exactly 1 second after expiration.\n\nPer RFC 5280 4.1.2.5, the validity period is inclusive of both `notBefore`\nand `notAfter`. However, any time strictly after `notAfter` should result\nin validation failure. This test ensures implementations strictly reject\ncertificates that have expired, even by a single second.",
+      "expected": "FAILURE",
+      "roots": [
+        "-----BEGIN CERTIFICATE-----\nMIIBjTCCATOgAwIBAgIUP8SpBTrA2/f6YLrGIGROEWvD+/EwCgYIKoZIzj0EAwIw\nGjEYMBYGA1UEAwwPeDUwOS1saW1iby1yb290MB4XDTI0MDMwMTAwMDAwMFoXDTI0\nMDQwMTAwMDAwMFowGjEYMBYGA1UEAwwPeDUwOS1saW1iby1yb290MFkwEwYHKoZI\nzj0CAQYIKoZIzj0DAQcDQgAERCrkok9AQBOH+DLDYgIjjsjNaeS1NpgtKxSdL9UZ\ntzolyau4KXbiiNdknGCa5+63XG92IpHuSq1MOgaBpdIXuKNXMFUwDwYDVR0TAQH/\nBAUwAwEB/zALBgNVHQ8EBAMCAQYwFgYDVR0RBA8wDYILZXhhbXBsZS5jb20wHQYD\nVR0OBBYEFDHVkxVWKcZ8WMRBNiqGqcSck8dKMAoGCCqGSM49BAMCA0gAMEUCIQDZ\ngsVzsWARkExvo7wtkO/1OSR+Pka/PKMsZIKy4rFZYwIgVoqv/IdZeT/E7bYt15Hj\nwFvxe1Ov6Imzvw8EUIYDuJ8=\n-----END CERTIFICATE-----\n"
+      ],
+      "intermediates": [
+        "-----BEGIN CERTIFICATE-----\nMIIB/zCCAaSgAwIBAgIUbLVDmkpCKtkR9Kdn3xXIMbPYNYEwCgYIKoZIzj0EAwIw\nGjEYMBYGA1UEAwwPeDUwOS1saW1iby1yb290MB4XDTI0MDMwMTAwMDAwMFoXDTI0\nMDQwMTAwMDAwMFowajE5MDcGA1UECwwwMzY0MDUyMDg4Mzc2NjQ0ODAwNDk1NzE2\nMDAxNDU5Nzg4MjAxNTIxMzA1NjE1MzQ1MS0wKwYDVQQDDCR4NTA5LWxpbWJvLWlu\ndGVybWVkaWF0ZS1wYXRobGVuLU5vbmUwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNC\nAAQRn2EMne+9YhzwcMiTS30SSMXmpjrYoLNXG56YpN9ni92jxDDzmhB7Zasz5BAP\n0or0kxr0Fhuh7wLfS4AXBgiJo3gwdjAPBgNVHRMBAf8EBTADAQH/MAsGA1UdDwQE\nAwICBDAWBgNVHREEDzANggtleGFtcGxlLmNvbTAfBgNVHSMEGDAWgBQx1ZMVVinG\nfFjEQTYqhqnEnJPHSjAdBgNVHQ4EFgQU3OHcLWWO5nZLmlqVOrxNhVFwwHkwCgYI\nKoZIzj0EAwIDSQAwRgIhAMlQcUbbc3Nkps/KkHXvckd8DqSNXEDAz9/Q4f42Aheo\nAiEA9LK0ZKyR0rOR+Km+86YJEoevSj6v+G36i07Sx0LIeDA=\n-----END CERTIFICATE-----\n"
+      ],
+      "certificate": "-----BEGIN CERTIFICATE-----\nMIIB/TCCAaSgAwIBAgIUE96GtbEsS703sUZM5EdqtcDmUJcwCgYIKoZIzj0EAwIw\najE5MDcGA1UECwwwMzY0MDUyMDg4Mzc2NjQ0ODAwNDk1NzE2MDAxNDU5Nzg4MjAx\nNTIxMzA1NjE1MzQ1MS0wKwYDVQQDDCR4NTA5LWxpbWJvLWludGVybWVkaWF0ZS1w\nYXRobGVuLU5vbmUwHhcNMjQwMzAxMDAwMDAwWhcNMjQwNDAxMDAwMDAwWjAWMRQw\nEgYDVQQDDAtleGFtcGxlLmNvbTBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABEVG\nEtGoRXFG8Qm6Yd1bu7jUJ9piSMdWcWYxqFLdmRLyVXdfITKEEYWSZl/VYcLwqYmZ\nihr9te/qpp6ZZ0cExJSjfDB6MB0GA1UdDgQWBBTiOj/Svilz/xzqsjlyzv4+Enle\nYTAfBgNVHSMEGDAWgBTc4dwtZY7mdkuaWpU6vE2FUXDAeTALBgNVHQ8EBAMCB4Aw\nEwYDVR0lBAwwCgYIKwYBBQUHAwEwFgYDVR0RBA8wDYILZXhhbXBsZS5jb20wCgYI\nKoZIzj0EAwIDRwAwRAIgLm+7fMp6vVW58r2xScHvgk4jrV1//CtU2hogZxIWefIC\nIFgaXEAfQsxiXrca+LOrAGFwYAaL3FwcDJh9PjUbAKyp\n-----END CERTIFICATE-----\n",
+      "date": "2024-04-01T00:00:01+00:00",
+      "crls": []
+    },
+    {
+      "id": "rfc5280::validity::expired-5-seconds",
+      "description": "Produces the following **invalid** chain:\n\n```\nroot -> ICA -> EE\n```\n\nThe EE certificate expires at `2024-04-01T00:00:00Z`, and the chain is\nvalidated at `2024-04-01T00:00:05Z`, i.e. 5 seconds after expiration.\n\nThis test ensures implementations strictly reject certificates that have\nexpired by a small number of seconds.",
+      "expected": "FAILURE",
+      "roots": [
+        "-----BEGIN CERTIFICATE-----\nMIIBjDCCATOgAwIBAgIUdmlRCr97mdWlNVmeiwr9YWy2lZMwCgYIKoZIzj0EAwIw\nGjEYMBYGA1UEAwwPeDUwOS1saW1iby1yb290MB4XDTI0MDMwMTAwMDAwMFoXDTI0\nMDQwMTAwMDAwMFowGjEYMBYGA1UEAwwPeDUwOS1saW1iby1yb290MFkwEwYHKoZI\nzj0CAQYIKoZIzj0DAQcDQgAEaato/UwxDfvrePHJW5PBlARVqFBefou/9dFCHzCB\nvhCAFeZyQRhBH+bYkCbfS4QqQlaE42a7Fj2whgfw4/EUG6NXMFUwDwYDVR0TAQH/\nBAUwAwEB/zALBgNVHQ8EBAMCAQYwFgYDVR0RBA8wDYILZXhhbXBsZS5jb20wHQYD\nVR0OBBYEFPrTn8D8DL0Y6U+Cmb7Ml1zP2UvCMAoGCCqGSM49BAMCA0cAMEQCIByj\nYhKgt0fqwBG4fAiVOMNhKb3gxhHKEYWNH2oFruoGAiA5our1hV2ED8Pr+QyJU9ee\nhfdPaGDAEPY/cOFStRjiFA==\n-----END CERTIFICATE-----\n"
+      ],
+      "intermediates": [
+        "-----BEGIN CERTIFICATE-----\nMIIB/jCCAaSgAwIBAgIUQA4CwNVJhHGiSc+NRPpJjdQNh+owCgYIKoZIzj0EAwIw\nGjEYMBYGA1UEAwwPeDUwOS1saW1iby1yb290MB4XDTI0MDMwMTAwMDAwMFoXDTI0\nMDQwMTAwMDAwMFowajE5MDcGA1UECwwwNjc2MDA5NTQ4OTU1NTY3MjQwOTIyNjUx\nNDUxODM5MzkzODgyMzU2NzQ1NDA5OTM5MS0wKwYDVQQDDCR4NTA5LWxpbWJvLWlu\ndGVybWVkaWF0ZS1wYXRobGVuLU5vbmUwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNC\nAATEO4/1cW8xuGzLUHlZMywkCF6RZaskipD1SEz/YXrEZmgIcO3+FQdjojJpmc3v\neyARuY7pTV9kHdu7mzETMtARo3gwdjAPBgNVHRMBAf8EBTADAQH/MAsGA1UdDwQE\nAwICBDAWBgNVHREEDzANggtleGFtcGxlLmNvbTAfBgNVHSMEGDAWgBT605/A/Ay9\nGOlPgpm+zJdcz9lLwjAdBgNVHQ4EFgQUD8ts+uK5jsmNOta3Lp+zidd2yuYwCgYI\nKoZIzj0EAwIDSAAwRQIhAKiih+327gn7+Z7dAdz73qzMfgVCCbauQaXXwjLYe1cX\nAiBgks2LZDVHKBzFrv6ag6kOoufwgvONpPt4/Hp2emc4/g==\n-----END CERTIFICATE-----\n"
+      ],
+      "certificate": "-----BEGIN CERTIFICATE-----\nMIIB/jCCAaSgAwIBAgIUPKtOZm+UOc9J0bsqTMjxuuhrOfAwCgYIKoZIzj0EAwIw\najE5MDcGA1UECwwwNjc2MDA5NTQ4OTU1NTY3MjQwOTIyNjUxNDUxODM5MzkzODgy\nMzU2NzQ1NDA5OTM5MS0wKwYDVQQDDCR4NTA5LWxpbWJvLWludGVybWVkaWF0ZS1w\nYXRobGVuLU5vbmUwHhcNMjQwMzAxMDAwMDAwWhcNMjQwNDAxMDAwMDAwWjAWMRQw\nEgYDVQQDDAtleGFtcGxlLmNvbTBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABDHp\nSWvVnHv2xVqDXIb8+zirp5dOkE2DhFxzdguNUowobzv4fV3ziZAqbXX5mfXgZGZa\nA1cXQN44iRjLi1eFNtejfDB6MB0GA1UdDgQWBBRw+BI4vOGYreXhmMJX/pbg0sAN\nBzAfBgNVHSMEGDAWgBQPy2z64rmOyY061rcun7OJ13bK5jALBgNVHQ8EBAMCB4Aw\nEwYDVR0lBAwwCgYIKwYBBQUHAwEwFgYDVR0RBA8wDYILZXhhbXBsZS5jb20wCgYI\nKoZIzj0EAwIDSAAwRQIhAL+jnOZxdZCWLD+n0NjJadEYK8eRd9Nyh0PIMx6+PdMV\nAiBAGmb8Vy48MkL0IE1a4P3L1PlexyNvcj5afrN2Uv6S5A==\n-----END CERTIFICATE-----\n",
+      "date": "2024-04-01T00:00:05+00:00",
+      "crls": []
+    },
+    {
+      "id": "rfc5280::validity::not-yet-valid-1-second",
+      "description": "Produces the following **invalid** chain:\n\n```\nroot -> ICA -> EE\n```\n\nThe EE certificate becomes valid at `2024-03-01T00:00:01Z`, and the chain\nis validated at `2024-03-01T00:00:00Z`, i.e. 1 second before the certificate\nbecomes valid.\n\nPer RFC 5280 4.1.2.5, the validity period is inclusive of `notBefore`.\nHowever, any time strictly before `notBefore` should result in validation\nfailure. This test ensures implementations strictly reject certificates\nthat are not yet valid, even by a single second.",
+      "expected": "FAILURE",
+      "roots": [
+        "-----BEGIN CERTIFICATE-----\nMIIBjTCCATOgAwIBAgIUeSdjGFQQQ9N9D98zE7/YPvyIhs0wCgYIKoZIzj0EAwIw\nGjEYMBYGA1UEAwwPeDUwOS1saW1iby1yb290MB4XDTI0MDMwMTAwMDAwMVoXDTI0\nMDQwMTAwMDAwMFowGjEYMBYGA1UEAwwPeDUwOS1saW1iby1yb290MFkwEwYHKoZI\nzj0CAQYIKoZIzj0DAQcDQgAEowFAYCgqRB9Dn8RXoMpdQGVhHYiYAl3WzXrZFZWc\nkEwcc3KIJxKcQ5DvTe/iIBqSPsRrb1XJIGJrwcbrAmPJJqNXMFUwDwYDVR0TAQH/\nBAUwAwEB/zALBgNVHQ8EBAMCAQYwFgYDVR0RBA8wDYILZXhhbXBsZS5jb20wHQYD\nVR0OBBYEFAXK38hmP8XvPfraviUGyy2CJkKxMAoGCCqGSM49BAMCA0gAMEUCIQD3\n7f6mRTYeubIK63kIZ4UtYoRcSnMUoOEWWHEwTB+ygAIgT1A+208nGsV/wLwFtMAy\n2PvLeTG4gZfwClWSY73gWvE=\n-----END CERTIFICATE-----\n"
+      ],
+      "intermediates": [
+        "-----BEGIN CERTIFICATE-----\nMIIB/jCCAaSgAwIBAgIUK03iHmG3xxMZElkCysqKAvce9KQwCgYIKoZIzj0EAwIw\nGjEYMBYGA1UEAwwPeDUwOS1saW1iby1yb290MB4XDTI0MDMwMTAwMDAwMVoXDTI0\nMDQwMTAwMDAwMFowajE5MDcGA1UECwwwNjkxNjY2MjQ0NzI3MjUwOTMxMTc0NjMx\nNDgwOTk1Nzk1MjUzNDAyOTkzNzIzMDg1MS0wKwYDVQQDDCR4NTA5LWxpbWJvLWlu\ndGVybWVkaWF0ZS1wYXRobGVuLU5vbmUwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNC\nAATCRuNdlRQabJUk8AjnHr/tKKrVHP5N8gheduKc/e/iBTbEBf+fY4ej8QZVqrds\nhguL8N++A46ujaTHtp7tp79Lo3gwdjAPBgNVHRMBAf8EBTADAQH/MAsGA1UdDwQE\nAwICBDAWBgNVHREEDzANggtleGFtcGxlLmNvbTAfBgNVHSMEGDAWgBQFyt/IZj/F\n7z362r4lBsstgiZCsTAdBgNVHQ4EFgQUCuuATVJDpTy64KK1Sm8pf/nP15swCgYI\nKoZIzj0EAwIDSAAwRQIhALFyjZiu64os4xDnwXiQbA82jwejEvxEXnNG/3Jgk39Z\nAiBNB/Uc8t2f3CR2rFOaPEhG5gY6jWi9pS27nq0eixoq+A==\n-----END CERTIFICATE-----\n"
+      ],
+      "certificate": "-----BEGIN CERTIFICATE-----\nMIIB/jCCAaSgAwIBAgIULGBg3alPAFrbYqwiDNk5lCqYzKswCgYIKoZIzj0EAwIw\najE5MDcGA1UECwwwNjkxNjY2MjQ0NzI3MjUwOTMxMTc0NjMxNDgwOTk1Nzk1MjUz\nNDAyOTkzNzIzMDg1MS0wKwYDVQQDDCR4NTA5LWxpbWJvLWludGVybWVkaWF0ZS1w\nYXRobGVuLU5vbmUwHhcNMjQwMzAxMDAwMDAxWhcNMjQwNDAxMDAwMDAwWjAWMRQw\nEgYDVQQDDAtleGFtcGxlLmNvbTBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABEEq\nlaqqenZwrsT2IAwVKfK5UtxYkSmUBGaF643XI0EM5elalox0+9UNmxHGT0vtg9Rm\n1hQPQVPRLC6L3maeq6OjfDB6MB0GA1UdDgQWBBQVms+VyNAYcKpsXJbKza9j3wDB\nZDAfBgNVHSMEGDAWgBQK64BNUkOlPLrgorVKbyl/+c/XmzALBgNVHQ8EBAMCB4Aw\nEwYDVR0lBAwwCgYIKwYBBQUHAwEwFgYDVR0RBA8wDYILZXhhbXBsZS5jb20wCgYI\nKoZIzj0EAwIDSAAwRQIgWhvpbvz9atbVcq6qz+v7ghGwlLDJCOWApLd2cU4xrZMC\nIQCCX3zxDY3KMjyq34xbP0SnwMQ9iOYoY8j3CXp+FVhQOg==\n-----END CERTIFICATE-----\n",
+      "date": "2024-03-01T00:00:00+00:00",
+      "crls": []
+    },
+    {
+      "id": "rfc5280::validity::not-yet-valid-5-seconds",
+      "description": "Produces the following **invalid** chain:\n\n```\nroot -> ICA -> EE\n```\n\nThe EE certificate becomes valid at `2024-03-01T00:00:05Z`, and the chain\nis validated at `2024-03-01T00:00:00Z`, i.e. 5 seconds before the certificate\nbecomes valid.\n\nThis test ensures implementations strictly reject certificates that are\nnot yet valid by a small number of seconds.",
+      "expected": "FAILURE",
+      "roots": [
+        "-----BEGIN CERTIFICATE-----\nMIIBjjCCATOgAwIBAgIUP4LeTjLIypARoDQfk1EjzVYRtA0wCgYIKoZIzj0EAwIw\nGjEYMBYGA1UEAwwPeDUwOS1saW1iby1yb290MB4XDTI0MDMwMTAwMDAwNVoXDTI0\nMDQwMTAwMDAwMFowGjEYMBYGA1UEAwwPeDUwOS1saW1iby1yb290MFkwEwYHKoZI\nzj0CAQYIKoZIzj0DAQcDQgAEThCkO36v5CXjFV/T0LesC3wVLGoQrWxP7MDXYmVR\n1kpcoruST7PAhr3iZYT3BQ9/wIPPi7MaJjM9Tj4idMC+kaNXMFUwDwYDVR0TAQH/\nBAUwAwEB/zALBgNVHQ8EBAMCAQYwFgYDVR0RBA8wDYILZXhhbXBsZS5jb20wHQYD\nVR0OBBYEFKJ+iyX6jW3dH5zdO6OV8/kCqWwNMAoGCCqGSM49BAMCA0kAMEYCIQDj\nnqek92M34nXiJX/4lKFFEWkbH1HaUzXcIbUvkVBLMAIhAMBTzufBYrQEXPcGl6dl\nmUb6d3IJDBYmMYVDE/jai4NT\n-----END CERTIFICATE-----\n"
+      ],
+      "intermediates": [
+        "-----BEGIN CERTIFICATE-----\nMIIB/TCCAaSgAwIBAgIUKpfyo4fDXaPIqY8rCq6VJxyMfPQwCgYIKoZIzj0EAwIw\nGjEYMBYGA1UEAwwPeDUwOS1saW1iby1yb290MB4XDTI0MDMwMTAwMDAwNVoXDTI0\nMDQwMTAwMDAwMFowajE5MDcGA1UECwwwMzYyNTg0ODgwOTc0NzE2MzA5MjY1MDQ2\nNDI2NjMxNjM1MzkzODkyNDIzMTUyNjUzMS0wKwYDVQQDDCR4NTA5LWxpbWJvLWlu\ndGVybWVkaWF0ZS1wYXRobGVuLU5vbmUwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNC\nAATeLVjuMDR1QvQyBLxyB4cu477XTjr97ZF5W2e3jg2b8mJQEdPz3MfsozGZCO9l\nbk/lbcwKqJCP4AJrtVvoPTOHo3gwdjAPBgNVHRMBAf8EBTADAQH/MAsGA1UdDwQE\nAwICBDAWBgNVHREEDzANggtleGFtcGxlLmNvbTAfBgNVHSMEGDAWgBSifosl+o1t\n3R+c3TujlfP5AqlsDTAdBgNVHQ4EFgQULBEUDgfga3CRllG0Lsm31kaV5ZkwCgYI\nKoZIzj0EAwIDRwAwRAIgSLDH0rQ7sYC+xXhmjBf8/MxoKaoy3CWbMX0avpU7C94C\nICvYWja6qPYypsWaIgP4fNatjXqQnhvKCmQcrvQnvWUJ\n-----END CERTIFICATE-----\n"
+      ],
+      "certificate": "-----BEGIN CERTIFICATE-----\nMIIB/jCCAaSgAwIBAgIUdNdvuadEoqMTXbBMSh1Z6fTp1G8wCgYIKoZIzj0EAwIw\najE5MDcGA1UECwwwMzYyNTg0ODgwOTc0NzE2MzA5MjY1MDQ2NDI2NjMxNjM1Mzkz\nODkyNDIzMTUyNjUzMS0wKwYDVQQDDCR4NTA5LWxpbWJvLWludGVybWVkaWF0ZS1w\nYXRobGVuLU5vbmUwHhcNMjQwMzAxMDAwMDA1WhcNMjQwNDAxMDAwMDAwWjAWMRQw\nEgYDVQQDDAtleGFtcGxlLmNvbTBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABACt\noaGhPnXwNDTfy8HNe/sorckwthm0V4ue9F90Hj1PxEK14D/OYv/MG0jwun9MylJ6\ncZlS7cFJvFBg6SpA4PKjfDB6MB0GA1UdDgQWBBQAXF0rmaPqNXW71aAUpa1TUfMS\nSTAfBgNVHSMEGDAWgBQsERQOB+BrcJGWUbQuybfWRpXlmTALBgNVHQ8EBAMCB4Aw\nEwYDVR0lBAwwCgYIKwYBBQUHAwEwFgYDVR0RBA8wDYILZXhhbXBsZS5jb20wCgYI\nKoZIzj0EAwIDSAAwRQIhAMm1l4hTx+2Z5sYZrY84oRxFL+7AFx4ZM1rFBvjOrFUT\nAiBxyde8K954v8ys2X85rRIBli6I/QdGWJa+PzFbOWUybQ==\n-----END CERTIFICATE-----\n",
+      "date": "2024-03-01T00:00:00+00:00",
+      "crls": []
+    },
+    {
+      "id": "rfc5280::root-missing-basic-constraints",
+      "description": "Produces the following **invalid** chain:\n\n```\nroot -> EE\n```\n\nThe root CA is missing the BasicConstraints extension, which is disallowed\nunder RFC 5280 4.2.1.9:\n\n> Conforming CAs MUST include this extension in all CA certificates\n> that contain public keys used to validate digital signatures on\n> certificates and MUST mark the extension as critical in such\n> certificates.",
+      "expected": "FAILURE",
+      "roots": [
+        "-----BEGIN CERTIFICATE-----\nMIIBfTCCASSgAwIBAgIUaLLKrDV0u9IXoGUdM0tLCIKfMNEwCgYIKoZIzj0EAwIw\nGjEYMBYGA1UEAwwPeDUwOS1saW1iby1yb290MCAXDTcwMDEwMTAwMDAwMVoYDzI5\nNjkwNTAzMDAwMDAxWjAaMRgwFgYDVQQDDA94NTA5LWxpbWJvLXJvb3QwWTATBgcq\nhkjOPQIBBggqhkjOPQMBBwNCAASSinCTQE2Hk/xAnjjq8V7eIu91awqqIPn0SwUd\nnXs0jsoICbfOUpXr5yLJvbmwvEnmDsoyJDmogDiOHahJheX6o0YwRDALBgNVHQ8E\nBAMCAQYwFgYDVR0RBA8wDYILZXhhbXBsZS5jb20wHQYDVR0OBBYEFC1LiIHK9Kk/\n8KngXtSREygIacMrMAoGCCqGSM49BAMCA0cAMEQCIG0lGcRm36zfWQyK5Nv67K/U\nNXO8BkG2Y5RSKMGbkvhDAiADJNFHXsO7F+uf9bELb6UZAJdo1Wh4deIArHyx87Bb\nCw==\n-----END CERTIFICATE-----\n"
+      ],
+      "intermediates": [],
+      "certificate": "-----BEGIN CERTIFICATE-----\nMIIBsDCCAVagAwIBAgIUcVjrdNK/rtSlq8QNRNMmU10rOKQwCgYIKoZIzj0EAwIw\nGjEYMBYGA1UEAwwPeDUwOS1saW1iby1yb290MCAXDTcwMDEwMTAwMDAwMVoYDzI5\nNjkwNTAzMDAwMDAxWjAWMRQwEgYDVQQDDAtleGFtcGxlLmNvbTBZMBMGByqGSM49\nAgEGCCqGSM49AwEHA0IABGeythfqD/WtY5hZzSMr/BBMrOmsjduJc2J0f4s/3pxH\n3B3o1nZJBX4Gy3nGZjd40CG3Ih+TVQmnQDTWZmT6M7yjfDB6MB0GA1UdDgQWBBTV\nX+lXzqoF749IymK7pyBHteOUuDAfBgNVHSMEGDAWgBQtS4iByvSpP/Cp4F7UkRMo\nCGnDKzALBgNVHQ8EBAMCB4AwEwYDVR0lBAwwCgYIKwYBBQUHAwEwFgYDVR0RBA8w\nDYILZXhhbXBsZS5jb20wCgYIKoZIzj0EAwIDSAAwRQIhAKpKNiXMZ73hX8Dtk664\nh3uSROUSrId9IHz94Qd2HwVkAiBHt98J2wh5Kw8SLQBjy+N250qImQJjTNevgV9f\n3GR3Ig==\n-----END CERTIFICATE-----\n",
+      "date": null,
+      "crls": []
+    },
+    {
+      "id": "rfc5280::root-non-critical-basic-constraints",
+      "description": "Produces the following **invalid** chain:\n\n```\nroot -> EE\n```\n\nThe root CA has a non-critical BasicConstraints extension, which is disallowed\nunder RFC 5280 4.2.1.9:\n\n> Conforming CAs MUST include this extension in all CA certificates\n> that contain public keys used to validate digital signatures on\n> certificates and MUST mark the extension as critical in such\n> certificates.",
+      "expected": "FAILURE",
+      "roots": [
+        "-----BEGIN CERTIFICATE-----\nMIIBjDCCATKgAwIBAgIUbtU6EB2s9uhNjN/dwmzfiEYP0eEwCgYIKoZIzj0EAwIw\nGjEYMBYGA1UEAwwPeDUwOS1saW1iby1yb290MCAXDTcwMDEwMTAwMDAwMVoYDzI5\nNjkwNTAzMDAwMDAxWjAaMRgwFgYDVQQDDA94NTA5LWxpbWJvLXJvb3QwWTATBgcq\nhkjOPQIBBggqhkjOPQMBBwNCAAQhwM0bf0zOVTJxNZjWGFAcFp3aGwj7XvIgNenn\n1J0+AJHMxHDv38q1BDZ72KNHDtzKrzOOx9Av+CDw+tWF31xBo1QwUjAMBgNVHRME\nBTADAQH/MAsGA1UdDwQEAwIBBjAWBgNVHREEDzANggtleGFtcGxlLmNvbTAdBgNV\nHQ4EFgQUU09nSUoo4gHEze4fXNcARud08nMwCgYIKoZIzj0EAwIDSAAwRQIhAIMA\nNm/4aGAsWMXJJBqNtQr4p7uEITu9rlW0laqeUGuvAiAbLh0lkHtB7b2R6PEjGJKu\nMArv14tKD7NQFhjTGZbLVA==\n-----END CERTIFICATE-----\n"
+      ],
+      "intermediates": [],
+      "certificate": "-----BEGIN CERTIFICATE-----\nMIIBsTCCAVagAwIBAgIUC77tT+SxFmG6K00PrMQsbyvLtlIwCgYIKoZIzj0EAwIw\nGjEYMBYGA1UEAwwPeDUwOS1saW1iby1yb290MCAXDTcwMDEwMTAwMDAwMVoYDzI5\nNjkwNTAzMDAwMDAxWjAWMRQwEgYDVQQDDAtleGFtcGxlLmNvbTBZMBMGByqGSM49\nAgEGCCqGSM49AwEHA0IABNR5ASY8CRQHP6fCdMhQX49Bclkz4YG/KkMR4VTocjPE\nh7lLo82wEnOGR6G8ep/Q/NR1/VKCOeLZM0GltJ8MRGejfDB6MB0GA1UdDgQWBBQb\nde5AXbxd8TpT1LdSMTtUoXa3hTAfBgNVHSMEGDAWgBRTT2dJSijiAcTN7h9c1wBG\n53TyczALBgNVHQ8EBAMCB4AwEwYDVR0lBAwwCgYIKwYBBQUHAwEwFgYDVR0RBA8w\nDYILZXhhbXBsZS5jb20wCgYIKoZIzj0EAwIDSQAwRgIhAK0BYKwPPcm3kewJkZVo\nZaGYhBSeKxC8ewLlQefZjth5AiEA3A3PhTk4MAN/YJFRwQ0V6PIHTrWBNyrKbD7y\nEX1ip8Y=\n-----END CERTIFICATE-----\n",
+      "date": null,
+      "crls": []
+    },
+    {
+      "id": "rfc5280::leaf-ku-keycertsign",
+      "description": "Produces the following **invalid** chain:\n\n```\nroot -> EE\n```\n\nThe leaf has a BasicConstraints extension with cA=FALSE and a KeyUsage\nextension with keyCertSign=TRUE. This is disallowed under\nRFC 5280 4.2.1.9:\n\n> The cA boolean indicates whether the certified public key may be used\n> to verify certificate signatures.  If the cA boolean is not asserted,\n> then the keyCertSign bit in the key usage extension MUST NOT be\n> asserted.",
+      "expected": "FAILURE",
+      "roots": [
+        "-----BEGIN CERTIFICATE-----\nMIIBkDCCATWgAwIBAgIUMgxvyoQ4/rOwRjQ0NA6b2JVHqGUwCgYIKoZIzj0EAwIw\nGjEYMBYGA1UEAwwPeDUwOS1saW1iby1yb290MCAXDTcwMDEwMTAwMDAwMVoYDzI5\nNjkwNTAzMDAwMDAxWjAaMRgwFgYDVQQDDA94NTA5LWxpbWJvLXJvb3QwWTATBgcq\nhkjOPQIBBggqhkjOPQMBBwNCAARzfXly90zk0Od7CeehsAOx1wGPohLKAa4kPw6l\n4nK7QGXg4pF+SHdiymeRcjDzIIuLTtn1Rv55yJ6aF/IEKRpao1cwVTAPBgNVHRMB\nAf8EBTADAQH/MAsGA1UdDwQEAwIBBjAWBgNVHREEDzANggtleGFtcGxlLmNvbTAd\nBgNVHQ4EFgQUOtaf5btlAz59g7gNSWXKWM9G/24wCgYIKoZIzj0EAwIDSQAwRgIh\nAKm/rh7lQ3RNdIboN5eK/iMyDzsJKw9fV92rGQ7S/hO0AiEAoYxKT5MAIWvEfuZJ\nEuh5jovUOLvT6CrLVAhSQ1aPusI=\n-----END CERTIFICATE-----\n"
+      ],
+      "intermediates": [],
+      "certificate": "-----BEGIN CERTIFICATE-----\nMIIBvzCCAWagAwIBAgIUcpDG5q/NDtM/Rm5OY+iPJZxwiOYwCgYIKoZIzj0EAwIw\nGjEYMBYGA1UEAwwPeDUwOS1saW1iby1yb290MCAXDTcwMDEwMTAwMDAwMVoYDzI5\nNjkwNTAzMDAwMDAxWjAWMRQwEgYDVQQDDAtleGFtcGxlLmNvbTBZMBMGByqGSM49\nAgEGCCqGSM49AwEHA0IABGlcu0cQHdMww1apIJSccLaaHfdHiVLiUSGvBJwp0KHf\n4Px0/NWerEWkSuFngG5ISTKwzWgHo+QucoZD7x7mNeajgYswgYgwHQYDVR0OBBYE\nFA/79PBr+qxDiEg86IMfTNx0lqnOMAwGA1UdEwEB/wQCMAAwHwYDVR0jBBgwFoAU\nOtaf5btlAz59g7gNSWXKWM9G/24wCwYDVR0PBAQDAgKEMBMGA1UdJQQMMAoGCCsG\nAQUFBwMBMBYGA1UdEQQPMA2CC2V4YW1wbGUuY29tMAoGCCqGSM49BAMCA0cAMEQC\nIBUY/z4zU2oH5Ipu5Th0nsolcqvBRc4H3736l+3tDwT2AiBoMc7Xpr0/Kg2O6M+I\nmZci90DIwf6y5sUS9KwcOnaHIQ==\n-----END CERTIFICATE-----\n",
+      "date": null,
+      "crls": []
+    },
+    {
+      "id": "rfc5280::root-and-intermediate-swapped",
+      "description": "Produces the following valid chain:\n\n```\nroot -> ICA -> EE\n```\n\nThe configuration puts the ICA in the trusted set, meaning that validation\nshould ignore (and not fail on) the root in the untrusted intermediate set.",
+      "expected": "SUCCESS",
+      "roots": [
+        "-----BEGIN CERTIFICATE-----\nMIIB/jCCAaWgAwIBAgIUcp3S51e2FrCemOeQG3+ZaqiJOp0wCgYIKoZIzj0EAwIw\nGjEYMBYGA1UEAwwPeDUwOS1saW1iby1yb290MCAXDTcwMDEwMTAwMDAwMVoYDzI5\nNjkwNTAzMDAwMDAxWjBpMTgwNgYDVQQLDC84NzQ1MTcyMDcwNzIwMjk4MTc1ODcz\nMzExNjAzOTAwNDQ1NTI2NzA0Njg2MDYwMzEtMCsGA1UEAwwkeDUwOS1saW1iby1p\nbnRlcm1lZGlhdGUtcGF0aGxlbi1Ob25lMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcD\nQgAEIkhGJfHrVUkAXZ13r5ecTyuzTpWbvNUvCo4dIWkKbbPCfS6d98qQGJ1Bq6r7\nxZT82msnWoWS1YqktKOb/j9D8qN4MHYwDwYDVR0TAQH/BAUwAwEB/zALBgNVHQ8E\nBAMCAgQwFgYDVR0RBA8wDYILZXhhbXBsZS5jb20wHwYDVR0jBBgwFoAUFkXjHUj0\n89fLx8OAQmTqISHCE+IwHQYDVR0OBBYEFGwHJw22yyhx54GNHUwGEyx7VTVXMAoG\nCCqGSM49BAMCA0cAMEQCIHJ/NihlvNP35t4ucv8YevGLN98HE3EgZ5zoXlNjq1KA\nAiBVDoKyWDUNl+piCS/GH2NbDuBhFCggHeKfixg/xzVFgw==\n-----END CERTIFICATE-----\n"
+      ],
+      "intermediates": [
+        "-----BEGIN CERTIFICATE-----\nMIIBjzCCATWgAwIBAgIUD1F4hScLJu44Vfwg/k0Fij9xJzswCgYIKoZIzj0EAwIw\nGjEYMBYGA1UEAwwPeDUwOS1saW1iby1yb290MCAXDTcwMDEwMTAwMDAwMVoYDzI5\nNjkwNTAzMDAwMDAxWjAaMRgwFgYDVQQDDA94NTA5LWxpbWJvLXJvb3QwWTATBgcq\nhkjOPQIBBggqhkjOPQMBBwNCAARerxbjaJ2YHrteEQYkZ0S2JRsjVUUydELv+5Et\n99iX2hu5+idVZUUImVw5IeZ+WamWZhAX5Qf2UfdvI3E8GxUFo1cwVTAPBgNVHRMB\nAf8EBTADAQH/MAsGA1UdDwQEAwIBBjAWBgNVHREEDzANggtleGFtcGxlLmNvbTAd\nBgNVHQ4EFgQUFkXjHUj089fLx8OAQmTqISHCE+IwCgYIKoZIzj0EAwIDSAAwRQIg\nFn3i8PSz8tcPtwL7PhJ91igjgER+gD6085PJI3DInM8CIQCP2URQdmOQqROScb9K\nUyXVwsjCTvnBWJ8ZiaJqZ27brA==\n-----END CERTIFICATE-----\n"
+      ],
+      "certificate": "-----BEGIN CERTIFICATE-----\nMIIB/zCCAaWgAwIBAgIURidG+YuS479oIy6eyKJKHYLRtEQwCgYIKoZIzj0EAwIw\naTE4MDYGA1UECwwvODc0NTE3MjA3MDcyMDI5ODE3NTg3MzMxMTYwMzkwMDQ0NTUy\nNjcwNDY4NjA2MDMxLTArBgNVBAMMJHg1MDktbGltYm8taW50ZXJtZWRpYXRlLXBh\ndGhsZW4tTm9uZTAgFw03MDAxMDEwMDAwMDFaGA8yOTY5MDUwMzAwMDAwMVowFjEU\nMBIGA1UEAwwLZXhhbXBsZS5jb20wWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAATM\n71hSCMsK9+qf52lg8BUoqtL/yOSzUluB+/eC515AkdwgHQiYAPZqLCe17CCiAtZS\nk334pQ9tSBkj8Aj1VnJTo3wwejAdBgNVHQ4EFgQUr+0Ib9PjBbr8ydediwU+bfO4\nZIAwHwYDVR0jBBgwFoAUbAcnDbbLKHHngY0dTAYTLHtVNVcwCwYDVR0PBAQDAgeA\nMBMGA1UdJQQMMAoGCCsGAQUFBwMBMBYGA1UdEQQPMA2CC2V4YW1wbGUuY29tMAoG\nCCqGSM49BAMCA0gAMEUCIQCJdm+j6nqorDMIsNYip2yzdnRoNs/5lsbBih0D/11a\nqgIgVi/czaYltV8MHRjDntm0x5fRDtPfyVM6oB1QaEfYEmE=\n-----END CERTIFICATE-----\n",
+      "date": null,
+      "crls": []
+    }
+  ]
+}

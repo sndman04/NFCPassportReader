@@ -4,6 +4,14 @@ This fork intentionally exposes the privacy-safe passport-chip API as the app in
 
 The fork now requires SwiftPM tools 6.3, Swift 6 language mode, Xcode 26.5 or newer, and iOS 26.0 or newer. This matches the app-only integration plan and intentionally drops older-package consumer compatibility.
 
+## External corpus corrections (privacy.6-rc.9)
+
+The next app-consumption candidate is annotated `notary-2.3.1-privacy.6-rc.9`, superseding rc.8; publication status/revision is recorded in the fork plan. Public APIs, diagnostic schema, policy defaults and the app pin are unchanged. No call-site migration is required.
+
+Trust verification now enables OpenSSL's strict structure/CA-extension checks while retaining ICAO explicit EC parameters. Previously tolerated certificates missing required AKI/SKI, CA constraints or key-usage structure can now fail trusted verification. Supplied trust stores should contain authenticated conforming CSCA certificates. A locally trusted CSCA link certificate can serve as an anchor without a self-signed copy; certificates supplied only as untrusted chain material cannot. RFC 5280's exact notAfter second is accepted; later times still fail. This does not add a complete issuer-profile linter or a general WebPKI validator.
+
+Contradictory explicit EC cofactors and duplicate serial entries in an authenticated CRL now fail. A missing EC cofactor is accepted only for parameters matching a known ICAO group. Duplicate CRL serials report the existing `invalidList` reason. These changes preserve passive signatures, hashes and security-policy enforcement. The original signed v0/v1 fixtures remain unchanged. See [external tests and deliberate profile differences](Tests/ExternalCorpora/README.md); no physical-passport validation is claimed.
+
 ## Edge-case corrections (privacy.6-rc.8)
 
 Use published annotated `notary-2.3.1-privacy.6-rc.8` at `429fbde0f14b4363284d85c6999a0546aeece736`, superseding rc.7. Reader signatures, enum cases, diagnostic schema and policy defaults are unchanged. When-supported authentication policies now reject unknown availability and unread authentication groups advertised in COM or the signed SOD; full verification cannot infer absence from an unsigned COM omission. Actual CAM outcomes are preserved when CardSecurity supplies the key without DG14. `.notaryStrict` remains passive integrity only.

@@ -1,0 +1,121 @@
+{
+  "format": 1,
+  "agreementDifferences": [
+    {
+      "id": "ecdh_secp256r1_test/359",
+      "upstreamExpected": "invalid",
+      "readerExpected": "valid",
+      "reason": "SEC 1 v2.0 C.2 permits omitted cofactor. Accept only if the remaining parameters fully match a known ICAO group; require the exact published shared secret. ICAO Part 11 9.5.2, Table 12."
+    },
+    {
+      "id": "ecdh_secp384r1_test/799",
+      "upstreamExpected": "invalid",
+      "readerExpected": "valid",
+      "reason": "SEC 1 v2.0 C.2 permits omitted cofactor. Accept only if the remaining parameters fully match a known ICAO group; require the exact published shared secret. ICAO Part 11 9.5.2, Table 12."
+    },
+    {
+      "id": "ecdh_secp521r1_test/660",
+      "upstreamExpected": "invalid",
+      "readerExpected": "valid",
+      "reason": "SEC 1 v2.0 C.2 permits omitted cofactor. Accept only if the remaining parameters fully match a known ICAO group; require the exact published shared secret. ICAO Part 11 9.5.2, Table 12."
+    }
+  ],
+  "trustDifferences": [
+    {
+      "id": "crl::issuer-no-keyusage-extension",
+      "upstreamExpected": "SUCCESS",
+      "readerAccepted": false,
+      "reason": "ICAO Part 12 section 7.1.1 requires explicit CA cRLSign usage; the reader rejects its absence although the general RFC fixture permits it."
+    },
+    {
+      "id": "cve::cve-2025-61727",
+      "upstreamExpected": "FAILURE",
+      "readerAccepted": true,
+      "reason": "General-PKI name/policy/extended-purpose feature outside the ICAO DS/CSCA profile; Doc 9303 Part 12 section 7.1.1 and Appendix D.2. This is a measured differential, not a supported-profile conformance pass."
+    },
+    {
+      "id": "rfc5280::aki::cross-signed-root-missing-aki",
+      "upstreamExpected": "FAILURE",
+      "readerAccepted": true,
+      "reason": "An explicitly configured trust anchor supplies its own trusted key (ICAO Part 12 Appendix D.1.1.1); its issuer AKI is not used to establish trust in that key. No untrusted intermediate becomes an anchor."
+    },
+    {
+      "id": "rfc5280::eku::ee-eku-empty",
+      "upstreamExpected": "FAILURE",
+      "readerAccepted": true,
+      "reason": "General-PKI name/policy/extended-purpose feature outside the ICAO DS/CSCA profile; Doc 9303 Part 12 section 7.1.1 and Appendix D.2. This is a measured differential, not a supported-profile conformance pass."
+    },
+    {
+      "id": "rfc5280::nc::permitted-empty-sequence-excluded-nonempty",
+      "upstreamExpected": "FAILURE",
+      "readerAccepted": true,
+      "reason": "General-PKI name/policy/extended-purpose feature outside the ICAO DS/CSCA profile; Doc 9303 Part 12 section 7.1.1 and Appendix D.2. This is a measured differential, not a supported-profile conformance pass."
+    },
+    {
+      "id": "rfc5280::nc::permitted-nonempty-excluded-empty-sequence",
+      "upstreamExpected": "FAILURE",
+      "readerAccepted": true,
+      "reason": "General-PKI name/policy/extended-purpose feature outside the ICAO DS/CSCA profile; Doc 9303 Part 12 section 7.1.1 and Appendix D.2. This is a measured differential, not a supported-profile conformance pass."
+    },
+    {
+      "id": "rfc5280::nc::invalid-dnsname-leading-period",
+      "upstreamExpected": "FAILURE",
+      "readerAccepted": true,
+      "reason": "General-PKI name/policy/extended-purpose feature outside the ICAO DS/CSCA profile; Doc 9303 Part 12 section 7.1.1 and Appendix D.2. This is a measured differential, not a supported-profile conformance pass."
+    },
+    {
+      "id": "rfc5280::nc::not-allowed-in-ee-noncritical",
+      "upstreamExpected": "FAILURE",
+      "readerAccepted": true,
+      "reason": "General-PKI name/policy/extended-purpose feature outside the ICAO DS/CSCA profile; Doc 9303 Part 12 section 7.1.1 and Appendix D.2. This is a measured differential, not a supported-profile conformance pass."
+    },
+    {
+      "id": "rfc5280::nc::not-allowed-in-ee-critical",
+      "upstreamExpected": "FAILURE",
+      "readerAccepted": true,
+      "reason": "General-PKI name/policy/extended-purpose feature outside the ICAO DS/CSCA profile; Doc 9303 Part 12 section 7.1.1 and Appendix D.2. This is a measured differential, not a supported-profile conformance pass."
+    },
+    {
+      "id": "rfc5280::nc::nc-permits-invalid-dns-san",
+      "upstreamExpected": "FAILURE",
+      "readerAccepted": true,
+      "reason": "General-PKI name/policy/extended-purpose feature outside the ICAO DS/CSCA profile; Doc 9303 Part 12 section 7.1.1 and Appendix D.2. This is a measured differential, not a supported-profile conformance pass."
+    },
+    {
+      "id": "rfc5280::nc::nc-forbids-alternate-chain-ica",
+      "upstreamExpected": "SUCCESS",
+      "readerAccepted": false,
+      "reason": "General-PKI name/policy/extended-purpose feature outside the ICAO DS/CSCA profile; Doc 9303 Part 12 section 7.1.1 and Appendix D.2. This is a measured differential, not a supported-profile conformance pass."
+    },
+    {
+      "id": "rfc5280::nc::nc-forbids-same-chain-ica",
+      "upstreamExpected": "SUCCESS",
+      "readerAccepted": false,
+      "reason": "General-PKI name/policy/extended-purpose feature outside the ICAO DS/CSCA profile; Doc 9303 Part 12 section 7.1.1 and Appendix D.2. This is a measured differential, not a supported-profile conformance pass."
+    },
+    {
+      "id": "rfc5280::nc::nc-forbids-dnsname-wildcard-san",
+      "upstreamExpected": "FAILURE",
+      "readerAccepted": true,
+      "reason": "General-PKI name/policy/extended-purpose feature outside the ICAO DS/CSCA profile; Doc 9303 Part 12 section 7.1.1 and Appendix D.2. This is a measured differential, not a supported-profile conformance pass."
+    },
+    {
+      "id": "rfc5280::pc::ica-noncritical-pc",
+      "upstreamExpected": "FAILURE",
+      "readerAccepted": true,
+      "reason": "General-PKI name/policy/extended-purpose feature outside the ICAO DS/CSCA profile; Doc 9303 Part 12 section 7.1.1 and Appendix D.2. This is a measured differential, not a supported-profile conformance pass."
+    },
+    {
+      "id": "rfc5280::serial::too-long",
+      "upstreamExpected": "FAILURE",
+      "readerAccepted": true,
+      "reason": "Issuance-profile lint differs from cryptographic path validation. RFC 5280 section 4.1.2.2 requires positive <=20-octet serials from issuers but calls for graceful handling of nonconforming serials. No complete ICAO issuance linter is claimed."
+    },
+    {
+      "id": "rfc5280::serial::zero",
+      "upstreamExpected": "FAILURE",
+      "readerAccepted": true,
+      "reason": "Issuance-profile lint differs from cryptographic path validation. RFC 5280 section 4.1.2.2 requires positive <=20-octet serials from issuers but calls for graceful handling of nonconforming serials. No complete ICAO issuance linter is claimed."
+    }
+  ]
+}
