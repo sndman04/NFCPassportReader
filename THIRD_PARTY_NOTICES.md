@@ -17,3 +17,7 @@ THE SCHEMA ON WHICH THIS SOFTWARE IS BASED IS PROVIDED BY THE COPYRIGHT HOLDERS 
 # Public cryptographic regression data
 
 `Tests/NFCPassportReaderTests/Fixtures/external-regressions.json` contains a selected, field-reduced subset of public synthetic C2SP Wycheproof and x509-limbo vectors under Apache-2.0. The original public key/certificate/CRL bytes are unchanged; upstream private signing keys are not included. Source revisions, file hashes, exact case IDs, adaptations and profile differences are documented in [Tests/ExternalCorpora](Tests/ExternalCorpora/README.md). License texts: [Wycheproof](Tests/ExternalCorpora/WYCHEPROOF-LICENSE.txt), [x509-limbo](Tests/ExternalCorpora/LIMBO-LICENSE.txt). The optional larger corpora are fetched separately and ignored. OpenJPEG's selected malformed headers are not redistributed.
+
+# External synthetic passport specimen
+
+`Tests/NFCPassportReaderTests/Fixtures/external-passport-specimen.json` is an unchanged copy of `Sources/Resources/SamplePassport/emrtd-bundle.json` from [jeswr/pod-passport-scanner](https://github.com/jeswr/pod-passport-scanner), revision `d9c540b61f2ddad9ded26c48acfc600f68b5cadb`, © 2026 Jesse Wright, under the [included MIT license](Tests/ExternalPassports/SPECIMEN-LICENSE.txt). Its original signed bytes are preserved. Proxmark3 GPL source and generated samples are fetched/generated separately in ignored directories, not redistributed here. Source/version/hash and execution/coverage details are in [Tests/ExternalPassports](Tests/ExternalPassports/README.md).

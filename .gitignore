@@ -83,6 +83,7 @@ scripts/*
 !scripts/generate_revocation_profiles.py
 !scripts/generate_edge_case_fixtures.py
 !scripts/fetch_external_corpora.py
+!scripts/prepare_external_passports.py
 !scripts/nfc_boundary_check.sh
 !scripts/privacy_scan.sh
 !scripts/release_check.sh
@@ -107,3 +108,6 @@ passport*.json
 
 # Optional pinned public stress corpora, fetched only for the test bundle.
 Tests/NFCPassportReaderTests/Fixtures/ExternalCorpora/
+
+# Pinned third-party generated passport samples (synthetic, optional tests only).
+Tests/NFCPassportReaderTests/Fixtures/ExternalPassports/
