@@ -2,7 +2,7 @@
 
 ## 2026-10-30 repeated edge-case audit (privacy.6-rc.8)
 
-The user requested several bug-check passes from different angles after rc.7. Work is in the fork source repository on `fix/rc7-edge-cases`, based on `a3c4253aee840dcf03294b838e09db297d09073c` (documentation follow-up to rc.7; production baseline `8b0f1ea1af90e6e331929524f40ae213125c9373`). The intended next immutable annotated app candidate is `notary-2.3.1-privacy.6-rc.8`. No app/generated checkout, upstream baseline, public API signature or policy default changes. Terminal Authentication/LDS2 remain the user's separate restricted-workflow project.
+The user requested several bug-check passes from different angles after rc.7. Work is in the fork source repository on `fix/rc7-edge-cases`, based on `a3c4253aee840dcf03294b838e09db297d09073c` (documentation follow-up to rc.7; production baseline `8b0f1ea1af90e6e331929524f40ae213125c9373`). The published immutable annotated app candidate is `notary-2.3.1-privacy.6-rc.8` at `429fbde0f14b4363284d85c6999a0546aeece736`. No app/generated checkout, upstream baseline, public API signature or policy default changes. Terminal Authentication/LDS2 remain the user's separate restricted-workflow project.
 
 ### Passes and confirmed corrections
 
@@ -43,7 +43,7 @@ Final verification: **475 iOS Simulator XCTest methods, zero failures**, generic
 
 No changed-code compiler warnings or final test failures remain. External Xcode AppIntents metadata warnings are safe to leave because the XCTest bundle has no AppIntents dependency/functionality; Xcode package destination metadata messages are also external. Expected-red runs invoked Xcode's failed-test simulator diagnostic collector, which reported the known `simctl` lookup error; passing runs did not rely on that collector. The unsafe external API probe intentionally requires compilation rejection. No macOS `swift test` claim is made.
 
-Release content is ready for annotated `notary-2.3.1-privacy.6-rc.8`. Publication/ref verification will be recorded on maintained main after the immutable tag is pushed. Earlier app-consumption tags and upstream snapshot refs must remain unchanged.
+Published: fast-forwarded maintained `main` and atomically pushed annotated `notary-2.3.1-privacy.6-rc.8` at `429fbde0f14b4363284d85c6999a0546aeece736` using the saved repository-owning account. Remote HEAD/main and the peeled annotated tag were verified. rc.5, rc.6, rc.7 and the upstream/2.3.1 and notary/2.3.0-baseline snapshots retain their original revisions. The short-lived work branch is removed after the publication documentation follow-up; maintained main's production/test files are identical to the app tag. No published tag was rewritten. The app pin remains unchanged and should consume rc.8 for integration/physical testing.
 
 ## 2026-10-30 standards compatibility and security correction (privacy.6-rc.7)
 
