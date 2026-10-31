@@ -147,6 +147,6 @@ Chain categories include trustStoreUnavailable, certificateUnavailable, issuerNo
 
 ## Candidate pin and repinning
 
-The diagnostic API was introduced in `notary-2.3.1-privacy.6-rc.5`; rc.6 corrects SOD v1 and rc.7 adds the [standards compatibility changes](STANDARDS_COVERAGE.md). The annotated rc.7 candidate is local; publication is blocked by GitHub write permissions. Remote main remains rc.5. Publish and verify the candidate's peeled SHA before repinning the app. All earlier tags/upstream snapshots remain unchanged. Schema 1 keeps its structure; new fixed revocation reason/operation values are additive.
+The diagnostic API was introduced in `notary-2.3.1-privacy.6-rc.5`; rc.6 corrects SOD v1 and rc.7 adds the [standards compatibility changes](STANDARDS_COVERAGE.md). The annotated rc.7 candidate is published and its remote peeled SHA is verified as `8b0f1ea1af90e6e331929524f40ae213125c9373`. The initial account-selection error is resolved. Pin this immutable tag when updating the app. All earlier tags/upstream snapshots remain unchanged. Schema 1 keeps its structure; new fixed revocation reason/operation values are additive.
 
 Repin the consuming app in a separate task. Exercise real v0/v1, new and legacy face formats, authentication, tampered rejection, RF loss, timeout/cancellation and back-to-back scans with its custom logger and encrypted history before promoting a production tag.
