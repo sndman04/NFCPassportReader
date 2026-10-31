@@ -1,6 +1,6 @@
 # Ordinary-passport standards coverage
 
-This inventory describes the `notary-2.3.1-privacy.6-rc.9` candidate. It is an implementation and synthetic acceptance inventory, not a certification of all passports. The fork plan records the verified release revision; the app should consume the published annotated candidate for integration/device testing. The user explicitly selected a separate project for Terminal Authentication and LDS2.
+This inventory describes the `notary-2.3.1-privacy.6-rc.9` candidate. It is an implementation and synthetic acceptance inventory, not a certification of all passports. The verified release revision is `4b21e2762533f87e9d8c8292d611ecaab8cd7df5`; the app should consume the published annotated candidate for integration/device testing. The user explicitly selected a separate project for Terminal Authentication and LDS2.
 
 | In-scope mechanism | Acceptance evidence and boundaries |
 | --- | --- |

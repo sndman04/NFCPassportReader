@@ -2,7 +2,7 @@
 
 ## 2026-10-30 external public corpus stress pass (privacy.6-rc.9)
 
-Authorized by the user's “Let’s run any you think would prove useful.” Work is in the fork source repository on `test/external-corpora`, starting at maintained main `cfa301bfab7627824ff8507a79f7bbfa225b913d` (production baseline rc.8 / `429fbde0f14b4363284d85c6999a0546aeece736`). The next immutable annotated app candidate is `notary-2.3.1-privacy.6-rc.9`; final publication evidence is recorded below. No app/generated checkout, upstream baseline, public API signature, diagnostic schema or policy default change. Terminal Authentication/LDS2 remain separate as the user requested.
+Authorized by the user's “Let’s run any you think would prove useful.” Work is in the fork source repository on `test/external-corpora`, starting at maintained main `cfa301bfab7627824ff8507a79f7bbfa225b913d` (production baseline rc.8 / `429fbde0f14b4363284d85c6999a0546aeece736`). The published immutable annotated app candidate is `notary-2.3.1-privacy.6-rc.9` at `4b21e2762533f87e9d8c8292d611ecaab8cd7df5`; remote verification is recorded below. No app/generated checkout, upstream baseline, public API signature, diagnostic schema or policy default change. Terminal Authentication/LDS2 remain separate as the user requested.
 
 ### External inputs and observed differences
 
@@ -43,7 +43,7 @@ External-only diagnostics: Xcode AppIntents metadata extraction warns because th
 
 Final verification after native ownership review: **484 iOS Simulator XCTest methods, zero failures and zero skips**, generic iOS build/build-for-testing, external safe/unsafe API probes, privacy and NFC-boundary scans, whitespace checks all passed (`tmp/external-corpora/final-release-check.log`). Final AddressSanitizer run with the strengthened CRL-reason/privacy assertions: **27 executions (9 methods × 3), zero failures and zero skips**, 17.344 seconds of test time (`final-address-sanitizer.log`); no sanitizer finding. The original signed baseline diff is empty. Targeted changed-file review found only test temporary synthetic trust files and count-only output; production has no added diagnostic sink. No changed-source compiler warning or unresolved applicable regression failure remains. The 16 explicitly classified general-PKI differentials remain documented limitations, not hidden passing conformance results.
 
-Release: pre-publication branch/remote/graph snapshots are saved under `tmp/external-corpora/*before-release.txt`. Fast-forward maintained main and publish annotated rc.9 without changing any earlier tag or upstream snapshot; exact remote verification follows publication. The repository-local saved owner credential is used; global GitHub authentication is unchanged.
+Published: fast-forwarded maintained main and atomically pushed annotated `notary-2.3.1-privacy.6-rc.9` at `4b21e2762533f87e9d8c8292d611ecaab8cd7df5`. Remote HEAD/main and the peeled annotated tag were verified. rc.5–rc.8 and upstream/2.3.1 and notary/2.3.0-baseline remain unchanged. Pre-publication branch/remote/graph snapshots are under `tmp/external-corpora/*before-release.txt`. The repository-local saved owner credential was used; global GitHub authentication is unchanged. A documentation-only main follow-up records this revision; production/tests remain identical to the app tag. The short-lived work branch is removed after that follow-up. The app pin is unchanged and should consume rc.9 for integration and physical testing.
 
 ## 2026-10-30 repeated edge-case audit (privacy.6-rc.8)
 

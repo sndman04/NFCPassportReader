@@ -6,7 +6,7 @@ The fork now requires SwiftPM tools 6.3, Swift 6 language mode, Xcode 26.5 or ne
 
 ## External corpus corrections (privacy.6-rc.9)
 
-The next app-consumption candidate is annotated `notary-2.3.1-privacy.6-rc.9`, superseding rc.8; publication status/revision is recorded in the fork plan. Public APIs, diagnostic schema, policy defaults and the app pin are unchanged. No call-site migration is required.
+Use published annotated `notary-2.3.1-privacy.6-rc.9` at `4b21e2762533f87e9d8c8292d611ecaab8cd7df5`, superseding rc.8. Public APIs, diagnostic schema, policy defaults and the app pin are unchanged. No call-site migration is required.
 
 Trust verification now enables OpenSSL's strict structure/CA-extension checks while retaining ICAO explicit EC parameters. Previously tolerated certificates missing required AKI/SKI, CA constraints or key-usage structure can now fail trusted verification. Supplied trust stores should contain authenticated conforming CSCA certificates. A locally trusted CSCA link certificate can serve as an anchor without a self-signed copy; certificates supplied only as untrusted chain material cannot. RFC 5280's exact notAfter second is accepted; later times still fail. This does not add a complete issuer-profile linter or a general WebPKI validator.
 

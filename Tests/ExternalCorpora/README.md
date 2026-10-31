@@ -38,3 +38,5 @@ Ten image inputs parsed as DG2; ImageIO returned two UIImage objects and rejecte
 ## Attribution and redistribution
 
 Wycheproof and x509-limbo are Apache-2.0; license texts are included here. The tracked 68 KiB subset retains only public keys, synthetic certificates/CRLs and upstream verdicts, with original bytes unchanged and fields/selection adapted for this test harness. The larger corpora remain fetched/ignored. OpenJPEG data has heterogeneous provenance; the selected bytes are not redistributed in this repository. This work does not import OpenPACE code, NIST PKITS or OpenSSL CMS corpora, and makes no test claim for those datasets.
+
+Final rc.9 validation: 484 XCTest methods and the full iOS/API/privacy/NFC-boundary release workflow passed. Three AddressSanitizer iterations of nine external-corpus methods produced 27 successful executions, zero skips/failures. The app tag is `notary-2.3.1-privacy.6-rc.9` / `4b21e2762533f87e9d8c8292d611ecaab8cd7df5`. This remains simulator/synthetic evidence.
