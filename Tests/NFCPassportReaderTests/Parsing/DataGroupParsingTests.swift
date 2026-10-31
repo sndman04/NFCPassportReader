@@ -2450,7 +2450,7 @@ private func syntheticCardSecurityData(
 ) throws -> [UInt8] {
     let securityInfos = try syntheticPACEInfoSet()
     let encapContentInfo = try sequence(
-        asn1ObjectIdentifier("2.23.136.1.1.1") +
+        asn1ObjectIdentifier("0.4.0.127.0.7.3.2.1") +
         encapsulatedContentPrefix +
         context0(try tlv(tag: [0x04], value: securityInfos))
     )

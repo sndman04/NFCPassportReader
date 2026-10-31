@@ -15,19 +15,26 @@ struct SimpleASN1Node: CustomDebugStringConvertible {
     let offset: Int
     let tag: Int
     let headerLength: Int
-    let encodedBytes: [UInt8]
-    let value: [UInt8]
+    // Nodes share the immutable input buffer. Eagerly copying each ancestor's
+    // complete value amplified a small nested payload into hundreds of MiB.
+    private let source: [UInt8]
+    let valueLength: Int
+    var encodedBytes: [UInt8] { Array(source[offset..<(offset + headerLength + valueLength)]) }
+    var value: [UInt8] { Array(source[(offset + headerLength)..<(offset + headerLength + valueLength)]) }
     let children: [SimpleASN1Node]
 
     var debugDescription: String {
         let childDescriptions = children.map(\.debugDescription).joined(separator: "")
-        return "tag:\(tag), hl=\(headerLength), l=\(value.count): <redacted>\n" + childDescriptions
+        return "tag:\(tag), hl=\(headerLength), l=\(valueLength): <redacted>\n" + childDescriptions
     }
 
     var integerValue: Int? {
+        guard valueLength <= MemoryLayout<Int>.size else { return nil }
+        let value = self.value
         guard tag == 0x02,
               !value.isEmpty,
-              value[0] & 0x80 == 0 else { return nil }
+              value[0] & 0x80 == 0,
+              value.count == 1 || value[0] != 0 || value[1] & 0x80 != 0 else { return nil }
 
         var result = 0
         for byte in value {
@@ -42,11 +49,15 @@ struct SimpleASN1Node: CustomDebugStringConvertible {
     }
 
     var objectIdentifier: String? {
-        guard tag == 0x06, !value.isEmpty else { return nil }
+        guard valueLength <= 128 else { return nil }
+        let value = self.value
+        guard tag == 0x06, let last = value.last, last & 0x80 == 0 else { return nil }
 
         var arcs: [Int] = []
         var current = 0
-        for byte in value {
+        for (index, byte) in value.enumerated() {
+            // X.690 base-128 subidentifiers must terminate and use minimal encoding.
+            if (index == 0 || value[index - 1] & 0x80 == 0), byte == 0x80 { return nil }
             let shifted = current.multipliedReportingOverflow(by: 128)
             guard !shifted.overflow else { return nil }
 
@@ -115,7 +126,6 @@ struct SimpleASN1Node: CustomDebugStringConvertible {
 
         let valueStart = cursor
         let valueEnd = cursor + length
-        let value = [UInt8](bytes[valueStart ..< valueEnd])
         var children: [SimpleASN1Node] = []
 
         if isConstructedTag(tag) {
@@ -134,14 +144,13 @@ struct SimpleASN1Node: CustomDebugStringConvertible {
             }
         }
 
-        let encodedBytes = [UInt8](bytes[offset ..< valueEnd])
         return (
             SimpleASN1Node(
                 offset: offset,
                 tag: tag,
                 headerLength: headerLength,
-                encodedBytes: encodedBytes,
-                value: value,
+                source: bytes,
+                valueLength: length,
                 children: children
             ),
             valueEnd
@@ -160,6 +169,9 @@ struct SimpleASN1Node: CustomDebugStringConvertible {
         }
 
         var tag = Int(first)
+        guard cursor < limit, bytes[cursor] != 0x80 else {
+            throw NFCPassportReaderError.InvalidASN1Structure
+        }
         repeat {
             guard cursor < limit else {
                 throw NFCPassportReaderError.InvalidASN1Structure

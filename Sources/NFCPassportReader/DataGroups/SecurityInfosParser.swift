@@ -55,13 +55,13 @@ enum SecurityInfosParser {
               explicitContent?.children.count == 1,
               let signedData = explicitContent?.children.first,
               signedData.tag == 0x30,
-              signedData.children.count >= 4,
-              signedData.children.first?.tag == 0x02,
+              (4...6).contains(signedData.children.count),
+              signedData.children.first?.integerValue == 3,
               signedData.children.dropFirst().first?.tag == 0x31,
               let encapContentInfo = signedData.children.dropFirst(2).first,
               encapContentInfo.tag == 0x30,
               encapContentInfo.children.count == 2,
-              encapContentInfo.children.first?.objectIdentifier != nil,
+              encapContentInfo.children.first?.objectIdentifier == "0.4.0.127.0.7.3.2.1",
               let eContent = encapContentInfo.children.dropFirst().first,
               eContent.tag == 0xA0,
               eContent.children.count == 1,
@@ -71,6 +71,11 @@ enum SecurityInfosParser {
             throw OpenSSLError.UnableToExtractSignedDataFromPKCS7("Data in invalid format")
         }
 
+        let optionalTags = signedData.children.dropFirst(3).dropLast().map(\.tag)
+        guard optionalTags == [] || optionalTags == [0xA0] || optionalTags == [0xA1]
+            || optionalTags == [0xA0, 0xA1] else {
+            throw OpenSSLError.UnableToExtractSignedDataFromPKCS7("Data in invalid format")
+        }
         return content.value
     }
 }

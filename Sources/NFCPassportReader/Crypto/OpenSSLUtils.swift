@@ -298,6 +298,9 @@ class OpenSSLUtils {
             throw OpenSSLError.VerifyAndReturnSODEncapsulatedData("CMS - Verification of P7 failed - unable to create CMS")
         }
         defer { CMS_ContentInfo_free(cms) }
+        guard BIO_ctrl(inf, BIO_CTRL_PENDING, 0, nil) == 0 else {
+            throw OpenSSLError.VerifyAndReturnSODEncapsulatedData("CMS - Trailing DER content")
+        }
 
         var store: OpaquePointer?
         if let trustedCertificatesURL {

@@ -150,3 +150,7 @@ Chain categories include trustStoreUnavailable, certificateUnavailable, issuerNo
 The diagnostic API was introduced in `notary-2.3.1-privacy.6-rc.5`; rc.6 corrects SOD v1 and rc.7 adds the [standards compatibility changes](STANDARDS_COVERAGE.md). The annotated rc.7 candidate is published and its remote peeled SHA is verified as `8b0f1ea1af90e6e331929524f40ae213125c9373`. The initial account-selection error is resolved. Pin this immutable tag when updating the app. All earlier tags/upstream snapshots remain unchanged. Schema 1 keeps its structure; new fixed revocation reason/operation values are additive.
 
 Repin the consuming app in a separate task. Exercise real v0/v1, new and legacy face formats, authentication, tampered rejection, RF loss, timeout/cancellation and back-to-back scans with its custom logger and encrypted history before promoting a production tag.
+
+### privacy.6-rc.8 edge-case corrections
+
+Schema 1 and public enum cases are unchanged. Signed authentication groups absent from the read model now report unavailable/`missingDataGroup`, even if unsigned COM omitted them; when-supported policies reject that incomplete evidence. CAM success/failure is preserved when the key came from CardSecurity without DG14. Conflicting or invalid matching CRLs retain fixed failure reasons. Malformed encodings and trailing CMS data are rejected without including payloads. Aggregate policy failures select an unsatisfied check rather than an earlier acceptable absent optional mechanism. Snapshot lifetime and post-failure scrubbing semantics are unchanged.

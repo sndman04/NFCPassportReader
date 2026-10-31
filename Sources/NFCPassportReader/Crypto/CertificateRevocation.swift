@@ -21,6 +21,10 @@ enum CertificateRevocation {
     }
     static func load(_ url: URL) throws -> Data {
         guard url.isFileURL else { throw OpenSSLError.UnableToVerifyX509CertificateForSOD("A local CRL bundle is required") }
+        let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize
+        guard let size, size > 0, size <= 16 * 1024 * 1024 else {
+            throw OpenSSLError.UnableToVerifyX509CertificateForSOD("Invalid CRL bundle size")
+        }
         let data = try Data(contentsOf: url, options: .mappedIfSafe)
         guard !data.isEmpty, data.count <= 16 * 1024 * 1024 else {
             throw OpenSSLError.UnableToVerifyX509CertificateForSOD("Invalid CRL bundle size")

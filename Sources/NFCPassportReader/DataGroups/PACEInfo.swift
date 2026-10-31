@@ -258,7 +258,7 @@ class PACEInfo : SecurityInfo {
             return false
         }
 
-        guard mappingType != .CAM || (try? getKeyAgreementAlgorithm()) == "ECDH" else {
+        guard mappingType != .CAM || (parameterId != nil && (try? getKeyAgreementAlgorithm()) == "ECDH") else {
             return false
         }
 

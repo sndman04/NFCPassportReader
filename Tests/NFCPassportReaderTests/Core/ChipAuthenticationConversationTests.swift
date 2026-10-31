@@ -25,6 +25,10 @@ final class ChipAuthenticationConversationTests: XCTestCase {
         try await runCA(oid: "0.4.0.127.0.7.2.2.3.2.4", parameter: 13, alternatives: true)
     }
 
+    func testCASkipsKeysWithoutMatchingAdvertisedCAInfo() async throws {
+        try await runCA(oid: "0.4.0.127.0.7.2.2.3.2.2", parameter: 13, unrelatedKey: true)
+    }
+
     func testCARejectsCorruptedNewSessionConfirmationForEveryCipherAndFamily() async throws {
         for family in [1, 2] {
             for cipher in 1...4 {
@@ -53,7 +57,7 @@ final class ChipAuthenticationConversationTests: XCTestCase {
         XCTAssertThrowsError(try ChipAuthenticationHandler.metadata(from: [first, ambiguous]))
     }
 
-    private func runCA(oid: String, parameter: Int, corruptMAC: Bool = false, alternatives: Bool = false) async throws {
+    private func runCA(oid: String, parameter: Int, corruptMAC: Bool = false, alternatives: Bool = false, unrelatedKey: Bool = false) async throws {
         let dh = parameter < 3
         let chip = try PACEInfo(oid: dh ? SecurityInfo.ID_PACE_DH_GM_AES_CBC_CMAC_128 : SecurityInfo.ID_PACE_ECDH_GM_AES_CBC_CMAC_128,
                                 version: 2, parameterId: parameter).createMappingKey()
@@ -69,7 +73,8 @@ final class ChipAuthenticationConversationTests: XCTestCase {
         let keyInfo = wrapDO(b: 0x30, arr: oidToBytes(oid: keyOID, replaceTag: false) + spki + [2, 1, 0])
         let algorithmInfo = wrapDO(b: 0x30, arr: oidToBytes(oid: oid, replaceTag: false) + [2, 1, 1, 2, 1, 0])
         let alternativeInfo = alternatives ? wrapDO(b: 0x30, arr: oidToBytes(oid: "0.4.0.127.0.7.2.2.3.2.1", replaceTag: false) + [2, 1, 1, 2, 1, 0]) : []
-        let dg14 = try DataGroup14(wrapDO(b: 0x6E, arr: wrapDO(b: 0x31, arr: keyInfo + alternativeInfo + algorithmInfo)))
+        let otherKey = unrelatedKey ? wrapDO(b: 0x30, arr: oidToBytes(oid: keyOID, replaceTag: false) + spki + [2, 1, 13]) : []
+        let dg14 = try DataGroup14(wrapDO(b: 0x6E, arr: wrapDO(b: 0x31, arr: otherKey + keyInfo + alternativeInfo + algorithmInfo)))
         let des = oid.hasSuffix(".1")
         let bits = des ? 128 : (oid.hasSuffix(".2") ? 128 : (oid.hasSuffix(".3") ? 192 : 256))
         let blockSize = des ? 8 : 16
@@ -78,6 +83,7 @@ final class ChipAuthenticationConversationTests: XCTestCase {
         let transport = LifecycleTransport { command, _ in
             var terminalBytes: [UInt8]?
             if command.instructionCode == 0x22 {
+                guard command.p2Parameter == (des ? 0xA6 : 0xA4) else { return (Data(), 0x6A, 0x80) }
                 XCTAssertEqual(command.p1Parameter, 0x41)
                 XCTAssertEqual(command.p2Parameter, des ? 0xA6 : 0xA4)
                 let fields = try SimpleASN1Node.parse(wrapDO(b: 0x30, arr: Array(command.data ?? Data()))).children

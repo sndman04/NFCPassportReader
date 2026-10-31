@@ -467,22 +467,32 @@ final class PassportReaderLoggingTests: XCTestCase {
         let result = try PACEChipAuthenticationMappingResult(
             mappingPublicKey: mappingPublicKey,
             encryptedChipAuthenticationData: encryptedCAMData,
-            encryptionKey: encryptionKey
+            encryptionKey: encryptionKey, keyIdentifier: 13
         )
 
         XCTAssertTrue(result.verifies(using: [
-            ChipAuthenticationPublicKeyInfo(oid: SecurityInfo.ID_PK_ECDH_OID, pubKey: staticKey, ownsPublicKey: false)
+            ChipAuthenticationPublicKeyInfo(oid: SecurityInfo.ID_PK_ECDH_OID, pubKey: staticKey, keyId: 13, ownsPublicKey: false)
         ]))
         XCTAssertFalse(result.verifies(using: [
-            ChipAuthenticationPublicKeyInfo(oid: SecurityInfo.ID_PK_ECDH_OID, pubKey: wrongStaticKey, ownsPublicKey: false)
+            ChipAuthenticationPublicKeyInfo(oid: SecurityInfo.ID_PK_ECDH_OID, pubKey: wrongStaticKey, keyId: 13, ownsPublicKey: false)
         ]))
+
+        let correct = ChipAuthenticationPublicKeyInfo(oid: SecurityInfo.ID_PK_ECDH_OID, pubKey: staticKey, keyId: 13, ownsPublicKey: false)
+        let wrongID = ChipAuthenticationPublicKeyInfo(oid: correct.oid, pubKey: staticKey, keyId: 14, ownsPublicKey: false)
+        let missingID = ChipAuthenticationPublicKeyInfo(oid: correct.oid, pubKey: staticKey, ownsPublicKey: false)
+        let conflicting = ChipAuthenticationPublicKeyInfo(oid: correct.oid, pubKey: wrongStaticKey, keyId: 13, ownsPublicKey: false)
+        XCTAssertFalse(result.verifies(using: [wrongID]))
+        XCTAssertFalse(result.verifies(using: [missingID]))
+        XCTAssertFalse(result.verifies(using: [correct, conflicting]))
+        XCTAssertTrue(result.verifies(using: [correct, correct]))
+        XCTAssertTrue(result.verifies(using: [wrongID, correct]))
 
         let malformedPaddedCAMData = [UInt8](repeating: 0xA5, count: 16)
         let encryptedMalformedCAMData = AESEncrypt(key: encryptionKey, message: malformedPaddedCAMData, iv: iv)
         XCTAssertThrowsError(try PACEChipAuthenticationMappingResult(
             mappingPublicKey: mappingPublicKey,
             encryptedChipAuthenticationData: encryptedMalformedCAMData,
-            encryptionKey: encryptionKey
+            encryptionKey: encryptionKey, keyIdentifier: 13
         )) { error in
             guard case NFCPassportReaderError.PACEError = error else {
                 XCTFail("Expected PACEError, got \(error)")
@@ -827,14 +837,14 @@ final class PassportReaderLoggingTests: XCTestCase {
         XCTAssertEqual(chipModel.verificationResult.chipAuthenticationDetail.reason, .attemptedFailed)
     }
 
-    func testOptionalAuthenticationUnsupportedReadTakesPrecedenceOverTransientFailure() {
+    func testAdvertisedAuthenticationGroupUnavailableAfterRetryDoesNotMeanUnsupported() {
         let activeModel = NFCPassportModel()
         activeModel.recordDataGroupReadStatus(.advertised, for: .DG15)
         activeModel.recordDataGroupReadStatus(.failed, for: .DG15)
         activeModel.recordDataGroupReadStatus(.unsupported, for: .DG15)
 
         XCTAssertEqual(activeModel.verificationResult.activeAuthenticationStatus, .notChecked)
-        XCTAssertEqual(activeModel.verificationResult.activeAuthenticationDetail.reason, .notSupported)
+        XCTAssertEqual(activeModel.verificationResult.activeAuthenticationDetail.reason, .skipped)
 
         let chipModel = NFCPassportModel()
         chipModel.recordDataGroupReadStatus(.advertised, for: .DG14)
@@ -842,7 +852,7 @@ final class PassportReaderLoggingTests: XCTestCase {
         chipModel.recordDataGroupReadStatus(.unsupported, for: .DG14)
 
         XCTAssertEqual(chipModel.verificationResult.chipAuthenticationStatus, .notChecked)
-        XCTAssertEqual(chipModel.verificationResult.chipAuthenticationDetail.reason, .notSupported)
+        XCTAssertEqual(chipModel.verificationResult.chipAuthenticationDetail.reason, .skipped)
     }
 
     func testWhenSupportedPoliciesFailIfAdvertisedMechanismWasSkipped() {

@@ -944,7 +944,9 @@ extension PassportReader : @preconcurrency NFCTagReaderSessionDelegate {
             ]
         }
 
-        return checks.first(where: { $0.status != .passed })?.reason ?? .attemptedFailed
+        // An optional mechanism's established absence satisfies a when-supported
+        // requirement; it must not mask the later check that actually failed.
+        return checks.first(where: { $0.status != .passed && $0.reason != .notSupported })?.reason ?? .attemptedFailed
     }
 
     func recordDiagnosticFailure(_ failure: PassportDiagnosticFailure, scanID: UInt64) {

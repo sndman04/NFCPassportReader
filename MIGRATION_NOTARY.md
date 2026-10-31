@@ -4,6 +4,14 @@ This fork intentionally exposes the privacy-safe passport-chip API as the app in
 
 The fork now requires SwiftPM tools 6.3, Swift 6 language mode, Xcode 26.5 or newer, and iOS 26.0 or newer. This matches the app-only integration plan and intentionally drops older-package consumer compatibility.
 
+## Edge-case corrections (privacy.6-rc.8)
+
+The next app-consumption candidate is annotated `notary-2.3.1-privacy.6-rc.8`, superseding rc.7. Reader signatures, enum cases, diagnostic schema and policy defaults are unchanged. When-supported authentication policies now reject unknown availability and unread authentication groups advertised in COM or the signed SOD; full verification cannot infer absence from an unsigned COM omission. Actual CAM outcomes are preserved when CardSecurity supplies the key without DG14. `.notaryStrict` remains passive integrity only.
+
+Malformed ASN.1 identifiers, wrong CardSecurity content types, trailing CMS data, CAM key-ID mismatches and ambiguous/invalid matching CRL bundles now fail closed. CA can select a supported suite after an unrelated key. Valid v0/v1 content and independently signed baseline fixtures are retained. CRL errors keep fixed redacted reasons; missing authentication groups report `missingDataGroup` in snapshots and skipped/failed in legacy verification details. Aggregate policy failures now identify the unsatisfied check instead of an earlier acceptable absent optional mechanism. No app call-site migration is required; callers relying on incomplete when-supported verification succeeding must supply the necessary groups/verification evidence.
+
+The [fork plan](NFCPASSPORTREADER_FORK_SECURITY_AND_FUNCTIONALITY_PLAN.md) records reproductions, commands and release status. Validation remains synthetic and simulator based; the app pin is not edited here.
+
 ## Standards compatibility (privacy.6-rc.7)
 
 Use published annotated `notary-2.3.1-privacy.6-rc.7` at `8b0f1ea1af90e6e331929524f40ae213125c9373`; never move existing tags. Publication succeeded using the repository-owning `sndman04` account. The app pin is unchanged. This release includes rc.6's SOD v1 fix, with unchanged original signed fixtures, plus the [standards coverage changes](STANDARDS_COVERAGE.md).

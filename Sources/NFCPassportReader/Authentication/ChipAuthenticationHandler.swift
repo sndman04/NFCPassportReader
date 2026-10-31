@@ -153,6 +153,10 @@ class ChipAuthenticationHandler {
         if let chipAuthInfo = chipAuthInfos[keyId ?? 0] {
             chipAuthInfoOID = chipAuthInfo.oid
         } else {
+            // A key may be present only for PACE-CAM. When CA suites are
+            // advertised, skip keys without a matching suite. Legacy 3DES
+            // inference applies only when the document has no CAInfo at all.
+            guard chipAuthInfos.isEmpty else { return false }
             if let oid = inferOID( fromPublicKeyOID:chipAuthPublicKeyInfo.oid) {
                 chipAuthInfoOID = oid
             } else {

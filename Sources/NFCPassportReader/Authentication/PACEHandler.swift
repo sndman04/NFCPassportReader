@@ -360,7 +360,7 @@ class PACEHandler {
         }
 
         if mappingType == .CAM {
-            guard let encryptedCAMData,
+            guard let encryptedCAMData, let keyIdentifier = paceInfo.parameterId,
                   !encryptedCAMData.isEmpty else {
                 throw NFCPassportReaderError.PACEError("Step3 KeyAgreement", "PACE CAM data missing")
             }
@@ -368,7 +368,8 @@ class PACEHandler {
             chipAuthenticationMappingResult = try PACEChipAuthenticationMappingResult(
                 mappingPublicKey: chipMappingPublicKey,
                 encryptedChipAuthenticationData: encryptedCAMData,
-                encryptionKey: encKey
+                encryptionKey: encKey,
+                keyIdentifier: keyIdentifier
             )
         }
         

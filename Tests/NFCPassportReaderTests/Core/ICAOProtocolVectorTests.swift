@@ -13,7 +13,9 @@ final class ICAOProtocolVectorTests: XCTestCase {
     func testPublishedGMRejectsUnexpectedCAMData() async throws { try await pace("ecdh", unexpectedCAM: true) }
     func testPublishedCAMRejectsUnrelatedStaticKey() async throws { try await pace("cam", wrongStaticKey: true) }
 
-    private func pace(_ name: String, corruptToken: Bool = false, wrongStaticKey: Bool = false, unexpectedCAM: Bool = false) async throws {
+    func testPublishedCAMRejectsMatchingKeyWithWrongIdentifier() async throws { try await pace("cam", wrongKeyID: true) }
+
+    private func pace(_ name: String, corruptToken: Bool = false, wrongStaticKey: Bool = false, unexpectedCAM: Bool = false, wrongKeyID: Bool = false) async throws {
         let vector = try ICAOVector(name)
         var step = 0
         let transport = LifecycleTransport { command, _ in
@@ -53,8 +55,8 @@ final class ICAOProtocolVectorTests: XCTestCase {
                 defer { EVP_PKEY_free(parameters) }
                 let key = try wrongStaticKey ? OpenSSLUtils.generateECKeyPair(curveNID: NID_brainpoolP256r1)
                     : XCTUnwrap(OpenSSLUtils.decodePublicKeyFromBytes(pubKeyData: vector.bytes("staticPublic"), params: parameters))
-                let publicInfo = ChipAuthenticationPublicKeyInfo(oid: SecurityInfo.ID_PK_ECDH_OID, pubKey: key)
-                XCTAssertEqual(try XCTUnwrap(handler.chipAuthenticationMappingResult).verifies(using: [publicInfo]), !wrongStaticKey)
+                let publicInfo = ChipAuthenticationPublicKeyInfo(oid: SecurityInfo.ID_PK_ECDH_OID, pubKey: key, keyId: wrongKeyID ? 14 : info.parameterId)
+                XCTAssertEqual(try XCTUnwrap(handler.chipAuthenticationMappingResult).verifies(using: [publicInfo]), !wrongStaticKey && !wrongKeyID)
             }
         }
         XCTAssertEqual(step, 5)

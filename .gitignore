@@ -81,6 +81,7 @@ scripts/*
 !scripts/generate_pace_parameter_profiles.py
 !scripts/generate_active_authentication_profiles.py
 !scripts/generate_revocation_profiles.py
+!scripts/generate_edge_case_fixtures.py
 !scripts/nfc_boundary_check.sh
 !scripts/privacy_scan.sh
 !scripts/release_check.sh

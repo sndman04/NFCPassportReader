@@ -116,7 +116,7 @@ struct ISO39794Face {
             while node.encodedBytes[tagBytes] & 0x80 != 0 { tagBytes += 1 }
             tagBytes += 1
         }
-        var length = node.value.count, lengthBytes = 1
+        var length = node.valueLength, lengthBytes = 1
         if length >= 128 { while length > 0 { lengthBytes += 1; length >>= 8 } }
         return node.headerLength == tagBytes + lengthBytes && node.children.allSatisfy(canonicalLengths)
     }

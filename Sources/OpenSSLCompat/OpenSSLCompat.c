@@ -111,14 +111,71 @@ static int NFCPRCRLMatchesIssuer(X509_CRL *crl, X509 *issuer) {
     return verified ? 1 : -1;
 }
 
-static int NFCPRNewerCRL(X509_CRL *candidate, X509_CRL *current) {
-    if (current == NULL) return 1;
+/* Only complete, direct ICAO CRLs are supported. Validate every matching
+ * authenticated CRL before selecting by number; invalid replacements cannot
+ * disappear behind an older valid list in the same supplied bundle. */
+static int NFCPRValidCRLProfile(X509_CRL *crl) {
+    const ASN1_TIME *thisUpdate = X509_CRL_get0_lastUpdate(crl);
+    const ASN1_TIME *nextUpdate = X509_CRL_get0_nextUpdate(crl);
+    if (thisUpdate == NULL || nextUpdate == NULL || ASN1_TIME_check(thisUpdate) != 1
+        || ASN1_TIME_check(nextUpdate) != 1 || ASN1_TIME_compare(thisUpdate, nextUpdate) >= 0) return 0;
+    if (X509_CRL_get_version(crl) != 1
+        || X509_CRL_get_ext_by_NID(crl, NID_delta_crl, -1) >= 0
+        || X509_CRL_get_ext_by_NID(crl, NID_issuing_distribution_point, -1) >= 0) return 0;
+    ASN1_INTEGER *number = X509_CRL_get_ext_d2i(crl, NID_crl_number, NULL, NULL);
+    BIGNUM *value = number != NULL ? ASN1_INTEGER_to_BN(number, NULL) : NULL;
+    int valid = value != NULL && !BN_is_negative(value) && BN_num_bytes(value) <= 20;
+    BN_free(value); ASN1_INTEGER_free(number);
+    if (!valid || X509_CRL_get_ext_count(crl) > 64) return 0;
+    for (int i = 0; i < X509_CRL_get_ext_count(crl); ++i) {
+        X509_EXTENSION *extension = X509_CRL_get_ext(crl, i);
+        if (X509_EXTENSION_get_critical(extension)) return 0;
+        for (int j = 0; j < i; ++j) {
+            if (OBJ_cmp(X509_EXTENSION_get_object(extension),
+                        X509_EXTENSION_get_object(X509_CRL_get_ext(crl, j))) == 0) return 0;
+        }
+    }
+    STACK_OF(X509_REVOKED) *entries = X509_CRL_get_REVOKED(crl);
+    for (int i = 0; entries != NULL && i < sk_X509_REVOKED_num(entries); ++i) {
+        X509_REVOKED *entry = sk_X509_REVOKED_value(entries, i);
+        if (X509_REVOKED_get_ext_count(entry) > 32
+            || X509_REVOKED_get_ext_by_NID(entry, NID_certificate_issuer, -1) >= 0) return 0;
+        for (int j = 0; j < X509_REVOKED_get_ext_count(entry); ++j) {
+            X509_EXTENSION *extension = X509_REVOKED_get_ext(entry, j);
+            if (X509_EXTENSION_get_critical(extension)) return 0;
+            for (int k = 0; k < j; ++k) {
+                if (OBJ_cmp(X509_EXTENSION_get_object(extension),
+                            X509_EXTENSION_get_object(X509_REVOKED_get_ext(entry, k))) == 0) return 0;
+            }
+        }
+        if (X509_REVOKED_get_ext_by_NID(entry, NID_crl_reason, -1) >= 0) {
+            ASN1_ENUMERATED *reason = X509_REVOKED_get_ext_d2i(entry, NID_crl_reason, NULL, NULL);
+            long code = reason != NULL ? ASN1_ENUMERATED_get(reason) : -1;
+            ASN1_ENUMERATED_free(reason);
+            /* RFC 5280 5.3.1: removeFromCRL (8) belongs only to delta CRLs. */
+            if (!((code >= 0 && code <= 6) || code == 9 || code == 10)) return 0;
+        }
+    }
+    return 1;
+}
+
+static int NFCPRCompareCRLNumber(X509_CRL *candidate, X509_CRL *current) {
     ASN1_INTEGER *a = X509_CRL_get_ext_d2i(candidate, NID_crl_number, NULL, NULL);
     ASN1_INTEGER *b = X509_CRL_get_ext_d2i(current, NID_crl_number, NULL, NULL);
-    int newer = a != NULL && b != NULL ? ASN1_INTEGER_cmp(a, b) > 0
-        : ASN1_TIME_compare(X509_CRL_get0_lastUpdate(candidate), X509_CRL_get0_lastUpdate(current)) > 0;
+    // A second decode can still fail under allocation pressure.
+    int order = a != NULL && b != NULL ? ASN1_INTEGER_cmp(a, b) : 0;
+    int result = a == NULL || b == NULL ? 2 : (order < 0 ? -1 : (order > 0 ? 1 : 0));
     ASN1_INTEGER_free(a); ASN1_INTEGER_free(b);
-    return newer;
+    return result;
+}
+
+static int NFCPRSameCRLContent(X509_CRL *a, X509_CRL *b) {
+    unsigned char *first = NULL, *second = NULL;
+    int firstLength = i2d_re_X509_CRL_tbs(a, &first);
+    int secondLength = i2d_re_X509_CRL_tbs(b, &second);
+    int same = firstLength > 0 && firstLength == secondLength && memcmp(first, second, (size_t)firstLength) == 0;
+    OPENSSL_free(first); OPENSSL_free(second);
+    return same;
 }
 
 /* Validate the entire local bundle; PEM_read alone can silently skip garbage or
@@ -154,8 +211,14 @@ int NFCPRCheckRevocation(const unsigned char *data, size_t length, X509 *signer,
         if (crl == NULL) break;
         if (++count > 1024) { X509_CRL_free(crl); X509_CRL_free(latest); BIO_free(input); return 4; }
         int matches = NFCPRCRLMatchesIssuer(crl, issuer);
-        if (matches < 0) invalidSignature = 1;
-        if (matches == 1 && NFCPRNewerCRL(crl, latest)) {
+        if (matches < 0 || (matches == 1 && !NFCPRValidCRLProfile(crl))) {
+            X509_CRL_free(crl); X509_CRL_free(latest); BIO_free(input); return 4;
+        }
+        int order = matches == 1 && latest != NULL ? NFCPRCompareCRLNumber(crl, latest) : 1;
+        if (order == 2 || (matches == 1 && latest != NULL && order == 0 && !NFCPRSameCRLContent(crl, latest))) {
+            X509_CRL_free(crl); X509_CRL_free(latest); BIO_free(input); return 4;
+        }
+        if (matches == 1 && (latest == NULL || order > 0)) {
             X509_CRL_free(latest); latest = crl;
         } else { X509_CRL_free(crl); }
     }
@@ -170,25 +233,7 @@ int NFCPRCheckRevocation(const unsigned char *data, size_t length, X509 *signer,
         else { if (matches < 0) invalidSignature = 1; X509_CRL_free(crl); }
     }
     if (latest == NULL) return invalidSignature ? 4 : 3;
-    int result = 1;
-    ASN1_INTEGER *number = X509_CRL_get_ext_d2i(latest, NID_crl_number, NULL, NULL);
-    BIGNUM *numberValue = number != NULL ? ASN1_INTEGER_to_BN(number, NULL) : NULL;
-    if (numberValue == NULL || BN_is_negative(numberValue)) result = 4;
-    BN_free(numberValue); ASN1_INTEGER_free(number);
-    if (X509_CRL_get_version(latest) != 1 || X509_CRL_get_ext_by_NID(latest, NID_crl_number, -1) < 0
-        || X509_CRL_get_ext_by_NID(latest, NID_delta_crl, -1) >= 0
-        || X509_CRL_get_ext_by_NID(latest, NID_issuing_distribution_point, -1) >= 0) result = 4;
-    for (int i = 0; i < X509_CRL_get_ext_count(latest); ++i) {
-        X509_EXTENSION *extension = X509_CRL_get_ext(latest, i);
-        if (X509_EXTENSION_get_critical(extension)) result = 4;
-    }
-    STACK_OF(X509_REVOKED) *entries = X509_CRL_get_REVOKED(latest);
-    for (int i = 0; entries != NULL && i < sk_X509_REVOKED_num(entries); ++i) {
-        X509_REVOKED *entry = sk_X509_REVOKED_value(entries, i);
-        for (int j = 0; j < X509_REVOKED_get_ext_count(entry); ++j) {
-            if (X509_EXTENSION_get_critical(X509_REVOKED_get_ext(entry, j))) result = 4;
-        }
-    }
+    int result = NFCPRValidCRLProfile(latest) ? 1 : 4;
     if (result == 1) {
         int before = X509_cmp_current_time(X509_CRL_get0_lastUpdate(latest));
         const ASN1_TIME *next = X509_CRL_get0_nextUpdate(latest);

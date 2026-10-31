@@ -79,9 +79,11 @@ public enum PassportVerificationRequirement: Sendable, Equatable {
     case trustedPassiveAuthentication
 
     /// Require chip authentication to pass when the passport advertises chip authentication support.
+    /// Missing advertised authentication data or unknown availability fails this requirement.
     case chipAuthenticationWhenSupported
 
     /// Require active authentication to pass when the passport advertises active authentication support.
+    /// Missing advertised authentication data or unknown availability fails this requirement.
     case activeAuthenticationWhenSupported
 
     /// Require passive authentication, trusted signer-chain verification, and chip/active authentication
@@ -105,11 +107,9 @@ public enum PassportVerificationRequirement: Sendable, Equatable {
         case .chipAuthenticationWhenSupported:
             return verification.chipAuthenticationStatus == .passed
                 || verification.chipAuthenticationDetail.reason == .notSupported
-                || verification.chipAuthenticationDetail.reason == .notRequested
         case .activeAuthenticationWhenSupported:
             return verification.activeAuthenticationStatus == .passed
                 || verification.activeAuthenticationDetail.reason == .notSupported
-                || verification.activeAuthenticationDetail.reason == .notRequested
         case .fullVerificationWhenSupported:
             return PassportVerificationRequirement.trustedPassiveAuthentication.isSatisfied(by: passport)
                 && PassportVerificationRequirement.chipAuthenticationWhenSupported.isSatisfied(by: passport)

@@ -960,6 +960,9 @@ class NFCPassportModel: @unchecked Sendable {
             return .init(.skipped, .skippedByConfiguration)
         }
         if supported { return .init() }
+        if dataGroupsRead[group] == nil, authenticationGroupIsAdvertised(group) {
+            return .init(.unavailable, .missingDataGroup)
+        }
         if statuses.contains(.failed) { return .init(.unavailable, .missingDataGroup) }
         if dataGroupsRead[group] != nil || statuses.contains(.unsupported) { return .init(.unsupported, .notSupported) }
         if let com = dataGroupsRead[.COM] as? COM {
@@ -967,6 +970,13 @@ class NFCPassportModel: @unchecked Sendable {
                 ? .init(.unavailable, .missingDataGroup) : .init(.unsupported, .notSupported)
         }
         return .init()
+    }
+
+    private func authenticationGroupIsAdvertised(_ group: DataGroupId) -> Bool {
+        // COM is not signed and cannot erase a group from the signed SOD inventory.
+        sodHashDataGroupIds.contains(group)
+            || (dataGroupsRead[.COM] as? COM)?.dataGroupsPresent.contains(group.getName()) == true
+            || dataGroupReadReports.contains { $0.dataGroup == group && $0.status == .advertised }
     }
 
     private func hashLength(for algorithm: String) -> Int? {
@@ -1096,6 +1106,11 @@ class NFCPassportModel: @unchecked Sendable {
             if dg15Statuses.contains(.skippedByProfile) || dg15Statuses.contains(.blockedByPolicy) {
                 return PassportVerificationCheck(status: .notChecked, reason: .skipped)
             }
+            if dataGroupsRead[.DG15] == nil, authenticationGroupIsAdvertised(.DG15) {
+                return dg15Statuses.contains(.failed) && !dg15Statuses.contains(.unsupported)
+                    ? PassportVerificationCheck(status: .failed, reason: .attemptedFailed)
+                    : PassportVerificationCheck(status: .notChecked, reason: .skipped)
+            }
             if dataGroupsRead[.DG15] != nil || dataGroupsRead[.COM] != nil || dg15Statuses.contains(.unsupported) {
                 return PassportVerificationCheck(status: .notChecked, reason: .notSupported)
             }
@@ -1117,6 +1132,13 @@ class NFCPassportModel: @unchecked Sendable {
     }
 
     private func verificationCheckForChipAuthentication() -> PassportVerificationCheck {
+        // CAM can authenticate with MF CardSecurity without a DG14. Preserve
+        // an actual attempted result before inferring availability from LDS files.
+        switch chipAuthenticationStatus {
+        case .success: return PassportVerificationCheck(status: .passed, reason: .passed)
+        case .failed: return PassportVerificationCheck(status: .failed, reason: .attemptedFailed)
+        case .notDone: break
+        }
         guard isChipAuthenticationSupported else {
             let dg14Statuses = dataGroupReadReports
                 .filter { $0.dataGroup == .DG14 }
@@ -1124,6 +1146,11 @@ class NFCPassportModel: @unchecked Sendable {
 
             if dg14Statuses.contains(.skippedByProfile) || dg14Statuses.contains(.blockedByPolicy) {
                 return PassportVerificationCheck(status: .notChecked, reason: .skipped)
+            }
+            if dataGroupsRead[.DG14] == nil, authenticationGroupIsAdvertised(.DG14) {
+                return dg14Statuses.contains(.failed) && !dg14Statuses.contains(.unsupported)
+                    ? PassportVerificationCheck(status: .failed, reason: .attemptedFailed)
+                    : PassportVerificationCheck(status: .notChecked, reason: .skipped)
             }
             if dataGroupsRead[.DG14] != nil || dataGroupsRead[.COM] != nil || dg14Statuses.contains(.unsupported) {
                 return PassportVerificationCheck(status: .notChecked, reason: .notSupported)
@@ -1136,14 +1163,7 @@ class NFCPassportModel: @unchecked Sendable {
             }
             return PassportVerificationCheck(status: .notChecked, reason: .notRequested)
         }
-        switch chipAuthenticationStatus {
-        case .notDone:
-            return PassportVerificationCheck(status: .notChecked, reason: .skipped)
-        case .success:
-            return PassportVerificationCheck(status: .passed, reason: .passed)
-        case .failed:
-            return PassportVerificationCheck(status: .failed, reason: .attemptedFailed)
-        }
+        return PassportVerificationCheck(status: .notChecked, reason: .skipped)
     }
 
     private func dataGroupVerificationCoverage() -> [PassportDataGroupVerificationCoverage] {
